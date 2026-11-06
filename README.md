@@ -1,7 +1,8 @@
 # DDD Firma
 
-Lokalna, jednoosobowa aplikacja PWA do prowadzenia firmy DDD (dezynsekcja, dezynfekcja, deratyzacja).
-Działa bez internetu, bez logowania i bez serwera. Wszystkie dane są zapisane na urządzeniu w IndexedDB.
+Aplikacja PWA do prowadzenia firmy DDD (dezynsekcja, dezynfekcja, deratyzacja), działająca najpierw lokalnie.
+Wszystkie dane są zapisane na urządzeniu w IndexedDB, a aplikacja działa bez internetu. Opcjonalna synchronizacja
+z kontem przenosi dane między urządzeniami i trzyma ich kopię na serwerze.
 
 ## Co potrafi
 
@@ -40,14 +41,63 @@ npm run build
 
 `npm run preview` uruchamia zbudowaną wersję razem z service workerem.
 
+## Synchronizacja między urządzeniami
+
+Opcjonalna. Bez konfiguracji aplikacja działa wyłącznie lokalnie, tak jak wcześniej. Po włączeniu dane firmy są na każdym
+urządzeniu i w kopii na serwerze Supabase, a zmiany przechodzą między urządzeniami przy otwarciu aplikacji, po każdej zmianie
+i co minutę. Praca bez internetu działa bez zmian, a zmiany czekają w kolejce. Opis rozwiązania: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md), rozdział 5.
+
+Konfiguracja (jednorazowo, dla projektu tej firmy już wykonana):
+
+1. Utwórz projekt na supabase.com, najlepiej w regionie Frankfurt (eu-central-1).
+2. W **SQL Editor** wykonaj po kolei wszystkie pliki z `supabase/migrations`, w kolejności nazw.
+3. W **Authentication → Sign In / Providers → Email** ustaw minimalną długość hasła na 12 znaków.
+4. W **Authentication → URL Configuration** ustaw *Site URL* na adres aplikacji. Tam prowadzi link potwierdzający e-mail.
+5. Z **Project Settings → API Keys** skopiuj adres projektu i klucz *publishable*. Klucz *secret* nie może trafić do aplikacji.
+6. Lokalnie zapisz je w `.env.local` (wzór w `.env.example`), a dla publikacji jako zmienne repozytorium:
+
+```bash
+gh variable set VITE_SUPABASE_URL --body "https://TWOJ-PROJEKT.supabase.co"
+```
+
+```bash
+gh variable set VITE_SUPABASE_ANON_KEY --body "KLUCZ_PUBLISHABLE"
+```
+
+7. W aplikacji: **Więcej → Konto i synchronizacja → Nie mam konta, załóż je**. Potwierdź adres linkiem z e-maila,
+   zaloguj się hasłem, utwórz firmę i ustaw **hasło szyfrowania**. Na kolejnych urządzeniach zaloguj się tym samym
+   kontem i odblokuj firmę hasłem szyfrowania.
+8. Po założeniu konta wyłącz w **Authentication → Sign In / Providers** opcję *Allow new users to sign up*.
+
+### Szyfrowanie end-to-end
+
+Dane opuszczają urządzenie wyłącznie zaszyfrowane (AES-256-GCM): każde pole rekordu osobno i każde zdjęcie w całości.
+Klucz danych firmy leży na serwerze tylko zawinięty hasłem szyfrowania (PBKDF2-SHA-256, 600 000 iteracji), którego serwer
+nie zna. Nikt z dostępem do serwera, także Supabase i osoba, która przejmie konto Supabase, nie odczyta danych bez tego hasła.
+Serwer odrzuca każdą niezaszyfrowaną wartość.
+
+- Hasło szyfrowania to coś innego niż hasło logowania. Wpisuje się je raz na każdym nowym urządzeniu, które przechowuje
+  potem klucz jako nieeksportowalny.
+- **Zgubione hasło szyfrowania oznacza, że danych z serwera nie da się odczytać.** Urządzenia, które już mają klucz,
+  działają dalej, a nowe urządzenie można wtedy odtworzyć tylko z kopii zapasowej.
+- Jawne zostają: nazwy pól (np. `phone`, ale bez wartości), identyfikatory rekordów, liczba rekordów i czas zmian,
+  nazwa firmy w Supabase oraz adres e-mail konta.
+- Trwałe usunięcie z kosza usuwa rekord, plik zdjęcia i treść historii zmian tego rekordu także na serwerze.
+
+Logowanie odbywa się hasłem, a nie linkiem lub kodem z e-maila. Link otworzyłby Safari zamiast zainstalowanej aplikacji,
+a kod w e-mailu wymaga własnego serwera poczty (SMTP). Link z e-maila służy tylko do jednorazowego potwierdzenia adresu.
+
+Klucz publiczny jest jawny z założenia. Dane chronią zasady RLS: każdy widzi wyłącznie rekordy firmy, do której należy,
+a zapis jest możliwy tylko przez funkcje sprawdzające rolę.
+
 ## Instalacja na iPhonie
 
 Adres aplikacji: **https://mariana1112.github.io/ddd-firma/**
 
 iOS instaluje PWA i uruchamia tryb offline tylko ze strony HTTPS, dlatego aplikacja jest opublikowana na GitHub Pages.
 Każdy push na `main` uruchamia `.github/workflows/deploy.yml`: testy, build i publikację. Gdy testy nie przejdą,
-publikacja się nie wykona. Publikowany jest wyłącznie kod aplikacji. Dane nigdzie nie trafiają, bo nie ma serwera,
-który mógłby je odebrać.
+publikacja się nie wykona. GitHub Pages dostaje wyłącznie kod aplikacji. Dane trafiają poza telefon tylko
+wtedy, gdy włączysz synchronizację, i to do Twojego projektu Supabase, a nie na GitHub.
 
 Po publikacji nowej wersji aplikacja na telefonie pokaże pasek „Jest nowa wersja aplikacji”. Zmiana wchodzi dopiero po
 dotknięciu „Odśwież”, więc aktualizacja nie przerwie wypełniania formularza.
@@ -63,6 +113,9 @@ początkowego **zrób kopię zapasową**, bo usunięcie aplikacji kasuje jej dan
 Kopię zapisuj poza telefonem lub w iCloud Drive: **Więcej → Kopie zapasowe → Utwórz kopię zapasową**.
 
 ## Architektura
+
+Docelowa architektura z planem etapów (kilometrówka, trasy, SMS, raporty, konta, synchronizacja, historia zmian) jest w
+[docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md). Poniżej opis obecnego kodu.
 
 ```
 src/

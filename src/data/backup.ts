@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { nowWarsaw } from '../lib/dates';
-import { db, RECORD_TABLES, recordTable, SCHEMA_VERSION, type RecordTableName } from './db';
+import { logChange } from './changes';
+import { db, RECORD_TABLES, recordTable, SCHEMA_VERSION, writeTransaction, type RecordTableName } from './db';
 import { newId } from './repo';
-import { markBackupDone } from './settings';
+import { getSyncState, isDeviceMetaKey, markBackupDone, SYNCED_META_KEYS } from './settings';
 import type { Attachment, BaseRecord, MetaRow, Snapshot } from './types';
 
 export const BACKUP_FORMAT = 'ddd-firma-backup';
@@ -11,6 +12,7 @@ const MAX_SNAPSHOTS = 3;
 export class BackupError extends Error {}
 
 type SerializedAttachment = Omit<Attachment, 'blob'> & { dataBase64: string };
+type StoredAttachment = Attachment & { blob: Blob };
 
 export interface BackupTables {
   clients: BaseRecord[];
@@ -140,8 +142,11 @@ export async function buildBackup(options: { includePhotos: boolean }): Promise<
     for (const name of RECORD_TABLES) {
       if (name !== 'attachments') rows[name] = await recordTable(name).toArray();
     }
-    const attachmentRows = options.includePhotos ? await db.attachments.toArray() : [];
-    const meta = await db.meta.toArray();
+    // Zdjęcia jeszcze niepobrane z serwera nie mają pliku na urządzeniu, więc kopia ich nie zawiera.
+    const attachmentRows = options.includePhotos
+      ? (await db.attachments.toArray()).filter((a): a is StoredAttachment => a.blob !== null)
+      : [];
+    const meta = (await db.meta.toArray()).filter((row) => !isDeviceMetaKey(row.key));
     return { rows, attachmentRows, meta };
   }).then(async ({ rows, attachmentRows, meta }) => {
     // Odczyt blobów kończy transakcję IndexedDB, więc kodowanie idzie już poza nią.
@@ -275,10 +280,20 @@ function mergeNewest<T extends { updatedAt: string }>(current: T[], incoming: T[
  * ale kopia bez zdjęć zostawia zdjęcia z urządzenia.
  */
 export async function restoreBackup(backup: BackupFile, mode: RestoreMode): Promise<void> {
+  const synced = Boolean(await getSyncState());
+  if (synced && mode === 'replace') {
+    throw new BackupError(
+      'Przy włączonej synchronizacji można tylko scalić kopię. Zastąpienie danych nadpisałyby zaraz dane z serwera.',
+    );
+  }
   await createSnapshot(mode === 'replace' ? 'Przed zastąpieniem danych kopią' : 'Przed scaleniem z kopią');
   const attachmentRows = restoreAttachments(backup.tables.attachments);
 
-  await db.transaction('rw', [...RECORD_TABLES.map((t) => db.table(t)), db.meta], async () => {
+  await writeTransaction([...RECORD_TABLES.map((t) => db.table(t)), db.meta], async () => {
+    // Przy synchronizacji wszystko, co import zmienił, trafia na serwer w całości.
+    const share = async (name: RecordTableName, rows: BaseRecord[]) => {
+      if (synced) for (const row of rows) await logChange(name, row.id, 'put', row);
+    };
     for (const name of RECORD_TABLES) {
       if (name === 'attachments') continue;
       const incoming = backup.tables[name];
@@ -290,7 +305,9 @@ export async function restoreBackup(backup: BackupFile, mode: RestoreMode): Prom
         const current = await table.toArray();
         const newer = mergeNewest(current, incoming, (r) => r.id);
         const list = backup.schemaVersion < 2 ? LISTS_ADDED_IN_V2[name] : undefined;
-        await table.bulkPut(list ? keepList(newer, current, list) : newer);
+        const written = list ? keepList(newer, current, list) : newer;
+        await table.bulkPut(written);
+        await share(name, written);
       }
     }
 
@@ -298,17 +315,23 @@ export async function restoreBackup(backup: BackupFile, mode: RestoreMode): Prom
       await db.attachments.clear();
       await db.attachments.bulkPut(attachmentRows);
     } else {
-      await db.attachments.bulkPut(mergeNewest(await db.attachments.toArray(), attachmentRows, (r) => r.id));
+      const newer = mergeNewest(await db.attachments.toArray(), attachmentRows, (r) => r.id);
+      await db.attachments.bulkPut(newer);
+      await share('attachments', newer);
     }
 
     const currentMeta = await db.meta.toArray();
-    const metaRows = mergeNewest(currentMeta, backup.tables.meta, (r) => r.key).map((row) => {
+    const incomingMeta = backup.tables.meta.filter((row) => !isDeviceMetaKey(row.key));
+    const metaRows = mergeNewest(currentMeta, incomingMeta, (r) => r.key).map((row) => {
       // Licznik numerów zleceń nie może się cofnąć, bo powstałyby duplikaty numerów.
       if (!row.key.startsWith('counter:')) return row;
       const existing = currentMeta.find((c) => c.key === row.key);
       return { ...row, value: Math.max(Number(row.value), Number(existing?.value ?? 0)) };
     });
     await db.meta.bulkPut(metaRows);
+    if (synced) {
+      for (const row of metaRows) if (SYNCED_META_KEYS.includes(row.key)) await logChange('meta', row.key, 'put', row);
+    }
   });
 }
 

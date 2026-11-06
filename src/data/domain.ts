@@ -1,8 +1,9 @@
 // Operacje obejmujące kilka tabel. Każda działa w transakcji, więc zapis jest kompletny albo żaden.
-import { db, RECORD_TABLES, type RecordTableName } from './db';
+import { logChange } from './changes';
+import { db, RECORD_TABLES, writeTransaction, type RecordTableName } from './db';
 import { todayWarsaw } from '../lib/dates';
-import { attachments, clients, expenses, jobs, newId, payments, preparations, sites, stockMovements, type NewRecord } from './repo';
-import { nextJobNumber } from './settings';
+import { attachments, clients, expenses, jobs, newId, payments, preparations, services, sites, stockMovements, type NewRecord } from './repo';
+import { getSyncState, nextJobNumber } from './settings';
 import type { Attachment, BaitStation, BaseRecord, Expense, Job, JobStationCheck, Payment, Site, StationState, StockMovement } from './types';
 
 export class DomainError extends Error {}
@@ -24,7 +25,7 @@ export type JobDraft = Omit<
 >;
 
 export async function createJob(draft: JobDraft): Promise<Job> {
-  return db.transaction('rw', db.jobs, db.meta, async () => {
+  return writeTransaction([db.jobs, db.meta], async () => {
     const year = (draft.start ?? todayWarsaw()).slice(0, 4);
     return jobs.create({
       ...draft,
@@ -46,7 +47,7 @@ export async function createJob(draft: JobDraft): Promise<Job> {
 
 /** Przegląd dotyczy stacji konkretnego obiektu, więc zmiana obiektu zlecenia go unieważnia. */
 export async function updateJob(id: string, draft: JobDraft): Promise<void> {
-  await db.transaction('rw', db.jobs, async () => {
+  await writeTransaction([db.jobs], async () => {
     const job = await jobs.get(id);
     if (!job) throw new DomainError('Nie znaleziono zlecenia.');
     await jobs.update(id, job.siteId === draft.siteId ? draft : { ...draft, stationChecks: [] });
@@ -55,7 +56,7 @@ export async function updateJob(id: string, draft: JobDraft): Promise<void> {
 
 /** Tworzy kolejną wizytę na podstawie wykonanej i zamyka przypomnienie o niej. */
 export async function planFollowUp(sourceId: string, start: string): Promise<Job> {
-  return db.transaction('rw', db.jobs, db.meta, async () => {
+  return writeTransaction([db.jobs, db.meta], async () => {
     const source = await jobs.get(sourceId);
     if (!source) throw new DomainError('Nie znaleziono zlecenia.');
     const next = await createJob({
@@ -78,7 +79,7 @@ export async function planFollowUp(sourceId: string, start: string): Promise<Job
 }
 
 export async function deleteClient(id: string): Promise<void> {
-  await db.transaction('rw', db.clients, db.sites, db.jobs, async () => {
+  await writeTransaction([db.clients, db.sites, db.jobs], async () => {
     const related = await jobs.where('clientId', id);
     if (related.length > 0) {
       throw new DomainError(`Liczba zleceń tego klienta: ${related.length}. Najpierw je usuń albo zostaw klienta w bazie.`);
@@ -90,7 +91,7 @@ export async function deleteClient(id: string): Promise<void> {
 }
 
 export async function deleteSite(id: string): Promise<void> {
-  await db.transaction('rw', db.sites, db.jobs, async () => {
+  await writeTransaction([db.sites, db.jobs], async () => {
     const related = await jobs.where('siteId', id);
     if (related.length > 0) {
       throw new DomainError(`Liczba zleceń w tym obiekcie: ${related.length}. Obiektu nie można usunąć.`);
@@ -124,7 +125,7 @@ function assertNumberFree(site: Site, number: string, exceptId?: string) {
 
 /** Odczyt i zapis listy w jednej transakcji, żeby równoległa zmiana nie nadpisała innej stacji. */
 async function changeStations<T>(siteId: string, change: (site: Site) => { stations: BaitStation[]; result: T }): Promise<T> {
-  return db.transaction('rw', db.sites, async () => {
+  return writeTransaction([db.sites], async () => {
     const site = await sites.get(siteId);
     if (!site || site.deletedAt) throw new DomainError('Nie znaleziono obiektu.');
     const { stations, result } = change(site);
@@ -191,7 +192,7 @@ export function stationReviewRows(site: Site | undefined, checks: JobStationChec
 }
 
 export async function deletePreparation(id: string): Promise<void> {
-  await db.transaction('rw', db.preparations, db.jobs, db.stockMovements, db.expenses, async () => {
+  await writeTransaction([db.preparations, db.jobs, db.stockMovements, db.expenses], async () => {
     const all = await jobs.all();
     const used = all.some((j) => j.materials.some((m) => m.preparationId === id));
     if (used) throw new DomainError('Preparat jest użyty w zleceniach, więc musi zostać w ewidencji.');
@@ -218,7 +219,7 @@ export interface PurchaseInput {
 
 /** Zakup z podanym kosztem od razu trafia też do kosztów firmy. */
 export async function addPurchase(input: PurchaseInput): Promise<StockMovement> {
-  return db.transaction('rw', db.stockMovements, db.expenses, async () => {
+  return writeTransaction([db.stockMovements, db.expenses], async () => {
     const movementId = newId();
     let expenseId: string | null = null;
     if (input.cost > 0) {
@@ -252,7 +253,7 @@ export async function addPurchase(input: PurchaseInput): Promise<StockMovement> 
 
 /** Usuwa ruch magazynowy razem z kosztem, który z niego powstał. */
 export async function deleteMovement(id: string): Promise<void> {
-  await db.transaction('rw', db.stockMovements, db.expenses, async () => {
+  await writeTransaction([db.stockMovements, db.expenses], async () => {
     const movement = await stockMovements.get(id);
     const at = new Date().toISOString();
     if (movement?.expenseId) await expenses.softDelete(movement.expenseId, at);
@@ -271,7 +272,7 @@ export async function deleteExpense(id: string): Promise<void> {
 }
 
 export async function deleteJob(id: string): Promise<void> {
-  await db.transaction('rw', db.jobs, db.payments, db.attachments, async () => {
+  await writeTransaction([db.jobs, db.payments, db.attachments], async () => {
     const related = await payments.where('jobId', id);
     if (related.length > 0) throw new DomainError('Zlecenie ma zapisane wpłaty. Najpierw je usuń.');
     const at = new Date().toISOString();
@@ -286,7 +287,7 @@ export async function deleteJob(id: string): Promise<void> {
  */
 export async function restoreRecord(name: RecordTableName, id: string): Promise<void> {
   const tables = [...RECORD_TABLES.map((t) => db.table(t))];
-  await db.transaction('rw', tables, async () => {
+  await writeTransaction(tables, async () => {
     const restoreParent = async <T extends BaseRecord>(
       repo: { get(id: string): Promise<T | undefined>; restore(id: string): Promise<void> },
       parentId: string | null | undefined,
@@ -358,7 +359,7 @@ export async function restoreRecord(name: RecordTableName, id: string): Promise<
         await attachments.restore(id);
         break;
       case 'services':
-        await db.services.update(id, { deletedAt: null, updatedAt: new Date().toISOString() });
+        await services.restore(id);
         break;
     }
 
@@ -372,9 +373,11 @@ export async function restoreRecord(name: RecordTableName, id: string): Promise<
   });
 }
 
+/** Przy synchronizacji trwałe usunięcie trafia też na serwer i na pozostałe urządzenia. */
 export async function emptyTrash(): Promise<number> {
+  const synced = Boolean(await getSyncState());
   const tables = RECORD_TABLES.map((t) => db.table<BaseRecord, string>(t));
-  return db.transaction('rw', tables, async () => {
+  return writeTransaction(tables, async () => {
     let removed = 0;
     for (const site of await sites.all()) {
       const kept = site.stations.filter((s) => !s.deletedAt);
@@ -383,10 +386,17 @@ export async function emptyTrash(): Promise<number> {
         await sites.update(site.id, { stations: kept });
       }
     }
-    for (const table of tables) {
-      const keys = (await table.toArray()).filter((r) => r.deletedAt).map((r) => r.id);
-      await table.bulkDelete(keys);
-      removed += keys.length;
+    for (const [i, table] of tables.entries()) {
+      const rows = (await table.toArray()).filter((r) => r.deletedAt);
+      await table.bulkDelete(rows.map((r) => r.id));
+      if (synced) {
+        for (const row of rows) {
+          // Ścieżka pliku pozwala usunąć zdjęcie także z magazynu na serwerze.
+          const remotePath = (row as Partial<Attachment>).remotePath;
+          await logChange(RECORD_TABLES[i], row.id, 'purge', remotePath ? { remotePath } : {});
+        }
+      }
+      removed += rows.length;
     }
     return removed;
   });

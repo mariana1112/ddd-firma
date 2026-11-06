@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BackupError } from '../data/backup';
 import { DomainError } from '../data/domain';
+import { CryptoError } from '../data/sync/crypto';
+import { SyncError } from '../data/sync/engine';
 import { Sheet } from './kit';
 import { Icon } from './icons';
 
@@ -83,7 +85,11 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
         return await action();
       } catch (error) {
         console.error(error);
-        const known = error instanceof DomainError || error instanceof BackupError;
+        const known =
+          error instanceof DomainError ||
+          error instanceof BackupError ||
+          error instanceof SyncError ||
+          error instanceof CryptoError;
         toast(known ? (error as Error).message : 'Operacja się nie powiodła. Spróbuj ponownie.', { tone: 'error' });
         return undefined;
       }

@@ -16,6 +16,7 @@
   "dependencies": {
     "@fullcalendar/react": "^7.1.4",
     "@hookform/resolvers": "^7.0.2",
+    "@supabase/supabase-js": "^2.119.0",
     "dexie": "^4.4.7",
     "dexie-react-hooks": "^4.4.0",
     "pdfmake": "^0.3.13",

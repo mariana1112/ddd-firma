@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { ClientDetailPage, ClientEditPage, ClientNewPage, ClientsPage, SiteEditPage, SiteNewPage } from './features/clients';
+import { AccountPage } from './features/account';
 import { DashboardPage } from './features/dashboard';
 import { FinancePage } from './features/finance';
 import { JobCompletePage, JobDetailPage, JobEditPage, JobNewPage, JobsPage } from './features/jobs';
@@ -19,7 +20,7 @@ const TABS: Array<{ to: string; label: string; icon: IconName; end?: boolean; al
   { to: '/kalendarz', label: 'Kalendarz', icon: 'calendar' },
   { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard' },
   { to: '/klienci', label: 'Klienci', icon: 'users', also: ['/obiekty'] },
-  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/cennik', '/preparaty', '/ewidencja', '/finanse', '/ustawienia', '/kopie', '/kosz'] },
+  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/cennik', '/preparaty', '/ewidencja', '/finanse', '/ustawienia', '/kopie', '/kosz', '/konto'] },
 ];
 
 function Navigation() {
@@ -117,6 +118,7 @@ export function App() {
                   <Route path="/ustawienia" element={<SettingsPage />} />
                   <Route path="/kopie" element={<BackupPage />} />
                   <Route path="/kosz" element={<TrashPage />} />
+                  <Route path="/konto" element={<AccountPage />} />
                   <Route path="*" element={<DashboardPage />} />
                 </Routes>
               </Suspense>

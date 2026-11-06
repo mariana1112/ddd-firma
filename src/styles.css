@@ -1185,3 +1185,17 @@ legend + * {
     max-width: 1080px;
   }
 }
+
+.photo-missing {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 6px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.group-hint {
+  padding: 0 4px;
+}

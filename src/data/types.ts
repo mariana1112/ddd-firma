@@ -173,7 +173,59 @@ export interface Attachment extends BaseRecord {
   jobId: string;
   name: string;
   mime: string;
-  blob: Blob;
+  /** null: zdjęcie zrobione na innym urządzeniu i jeszcze niepobrane z serwera. */
+  blob: Blob | null;
+  /** Ścieżka pliku na serwerze; null, dopóki zdjęcie nie zostało wysłane. */
+  remotePath?: string | null;
+}
+
+/** Tabele, których zmiany trafiają na serwer. Z meta synchronizowane są tylko wybrane klucze. */
+export type SyncTable =
+  | 'clients'
+  | 'sites'
+  | 'services'
+  | 'jobs'
+  | 'preparations'
+  | 'stockMovements'
+  | 'payments'
+  | 'expenses'
+  | 'attachments'
+  | 'meta';
+
+/**
+ * create, update, delete i restore zmieniają tylko podane pola. put niesie cały rekord i służy
+ * do pierwszego wysłania danych oraz importu kopii. purge usuwa rekord na stałe.
+ */
+export type ChangeOp = 'create' | 'update' | 'delete' | 'restore' | 'put' | 'purge';
+
+/** Wpis dziennika zmian, a zarazem kolejka wysyłki na serwer. */
+export interface ChangeRow {
+  seq?: number;
+  id: string;
+  tbl: SyncTable;
+  recordId: string;
+  op: ChangeOp;
+  patch: Record<string, unknown>;
+  at: string;
+  /** 0: czeka na wysłanie, 1: przyjęty przez serwer. Liczba, bo IndexedDB nie indeksuje wartości logicznych. */
+  pushed: 0 | 1;
+}
+
+export interface NumberBlock {
+  next: number;
+  end: number;
+}
+
+/** Stan synchronizacji tego urządzenia. Nigdy nie trafia na serwer ani do kopii zapasowej. */
+export interface SyncState {
+  orgId: string;
+  orgName: string;
+  userId: string;
+  email: string;
+  /** Najwyższy numer wersji rekordu pobrany z serwera. */
+  cursor: number;
+  lastSyncAt: string | null;
+  lastError: string | null;
 }
 
 export interface CompanySettings {

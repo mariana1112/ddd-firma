@@ -2,15 +2,18 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import { followUpsDue, monthSummary, outstandingJobs, overdueJobs, stockAlerts } from '../data/calc';
 import * as repo from '../data/repo';
-import { getCompany, getLastBackupAt } from '../data/settings';
+import { getCompany, getLastBackupAt, getSyncState } from '../data/settings';
 import { addDays, formatDate, formatDateLong, formatMonth, monthOf, todayWarsaw } from '../lib/dates';
 import { UNITS } from '../lib/labels';
 import { formatMoney, formatQty } from '../lib/money';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Group, Loading, Page, Row, Stat } from '../ui/kit';
+import { SyncNotice } from './account';
 import { JobRow } from './job-row';
 
 const BACKUP_REMINDER_DAYS = 7;
+// Przy synchronizacji dane są też na serwerze, więc własna kopia jest rzadziej potrzebna.
+const SYNCED_BACKUP_REMINDER_DAYS = 30;
 
 export function DashboardPage() {
   const data = useLiveQuery(async () => ({
@@ -23,6 +26,7 @@ export function DashboardPage() {
     movements: await repo.stockMovements.all(),
     company: await getCompany(),
     lastBackup: await getLastBackupAt(),
+    synced: Boolean(await getSyncState()),
   }));
 
   if (!data) {
@@ -54,7 +58,9 @@ export function DashboardPage() {
 
   const hasData = clients.length + jobs.length > 0;
   const backupDue =
-    hasData && (!lastBackup || lastBackup.slice(0, 10) < addDays(today, -BACKUP_REMINDER_DAYS));
+    hasData &&
+    (!lastBackup ||
+      lastBackup.slice(0, 10) < addDays(today, -(data.synced ? SYNCED_BACKUP_REMINDER_DAYS : BACKUP_REMINDER_DAYS)));
   const setupDone = Boolean(company.name);
 
   return (
@@ -69,12 +75,18 @@ export function DashboardPage() {
         </Group>
       )}
 
+      <SyncNotice />
+
       {backupDue && (
         <Link to="/kopie" className="notice notice-warn">
           <Icon name="alert" />
           <span>
             <strong>Zrób kopię zapasową.</strong>{' '}
-            {lastBackup ? `Ostatnia: ${formatDate(lastBackup)}.` : 'Dane są tylko na tym urządzeniu.'}
+            {lastBackup
+              ? `Ostatnia: ${formatDate(lastBackup)}.`
+              : data.synced
+                ? 'Serwer synchronizacji nie chroni przed pomyłkowym usunięciem danych.'
+                : 'Dane są tylko na tym urządzeniu.'}
           </span>
         </Link>
       )}

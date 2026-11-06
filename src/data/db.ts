@@ -2,6 +2,7 @@ import Dexie, { type Table } from 'dexie';
 import type {
   Attachment,
   BaseRecord,
+  ChangeRow,
   Client,
   Expense,
   Job,
@@ -14,7 +15,7 @@ import type {
   StockMovement,
 } from './types';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 4;
 
 class AppDatabase extends Dexie {
   clients!: Table<Client, string>;
@@ -28,6 +29,7 @@ class AppDatabase extends Dexie {
   attachments!: Table<Attachment, string>;
   meta!: Table<MetaRow, string>;
   snapshots!: Table<Snapshot, string>;
+  changes!: Table<ChangeRow, number>;
 
   constructor() {
     super('ddd-firma');
@@ -59,10 +61,26 @@ class AppDatabase extends Dexie {
           job.stationChecks ??= [];
         });
       });
+    // Dziennik zmian, który jest też kolejką wysyłki na serwer. Istniejące dane nie trafiają do niego
+    // przy migracji: pierwsze włączenie synchronizacji wysyła wszystkie rekordy w całości.
+    this.version(3).stores({
+      changes: '++seq, id, pushed, [tbl+recordId]',
+    });
+    // Szyfrowanie end-to-end. Bez zmian w tabelach: wersja mówi serwerowi, że aplikacja szyfruje,
+    // a serwer odrzuca zmiany z wersji niższych (app_config.min_schema).
+    this.version(4).stores({});
   }
 }
 
 export const db = new AppDatabase();
+
+/**
+ * Transakcja zapisu. Zawsze obejmuje dziennik zmian, bo każdy zapis przez Repository dopisuje
+ * do niego wpis, a Dexie odrzuca zapis do tabeli spoza transakcji nadrzędnej.
+ */
+export function writeTransaction<T>(tables: Table[], scope: () => Promise<T>): Promise<T> {
+  return db.transaction('rw', [...tables, db.changes], scope);
+}
 
 /** Tabele z rekordami biznesowymi, czyli te, które mają kosz i trafiają do kopii. */
 export const RECORD_TABLES = [

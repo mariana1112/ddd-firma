@@ -505,7 +505,7 @@ describe('kopie zapasowe', () => {
     expect((await jobs.get(job.id))?.number).toBe('Z/2026/0001');
     expect((await getCompany()).name).toBe('Moja firma');
     const [photo] = await attachments.all();
-    expect(Array.from(new Uint8Array(await photo.blob.arrayBuffer()))).toEqual([1, 2, 3, 250]);
+    expect(Array.from(new Uint8Array(await photo.blob!.arrayBuffer()))).toEqual([1, 2, 3, 250]);
   });
 
   it('scalanie zostawia nowsze rekordy i dodaje brakujące', async () => {
@@ -797,10 +797,10 @@ describe('migracja bazy', () => {
 
   it('wersja bazy zgadza się z SCHEMA_VERSION', () => {
     expect(db.verno).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(2);
+    expect(SCHEMA_VERSION).toBe(4);
   });
 
-  it('dane z bazy w wersji 1 przechodzą na wersję 2 bez zmiany znaczników', async () => {
+  it('dane z bazy w wersji 1 przechodzą na najnowszą wersję bez zmiany znaczników', async () => {
     db.close();
     await Dexie.delete('ddd-firma');
     const old = new Dexie('ddd-firma');
@@ -813,7 +813,9 @@ describe('migracja bazy', () => {
 
     await db.open();
 
-    expect(db.verno).toBe(2);
+    expect(db.verno).toBe(SCHEMA_VERSION);
+    // Migracja nie jest edycją, więc nie trafia do dziennika zmian.
+    expect(await db.changes.count()).toBe(0);
     expect((await clients.get('c1'))?.name).toBe('Sprzed migracji');
     const site = (await sites.get('s1'))!;
     expect(site.stations).toEqual([]);

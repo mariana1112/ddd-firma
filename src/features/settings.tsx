@@ -17,7 +17,8 @@ import { jobTotals, paidForJob } from '../data/calc';
 import { RECORD_TABLES, recordTable, type RecordTableName } from '../data/db';
 import { emptyTrash, restoreRecord } from '../data/domain';
 import { clients, jobs, payments, sites } from '../data/repo';
-import { getCompany, getLastBackupAt, saveCompany } from '../data/settings';
+import { getCompany, getLastBackupAt, getSyncState, saveCompany } from '../data/settings';
+import { isSyncConfigured } from '../data/sync/config';
 import type { BaseRecord, CompanySettings } from '../data/types';
 import { csvBlob, csvMoney } from '../lib/csv';
 import { formatDate, formatInstant, formatTerm } from '../lib/dates';
@@ -32,6 +33,7 @@ import { Badge, Empty, Field, Group, Info, Loading, Page, Row, Sheet } from '../
 
 export function MorePage() {
   const lastBackup = useLiveQuery(() => getLastBackupAt());
+  const sync = useLiveQuery(async () => (await getSyncState()) ?? null);
   return (
     <Page title="Więcej">
       <Group title="Firma">
@@ -49,9 +51,19 @@ export function MorePage() {
           sub={lastBackup ? `Ostatnia: ${formatInstant(lastBackup)}` : 'Nie zrobiono jeszcze kopii'}
         />
         <Row to="/kosz" icon="trash" title="Kosz" />
+        {isSyncConfigured && (
+          <Row
+            to="/konto"
+            icon="users"
+            title="Konto i synchronizacja"
+            sub={sync ? `${sync.email}, ostatnio ${sync.lastSyncAt ? formatInstant(sync.lastSyncAt) : "jeszcze nie"}` : "Wyłączona"}
+          />
+        )}
       </Group>
       <p className="about">
-        Wszystkie dane są zapisane wyłącznie na tym urządzeniu. Aplikacja działa bez internetu i nie wysyła danych nigdzie.
+        {sync
+          ? "Dane są na tym urządzeniu i w kopii na serwerze firmy. Aplikacja działa bez internetu, a zmiany wysyła, gdy jest połączenie."
+          : "Wszystkie dane są zapisane wyłącznie na tym urządzeniu. Aplikacja działa bez internetu i nie wysyła danych nigdzie."}
       </p>
     </Page>
   );
@@ -239,6 +251,8 @@ export function BackupPage() {
 
   const lastBackup = useLiveQuery(() => getLastBackupAt());
   const snapshots = useLiveQuery(() => listSnapshots());
+  // Przy synchronizacji zastąpienie danych zaraz nadpisałby serwer, więc dostępne jest tylko scalanie.
+  const synced = Boolean(useLiveQuery(async () => (await getSyncState()) ?? null));
 
   useEffect(() => {
     void (async () => {
@@ -383,10 +397,13 @@ export function BackupPage() {
         {snapshots && snapshots.length === 0 && (
           <Empty title="Brak migawek. Powstają automatycznie przed każdym przywróceniem." />
         )}
+        {synced && snapshots && snapshots.length > 0 && (
+          <p className="field-hint group-hint">Przy włączonej synchronizacji migawki służą tylko do odczytu. Dane z serwera nadpisałyby przywrócony stan.</p>
+        )}
         {snapshots?.map((s) => (
           <Row
             key={s.id}
-            onClick={() => void doRestoreSnapshot(s.id, s.createdAt)}
+            onClick={synced ? undefined : () => void doRestoreSnapshot(s.id, s.createdAt)}
             title={formatInstant(s.createdAt)}
             sub={`${s.reason} · ${formatBytes(s.sizeBytes)}`}
           />
@@ -432,10 +449,16 @@ export function BackupPage() {
                 Scal z obecnymi danymi
               </button>
               <p className="field-hint">Dodaje brakujące rekordy. Nie nadpisuje nowszych.</p>
-              <button type="button" className="btn btn-danger-quiet" disabled={busy !== null} onClick={() => void doRestore('replace')}>
-                Zastąp obecne dane
-              </button>
-              <p className="field-hint">Ustawia dane dokładnie na stan z kopii.</p>
+              {synced ? (
+                <p className="field-hint">Przy włączonej synchronizacji kopię można tylko scalić.</p>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-danger-quiet" disabled={busy !== null} onClick={() => void doRestore('replace')}>
+                    Zastąp obecne dane
+                  </button>
+                  <p className="field-hint">Ustawia dane dokładnie na stan z kopii.</p>
+                </>
+              )}
             </div>
           </>
         )}

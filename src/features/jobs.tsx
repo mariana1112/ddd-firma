@@ -8,6 +8,8 @@ import { batchBalances, jobBalance, jobTotals, outstandingJobs, paidForJob } fro
 import { createJob, deleteJob, DomainError, planFollowUp, restoreRecord, stationReviewRows, updateJob } from '../data/domain';
 import { attachments, clients, jobs, newId, payments, preparations, services, sites, stockMovements } from '../data/repo';
 import { getCompany } from '../data/settings';
+import { isSyncConfigured } from '../data/sync/config';
+import { loadServer } from '../data/sync/runner';
 import type {
   Attachment,
   Client,
@@ -526,27 +528,59 @@ export function JobEditPage() {
 
 // ---------- Szczegóły ----------
 
-function usePhotoUrl(blob: Blob) {
+/** Zdjęcia do PDF. Te, których nie da się teraz pobrać z serwera, są pomijane. */
+async function photoDataUrls(photos: Attachment[]): Promise<string[]> {
+  const blobs = await Promise.all(photos.map((p) => loadPhoto(p).catch(() => null)));
+  return Promise.all(blobs.filter((b): b is Blob => b !== null).map(blobToDataUrl));
+}
+
+/** Zdjęcie z innego urządzenia jest pobierane z serwera przy pierwszym wyświetleniu. */
+async function loadPhoto(photo: Attachment): Promise<Blob | null> {
+  if (photo.blob || !photo.remotePath || !isSyncConfigured) return photo.blob;
+  const [{ ensurePhoto }, server] = await Promise.all([import('../data/sync/engine'), loadServer()]);
+  return ensurePhoto(server, photo);
+}
+
+function usePhotoUrl(photo: Attachment): { url?: string; missing: boolean } {
   const [url, setUrl] = useState<string>();
+  const [missing, setMissing] = useState(false);
   useEffect(() => {
-    const objectUrl = URL.createObjectURL(blob);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [blob]);
-  return url;
+    let objectUrl: string | undefined;
+    let cancelled = false;
+    setMissing(false);
+    loadPhoto(photo)
+      .then((blob) => {
+        if (cancelled) return;
+        if (!blob) {
+          setMissing(true);
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch(() => !cancelled && setMissing(true));
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // Odczyt z bazy daje za każdym razem nowy obiekt, więc zależność to tożsamość i wersja zdjęcia.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photo.id, photo.updatedAt, Boolean(photo.blob)]);
+  return { url, missing };
 }
 
 function PhotoThumb({ photo, onOpen }: { photo: Attachment; onOpen: () => void }) {
-  const url = usePhotoUrl(photo.blob);
+  const { url, missing } = usePhotoUrl(photo);
   return (
     <button type="button" className="photo" onClick={onOpen} aria-label={`Zdjęcie ${photo.name}`}>
       {url && <img src={url} alt="" />}
+      {missing && <span className="photo-missing">Zdjęcie na serwerze, brak połączenia</span>}
     </button>
   );
 }
 
 function PhotoView({ photo, onDelete }: { photo: Attachment; onDelete: () => void }) {
-  const url = usePhotoUrl(photo.blob);
+  const { url } = usePhotoUrl(photo);
   return (
     <>
       {url && <img className="photo-large" src={url} alt={photo.name} />}
@@ -710,7 +744,7 @@ export function JobDetailPage() {
       client,
       site: site ?? null,
       company,
-      photos: includePhotos ? await Promise.all(photos.map((p) => blobToDataUrl(p.blob))) : [],
+      photos: includePhotos ? await photoDataUrls(photos) : [],
     };
   };
 
