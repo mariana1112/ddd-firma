@@ -1741,3 +1741,8 @@ legend + * {
 .yes-no {
   max-width: 220px;
 }
+
+.yes-no button.active {
+  background: var(--primary);
+  color: var(--on-primary);
+}

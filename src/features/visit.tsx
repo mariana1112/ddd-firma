@@ -26,6 +26,9 @@ import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui
 import { ContactBar, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
 import { Photos } from './photos';
 
+/** Kolejka zapisów wywiadu, wspólna dla ekranu zabiegu. */
+let interviewQueue: Promise<unknown> = Promise.resolve();
+
 /** Pytanie tak/nie. Ponowne dotknięcie zaznaczonej odpowiedzi ją czyści. */
 function YesNoField(props: { label: string; value: YesNo; onChange: (value: YesNo) => void }) {
   return (
@@ -284,12 +287,16 @@ export function VisitPage() {
   const price = priceRange(order, settings.vatRate);
   const save = (patch: Partial<Visit>) => void run(() => visits.update(visit.id, patch));
   // Świeży odczyt z bazy: dwa pola zapisane tuż po sobie nie mogą nadpisać się nawzajem.
-  // Zapis zawsze w obecnej postaci wywiadu, także dla zabiegu zapisanego w dawnej.
-  const saveInterview = <K extends keyof Interview>(key: K, value: Interview[K]) =>
-    void run(async () => {
-      const current = await visits.get(visit.id);
-      if (current) await visits.update(visit.id, { interview: { ...normalizeInterview(current.interview), [key]: value } });
-    });
+  // Zapisy wywiadu idą po kolei: tekst zapisany przy wyjściu z pola i dotknięte zaraz potem Tak/Nie
+  // czytałyby ten sam stary wywiad i drugi zapis nadpisałby pierwszy. Zapis zawsze w obecnej postaci.
+  const saveInterview = <K extends keyof Interview>(key: K, value: Interview[K]) => {
+    interviewQueue = interviewQueue.then(() =>
+      run(async () => {
+        const current = await visits.get(visit.id);
+        if (current) await visits.update(visit.id, { interview: { ...normalizeInterview(current.interview), [key]: value } });
+      }),
+    );
+  };
   const interview = normalizeInterview(visit.interview);
   const active = visit.status === 'w_trakcie' || visit.status === 'wykonany';
 
