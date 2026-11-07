@@ -1,16 +1,17 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { restoreRecord } from '../data/domain';
+import { driverSummary, mileageSheets, normalizePlate, routeText } from '../data/mileage';
 import { lastOdometer, tripKm } from '../data/orders';
 import { trips } from '../data/repo';
-import { getProfile, ownedBy } from '../data/settings';
-import type { Trip, TripKind } from '../data/types';
+import { COMPANY_NAME, getCompany, getProfile, getSyncState, getVehicle, ownedBy, saveVehicle, type VehicleSettings } from '../data/settings';
+import type { CompanySettings, Trip, TripKind } from '../data/types';
 import { formatDate, formatMonth, monthOf, nowWarsaw, shiftMonth, todayWarsaw } from '../lib/dates';
-import { tripsDocument } from '../pdf/documents';
+import { mileageDocument } from '../pdf/documents';
 import { renderPdf } from '../pdf/render';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Empty, Field, Group, Loading, Page, Stat } from '../ui/kit';
+import { Empty, Field, Group, Loading, Page, Sheet, Stat } from '../ui/kit';
 
 export const KIND_NAMES: Record<TripKind, string> = { sluzbowy: 'Służbowy', prywatny: 'Prywatny' };
 
@@ -20,24 +21,70 @@ export function kmSummary(list: Trip[], from: string, to: string): Record<TripKi
   return out;
 }
 
-function TripForm({ onSaved }: { onSaved: () => void }) {
+/** Dane podatnika do nagłówka ewidencji: nazwa, adres i NIP firmy. */
+export function taxpayerLine(company: CompanySettings): string {
+  const city = [company.postalCode, company.city].filter(Boolean).join(' ');
+  return [COMPANY_NAME, company.street, city, company.nip ? `NIP ${company.nip}` : ''].filter(Boolean).join(', ');
+}
+
+function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileName: string; onClose: () => void }) {
+  const { run, toast } = useFeedback();
+  const [plate, setPlate] = useState(props.vehicle.plate);
+  const [driver, setDriver] = useState(props.vehicle.driver);
+
+  useEffect(() => {
+    if (props.open) {
+      setPlate(props.vehicle.plate);
+      setDriver(props.vehicle.driver || props.profileName);
+    }
+  }, [props.open, props.vehicle, props.profileName]);
+
+  return (
+    <Sheet open={props.open} title="Auto i kierowca" onClose={props.onClose}>
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(async () => {
+            await saveVehicle({ plate: plate.trim().toUpperCase().replace(/\s+/g, ' '), driver: driver.trim() });
+            toast('Zapisano auto. Obowiązuje do następnej zmiany.');
+            props.onClose();
+          });
+        }}
+      >
+        <Field label="Numer rejestracyjny" hint="Ustawiasz raz. Kolejne przejazdy zapiszą się na to auto, aż go nie zmienisz.">
+          <input value={plate} autoCapitalize="characters" autoComplete="off" placeholder="Np. WE 1KR10" onChange={(e) => setPlate(e.target.value.toUpperCase())} />
+        </Field>
+        <Field label="Imię i nazwisko kierowcy" hint="Trafia do kolumny „osoba kierująca pojazdem” w ewidencji.">
+          <input value={driver} autoComplete="name" onChange={(e) => setDriver(e.target.value)} />
+        </Field>
+        <button type="submit" className="btn btn-primary btn-block" disabled={normalizePlate(plate).length < 4 || !driver.trim()}>
+          Zapisz
+        </button>
+      </form>
+    </Sheet>
+  );
+}
+
+function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () => void }) {
   const { run, toast } = useFeedback();
   const [kind, setKind] = useState<TripKind>('sluzbowy');
   const [date, setDate] = useState(todayWarsaw());
   const [timeFrom, setTimeFrom] = useState(nowWarsaw().slice(11, 16));
   const [timeTo, setTimeTo] = useState('');
   const [from, setFrom] = useState('');
+  const [via, setVia] = useState('');
   const [to, setTo] = useState('');
-  const [purpose, setPurpose] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
 
+  // Licznik startowy to stan po ostatnim przejeździe tym autem.
   useEffect(() => {
     void (async () => {
-      const last = await lastOdometer((await getProfile()).userId);
-      if (last !== null) setStart(String(last));
+      const last = await lastOdometer((await getProfile()).userId, vehicle.plate);
+      setStart(last !== null ? String(last) : '');
     })();
-  }, []);
+  }, [vehicle.plate]);
 
   const startKm = Number(start);
   const endKm = Number(end);
@@ -52,22 +99,26 @@ function TripForm({ onSaved }: { onSaved: () => void }) {
         e.preventDefault();
         if (!ready) return;
         void run(async () => {
+          const profile = await getProfile();
           await trips.create({
-            ownerId: (await getProfile()).userId,
+            ownerId: profile.userId,
             date,
             kind,
             timeFrom,
             timeTo,
             from: from.trim(),
+            via: via.trim(),
             to: to.trim(),
-            purpose: purpose.trim(),
+            purpose: '',
+            vehicle: vehicle.plate,
+            driver: vehicle.driver || profile.name,
             odometerStart: startKm,
             odometerEnd: endKm,
           });
           toast(`Zapisano przejazd: ${km} km`);
           setFrom(to.trim());
+          setVia('');
           setTo('');
-          setPurpose('');
           setStart(String(endKm));
           setEnd('');
           onSaved();
@@ -94,17 +145,16 @@ function TripForm({ onSaved }: { onSaved: () => void }) {
       </div>
       <div className="form-row">
         <Field label="Skąd">
-          <input value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input value={from} placeholder="Np. Łódź" onChange={(e) => setFrom(e.target.value)} />
         </Field>
         <Field label="Dokąd">
-          <input value={to} onChange={(e) => setTo(e.target.value)} />
+          <input value={to} placeholder="Np. Łódź" onChange={(e) => setTo(e.target.value)} />
         </Field>
       </div>
-      {kind === 'sluzbowy' && (
-        <Field label="Cel wyjazdu">
-          <input value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Np. zlecenie #210" />
-        </Field>
-      )}
+      <Field label="Przez (opcjonalnie)" hint="Miejscowości po drodze po przecinku, np. Kutno, Kłodawa.">
+        <input value={via} onChange={(e) => setVia(e.target.value)} />
+      </Field>
+      {(from.trim() || to.trim()) && <p className="field-hint">Trasa w ewidencji: {routeText([from, ...via.split(','), to]) || '—'}</p>}
       <div className="form-row">
         <Field label="Licznik przed (km)">
           <input inputMode="numeric" value={start} onChange={(e) => setStart(e.target.value.replace(/\D/g, ''))} />
@@ -113,7 +163,12 @@ function TripForm({ onSaved }: { onSaved: () => void }) {
           <input inputMode="numeric" value={end} onChange={(e) => setEnd(e.target.value.replace(/\D/g, ''))} />
         </Field>
       </div>
-      {km !== null && !error && <p className="total-line"><span>Przejechano</span><strong>{km} km</strong></p>}
+      {km !== null && !error && (
+        <p className="total-line">
+          <span>Przejechano</span>
+          <strong>{km} km</strong>
+        </p>
+      )}
       <button type="submit" className="btn btn-primary btn-block" disabled={!ready}>
         <Icon name="plus" /> Zapisz przejazd
       </button>
@@ -121,39 +176,99 @@ function TripForm({ onSaved }: { onSaved: () => void }) {
   );
 }
 
+const driverKeyOf = (t: Trip) => t.ownerId ?? `name:${t.driver ?? ''}`;
+
 export function TripsPage() {
   const { deliverFile, run, toast } = useFeedback();
   const [month, setMonth] = useState(monthOf(todayWarsaw()));
   const [filter, setFilter] = useState<TripKind | 'wszystkie'>('wszystkie');
+  const [who, setWho] = useState('moje');
+  const [vehicleOpen, setVehicleOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const data = useLiveQuery(async () => {
     const profile = await getProfile();
-    return { list: (await trips.all()).filter((t) => ownedBy(t.ownerId, profile.userId, true)), profile };
+    const sync = await getSyncState();
+    return {
+      all: await trips.all(),
+      profile,
+      vehicle: await getVehicle(),
+      company: await getCompany(),
+      owner: Boolean(sync && sync.role === 'owner'),
+    };
   });
 
   if (!data) return <Loading />;
+  const { profile, vehicle } = data;
+  const myName = vehicle.driver || profile.name;
+  const driverName = (t: Trip) => t.driver || (ownedBy(t.ownerId, profile.userId, true) ? myName : '');
+  // Szef widzi przejazdy wszystkich kierowców, technik tylko swoje.
+  const drivers = new Map<string, string>();
+  for (const t of data.all) if (!ownedBy(t.ownerId, profile.userId, true)) drivers.set(driverKeyOf(t), driverName(t) || 'Bez nazwiska');
+  const list = data.all.filter((t) =>
+    !data.owner || who === 'moje' ? ownedBy(t.ownerId, profile.userId, true) : who === 'wszyscy' || driverKeyOf(t) === who,
+  );
+
   const from = `${month}-01`;
   const to = `${month}-31`;
   const year = month.slice(0, 4);
-  const summary = kmSummary(data.list, from, to);
-  const yearSummary = kmSummary(data.list, `${year}-01-01`, `${year}-12-31`);
-  const shown = data.list
+  const summary = kmSummary(list, from, to);
+  const yearSummary = kmSummary(list, `${year}-01-01`, `${year}-12-31`);
+  const shown = list
     .filter((t) => t.date >= from && t.date <= to && (filter === 'wszystkie' || t.kind === filter))
     .sort((a, b) => b.date.localeCompare(a.date) || b.timeFrom.localeCompare(a.timeFrom));
 
   const print = async (kind: TripKind) => {
     setBusy(true);
     await run(async () => {
-      const list = data.list.filter((t) => t.date >= from && t.date <= to && t.kind === kind);
-      const blob = await renderPdf(tripsDocument(list, kind, month, data.profile.name));
-      deliverFile(blob, `kilometrowka-${kind}-${month}.pdf`);
+      const sheets = mileageSheets(list, kind, month, driverName);
+      const monthTrips = list.filter((t) => t.date >= from && t.date <= to);
+      const blob = await renderPdf(
+        mileageDocument({
+          kind,
+          month,
+          taxpayer: taxpayerLine(data.company),
+          sheets: sheets.length > 0 ? sheets : [{ vehicle: vehicle.plate, entries: [] }],
+          summary: kind === 'prywatny' ? driverSummary(monthTrips, driverName) : undefined,
+        }),
+      );
+      deliverFile(blob, kind === 'sluzbowy' ? `ewidencja-przebiegu-vat-${month}.pdf` : `przejazdy-prywatne-${month}.pdf`);
     });
     setBusy(false);
   };
 
   return (
     <Page title="Kilometry" back="/">
-      <TripForm onSaved={() => setMonth(monthOf(todayWarsaw()))} />
+      <button type="button" className="vehicle-card" onClick={() => setVehicleOpen(true)}>
+        <Icon name="car" size={22} />
+        <span className="vehicle-main">
+          {vehicle.plate ? <strong className="plate">{vehicle.plate}</strong> : <strong>Auto: nie ustawiono</strong>}
+          <span className="row-sub">Kierowca: {myName || 'nie ustawiono'}</span>
+        </span>
+        <span className="link">Zmień</span>
+      </button>
+      {!vehicle.plate && (
+        <div className="notice notice-warn">
+          <Icon name="alert" />
+          <span>Ustaw numer rejestracyjny auta. Ewidencja przebiegu jest prowadzona osobno dla każdego auta.</span>
+        </div>
+      )}
+
+      <TripForm vehicle={vehicle} onSaved={() => setMonth(monthOf(todayWarsaw()))} />
+
+      {data.owner && (
+        <label className="inline-select">
+          <span>Kierowca</span>
+          <select value={who} onChange={(e) => setWho(e.target.value)}>
+            <option value="moje">Moje przejazdy</option>
+            <option value="wszyscy">Wszyscy kierowcy</option>
+            {[...drivers.entries()].map(([key, name]) => (
+              <option key={key} value={key}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <div className="month-nav">
         <button type="button" className="icon-btn" aria-label="Poprzedni miesiąc" onClick={() => setMonth(shiftMonth(month, -1))}>
@@ -170,14 +285,19 @@ export function TripsPage() {
         <Stat label={`Służbowo w ${year}`} value={`${yearSummary.sluzbowy} km`} />
         <Stat label={`Prywatnie w ${year}`} value={`${yearSummary.prywatny} km`} />
       </div>
-      <div className="quick-actions">
+      <div className="btn-stack">
         <button type="button" className="btn" disabled={busy} onClick={() => void print('sluzbowy')}>
-          <Icon name="file" /> Wydruk służbowe
+          <Icon name="file" /> Ewidencja przebiegu dla celów VAT
         </button>
         <button type="button" className="btn" disabled={busy} onClick={() => void print('prywatny')}>
-          <Icon name="file" /> Wydruk prywatne
+          <Icon name="file" /> Przejazdy prywatne dla pracodawcy
         </button>
       </div>
+      <p className="field-hint">
+        Ewidencja VAT zawiera tylko przejazdy służbowe, każdy jako „SŁUŻBOWO”, osobno dla każdego auta. Przejazdy z jednego dnia
+        jednym autem łączą się w jeden wpis z całą trasą. Prywatne drukują się na osobnych kartkach z zestawieniem kilometrów
+        kierowców.
+      </p>
 
       <div className="chips" role="group">
         {(['wszystkie', 'sluzbowy', 'prywatny'] as const).map((k) => (
@@ -191,35 +311,39 @@ export function TripsPage() {
         {shown.map((t) => (
           <div className="row" key={t.id}>
             <span className="row-main">
-              <span className="row-title">
-                {t.from} → {t.to}
-              </span>
+              <span className="row-title">{routeText([t.from, ...(t.via ?? '').split(','), t.to])}</span>
               <span className="row-sub">
                 {formatDate(t.date)}, {t.timeFrom}
                 {t.timeTo ? `–${t.timeTo}` : ''} · {KIND_NAMES[t.kind]}
-                {t.purpose ? ` · ${t.purpose}` : ''}
+                {t.vehicle ? ` · ${t.vehicle}` : ''}
+                {who !== 'moje' && driverName(t) ? ` · ${driverName(t)}` : ''}
               </span>
               <span className="row-meta">
                 Licznik {t.odometerStart} → {t.odometerEnd}
               </span>
             </span>
             <span className="num">{tripKm(t)} km</span>
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Usuń przejazd"
-              onClick={() =>
-                void run(async () => {
-                  await trips.softDelete(t.id);
-                  toast('Usunięto przejazd', { action: { label: 'Cofnij', onClick: () => void run(() => restoreRecord('trips', t.id)) } });
-                })
-              }
-            >
-              <Icon name="trash" size={18} />
-            </button>
+            {ownedBy(t.ownerId, profile.userId, true) && (
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Usuń przejazd"
+                onClick={() =>
+                  void run(async () => {
+                    await trips.softDelete(t.id);
+                    toast('Usunięto przejazd', { action: { label: 'Cofnij', onClick: () => void run(() => restoreRecord('trips', t.id)) } });
+                  })
+                }
+              >
+                <Icon name="trash" size={18} />
+              </button>
+            )}
           </div>
         ))}
       </Group>
+
+      <VehicleSheet open={vehicleOpen} vehicle={vehicle} profileName={profile.name} onClose={() => setVehicleOpen(false)} />
     </Page>
   );
 }
+

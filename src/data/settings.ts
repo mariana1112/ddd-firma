@@ -34,6 +34,7 @@ export function isDeviceMetaKey(key: string): boolean {
     key === 'deviceId' ||
     key === 'dataKey' ||
     key === 'profile' ||
+    key === 'vehicle' ||
     key.startsWith('geo:') ||
     key.startsWith('numbers:') ||
     key.startsWith('counter:offline:')
@@ -205,6 +206,21 @@ export function ownedBy(ownerId: string | null | undefined, userId: string | nul
 
 export async function saveProfile(profile: Profile): Promise<void> {
   await db.meta.put({ key: 'profile', value: profile, updatedAt: new Date().toISOString() });
+}
+
+/** Auto, którym jeździ użytkownik tego urządzenia. Ustawia się raz i obowiązuje do zmiany. */
+export interface VehicleSettings {
+  plate: string;
+  /** Imię i nazwisko do kolumny „osoba kierująca pojazdem”. Puste: imię z profilu. */
+  driver: string;
+}
+
+export async function getVehicle(): Promise<VehicleSettings> {
+  return { plate: '', driver: '', ...(await getMeta<Partial<VehicleSettings>>('vehicle')) };
+}
+
+export async function saveVehicle(vehicle: VehicleSettings): Promise<void> {
+  await db.meta.put({ key: 'vehicle', value: vehicle, updatedAt: new Date().toISOString() });
 }
 
 export const ORDER_NUMBERS_KEY = 'numbers:order';

@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { createDataKey, CryptoError, decryptFields, decryptFile, encryptFields, encryptFile, unwrapDataKey } from './sync/crypto';
+import {
+  createDataKey,
+  CryptoError,
+  decryptFields,
+  decryptFile,
+  encryptFields,
+  encryptFile,
+  INVITE_LENGTH,
+  inviteProof,
+  newInviteCode,
+  sha256Hex,
+  unwrapDataKey,
+} from './sync/crypto';
 
 describe('szyfrowanie', () => {
   it('klucz zawinięty hasłem daje się odwinąć tylko tym hasłem', async () => {
@@ -44,5 +56,25 @@ describe('szyfrowanie', () => {
     const back = await decryptFile(key, 'a1', sealed, 'image/jpeg');
     expect(Array.from(new Uint8Array(await back.arrayBuffer()))).toEqual([1, 2, 3, 250]);
     await expect(decryptFile(key, 'a2', sealed, 'image/jpeg')).rejects.toBeInstanceOf(CryptoError);
+  });
+});
+
+describe('zaproszenia', () => {
+  it('kod ma 10 znaków bez łatwych do pomylenia', () => {
+    const codes = Array.from({ length: 200 }, () => newInviteCode());
+    for (const code of codes) expect(code).toMatch(new RegExp(`^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{${INVITE_LENGTH}}$`));
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it('dowód hasła zgadza się tylko dla tego samego klucza i kodu', async () => {
+    const { key, wrapped } = await createDataKey('hasło firmy Pogromcy 2026');
+    // Szef liczy dowód kluczem z urządzenia, technik kluczem odwiniętym hasłem.
+    const technician = await unwrapDataKey('hasło firmy Pogromcy 2026', wrapped);
+    const owner = await inviteProof(key, 'ABCDEFGH23');
+    expect(await inviteProof(technician, 'ABCDEFGH23')).toBe(owner);
+    expect(await inviteProof(technician, 'ABCDEFGH24')).not.toBe(owner);
+    const other = await createDataKey('inne hasło innej firmy');
+    expect(await inviteProof(other.key, 'ABCDEFGH23')).not.toBe(owner);
+    expect(await sha256Hex(owner)).toMatch(/^[0-9a-f]{64}$/);
   });
 });

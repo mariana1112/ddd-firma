@@ -1382,6 +1382,57 @@ legend + * {
   margin-right: 4px;
 }
 
+.vehicle-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vehicle-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plate {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border: 1.5px solid var(--text);
+  border-radius: 5px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.inline-select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.inline-select select {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+}
+
 /* ---------- Kreator zlecenia ---------- */
 
 .wizard-progress {
@@ -1659,4 +1710,30 @@ legend + * {
   text-align: center;
   font-variant-numeric: tabular-nums;
   padding: 10px 0;
+}
+
+.member-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 12px 56px;
+}
+
+.member-hint {
+  padding: 4px 14px 12px;
+}
+
+.member-remove {
+  display: block;
+  padding: 0 14px 10px 56px;
+  color: var(--danger, #b3261e);
+  font-size: 0.85rem;
+}
+
+.steps {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }

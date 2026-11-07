@@ -15,6 +15,8 @@ import { emptyTrash, restoreRecord } from '../data/domain';
 import { orders, visits } from '../data/repo';
 import {
   getAppSettings,
+  getCompany,
+  saveCompany,
   getLastBackupAt,
   getProfile,
   getSyncState,
@@ -24,6 +26,8 @@ import {
   setOrderCounter,
   type AppSettings,
 } from '../data/settings';
+import type { CompanySettings } from '../data/types';
+import { isValidNip } from '../lib/validators';
 import { isSyncConfigured } from '../data/sync/config';
 import { BUILDINGS, INVOICES, orderAddress, PAY_NAMES, pestName } from '../data/texts';
 import type { BaseRecord } from '../data/types';
@@ -109,21 +113,38 @@ function ListEditor(props: { label: string; items: string[]; onChange: (items: s
   );
 }
 
-function SettingsForm(props: { settings: AppSettings; name: string; synced: boolean; readOnly: boolean; counter: number }) {
+function SettingsForm(props: {
+  settings: AppSettings;
+  company: CompanySettings;
+  name: string;
+  synced: boolean;
+  readOnly: boolean;
+  counter: number;
+}) {
   const { run, toast } = useFeedback();
   const [s, setS] = useState(props.settings);
+  const [company, setCompany] = useState(props.company);
+  const setC = (patch: Partial<CompanySettings>) => setCompany((prev) => ({ ...prev, ...patch }));
+  const nipError = company.nip.trim() && !isValidNip(company.nip) ? 'NIP jest niepoprawny' : undefined;
   const [name, setName] = useState(props.name);
   const [bonus, setBonus] = useState(moneyToInput(props.settings.thirdVisitBonus));
   const [next, setNext] = useState(String(props.counter + 1));
   const set = (patch: Partial<AppSettings>) => setS((prev) => ({ ...prev, ...patch }));
   const bonusValue = parseMoney(bonus);
   const nextValue = Number(next);
-  const valid = bonusValue !== null && Number.isInteger(nextValue) && nextValue > 0 && s.vatRate >= 0;
+  const valid = bonusValue !== null && Number.isInteger(nextValue) && nextValue > 0 && s.vatRate >= 0 && !nipError;
 
   const save = () =>
     run(async () => {
       if (!props.synced) await saveProfile({ ...(await getProfile()), name: name.trim() });
       await saveAppSettings({ ...s, bossName: s.bossName.trim(), thirdVisitBonus: bonusValue! });
+      await saveCompany({
+        ...company,
+        nip: company.nip.trim(),
+        street: company.street.trim(),
+        postalCode: company.postalCode.trim(),
+        city: company.city.trim(),
+      });
       if (nextValue - 1 > props.counter) await setOrderCounter(nextValue - 1);
       toast('Zapisano ustawienia');
     });
@@ -159,6 +180,25 @@ function SettingsForm(props: { settings: AppSettings; name: string; synced: bool
       </fieldset>
 
       <fieldset disabled={props.readOnly}>
+        <legend>Dane firmy do kilometrówki</legend>
+        <p className="field-hint">Nagłówek „Dane podatnika” w ewidencji przebiegu pojazdu dla celów VAT.</p>
+        <Field label="Adres (ulica i numer)">
+          <input value={company.street} autoComplete="street-address" onChange={(e) => setC({ street: e.target.value })} />
+        </Field>
+        <div className="form-row">
+          <Field label="Kod pocztowy">
+            <input value={company.postalCode} inputMode="numeric" autoComplete="postal-code" onChange={(e) => setC({ postalCode: e.target.value })} />
+          </Field>
+          <Field label="Miejscowość">
+            <input value={company.city} autoComplete="address-level2" onChange={(e) => setC({ city: e.target.value })} />
+          </Field>
+        </div>
+        <Field label="NIP" error={nipError}>
+          <input value={company.nip} inputMode="numeric" onChange={(e) => setC({ nip: e.target.value })} />
+        </Field>
+      </fieldset>
+
+      <fieldset disabled={props.readOnly}>
         <legend>Zabieg</legend>
         <ListEditor label="Zalecenia dla klienta" items={s.recommendations} placeholder="Nowe zalecenie" onChange={(recommendations) => set({ recommendations })} />
         <ListEditor label="Rodzaje zabiegu" items={s.treatments} placeholder="Np. Oprysk ciśnieniowy" onChange={(treatments) => set({ treatments })} />
@@ -185,13 +225,21 @@ function SettingsForm(props: { settings: AppSettings; name: string; synced: bool
 }
 
 export function SettingsPage() {
-  const [loaded, setLoaded] = useState<{ settings: AppSettings; name: string; synced: boolean; readOnly: boolean; counter: number }>();
+  const [loaded, setLoaded] = useState<{
+    settings: AppSettings;
+    company: CompanySettings;
+    name: string;
+    synced: boolean;
+    readOnly: boolean;
+    counter: number;
+  }>();
   // Formularz startuje z jednego odczytu, żeby synchronizacja nie resetowała pól w trakcie edycji.
   useEffect(() => {
     void (async () => {
       const sync = await getSyncState();
       setLoaded({
         settings: await getAppSettings(),
+        company: await getCompany(),
         name: (await getProfile()).name,
         synced: Boolean(sync),
         // Ustawienia firmy na serwerze zmienia tylko szef, więc technik ich nie edytuje.

@@ -176,3 +176,41 @@ export async function decryptFile(key: CryptoKey, attachmentId: string, blob: Bl
   const plain = await decryptBytes(key, new Uint8Array(await blob.arrayBuffer()), `file/${attachmentId}`);
   return new Blob([plain], { type: mime });
 }
+
+// ---------- Zaproszenia ----------
+
+const INVITE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const INVITE_LENGTH = 10;
+
+/** Losowy kod zaproszenia bez znaków łatwych do pomylenia (0/O, 1/I/L). */
+export function newInviteCode(): string {
+  let code = '';
+  // Odrzucanie bajtów spoza wielokrotności alfabetu daje równy rozkład znaków.
+  const limit = 256 - (256 % INVITE_ALPHABET.length);
+  while (code.length < INVITE_LENGTH) {
+    for (const b of random(32)) {
+      if (b < limit && code.length < INVITE_LENGTH) code += INVITE_ALPHABET[b % INVITE_ALPHABET.length];
+    }
+  }
+  return code;
+}
+
+/**
+ * Dowód, że urządzenie ma klucz firmy, czyli znało hasło szyfrowania. To szyfrogram stałej wartości
+ * z wektorem IV wyliczonym z kodu: ten sam klucz i kod dają zawsze ten sam dowód, a bez klucza nie da się
+ * go wyliczyć. IV jest inny dla każdego kodu, a jedyny tekst szyfrowany nim to te same zera, więc
+ * powtórzenie IV niczego nie ujawnia. Serwer przechowuje tylko skrót dowodu.
+ */
+export async function inviteProof(key: CryptoKey, code: string): Promise<string> {
+  requireCrypto();
+  const iv = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(`invite-iv/${code}`))).slice(0, 12);
+  const sealed = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: encoder.encode(`invite/${code}`) }, key, new Uint8Array(16)),
+  );
+  return toBase64(sealed);
+}
+
+export async function sha256Hex(text: string): Promise<string> {
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(text)));
+  return Array.from(hash, (b) => b.toString(16).padStart(2, '0')).join('');
+}

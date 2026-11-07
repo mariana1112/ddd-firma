@@ -3,9 +3,10 @@ import { todayWarsaw } from '../lib/dates';
 import { newId } from '../lib/ids';
 import { db, writeTransaction } from './db';
 import { DomainError } from './domain';
+import { normalizePlate, tripKm } from './mileage';
 import { attachments, orders, visits, trips, type NewRecord } from './repo';
 import { getAppSettings, getProfile, nextOrderNumber, ownedBy } from './settings';
-import type { Interview, Order, PayMethod, Trip, Visit } from './types';
+import type { Interview, Order, PayMethod, Visit } from './types';
 
 export { orders, visits, trips };
 
@@ -169,15 +170,17 @@ export async function deleteOrder(id: string): Promise<void> {
   });
 }
 
-/** Licznik po ostatnim przejeździe: podpowiedź stanu licznika na początek kolejnego. */
-export async function lastOdometer(ownerId: string | null): Promise<number | null> {
-  const all = (await trips.all()).filter((t) => ownedBy(t.ownerId, ownerId, true));
+/**
+ * Licznik po ostatnim przejeździe: podpowiedź stanu licznika na początek kolejnego. Przy ustawionym
+ * aucie liczy się ostatni przejazd tym autem, także innego kierowcy z oddziału.
+ */
+export async function lastOdometer(ownerId: string | null, vehicle = ''): Promise<number | null> {
+  const plate = normalizePlate(vehicle);
+  const all = (await trips.all()).filter((t) => (plate ? normalizePlate(t.vehicle) === plate : ownedBy(t.ownerId, ownerId, true)));
   if (all.length === 0) return null;
   return all.reduce((max, t) => Math.max(max, t.odometerEnd), 0);
 }
 
-export function tripKm(trip: Pick<Trip, 'odometerStart' | 'odometerEnd'>): number {
-  return Math.max(0, trip.odometerEnd - trip.odometerStart);
-}
+export { tripKm };
 
 export { newId };

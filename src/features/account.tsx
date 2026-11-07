@@ -5,10 +5,10 @@ import { pendingCount } from '../data/changes';
 import { db } from '../data/db';
 import { COMPANY_NAME, getDataKey, getSyncState, ownedBy, saveProfile, setDataKey, setSyncState } from '../data/settings';
 import { isSyncConfigured } from '../data/sync/config';
-import { createDataKey, MIN_PASSPHRASE, unwrapDataKey } from '../data/sync/crypto';
+import { createDataKey, CryptoError, INVITE_LENGTH, inviteProof, MIN_PASSPHRASE, unwrapDataKey } from '../data/sync/crypto';
 import type { Account } from '../data/sync/engine';
 import { getSyncStatus, loadServer, subscribeSyncStatus, syncInBackground } from '../data/sync/runner';
-import type { Branch, Member, Membership } from '../data/sync/supabase';
+import type { Branch, InvitePreview, Member, Membership } from '../data/sync/supabase';
 import { formatPln, periodOf } from '../data/reports';
 import { orders, visits } from '../data/repo';
 import { useContactActions } from './common';
@@ -288,6 +288,10 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
   const [branch, setBranch] = useState('');
   const [newPassphrase, setNewPassphrase] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Dołączanie: kod, potem hasło od szefa. Klucz zostaje w pamięci do zgody szefa.
+  const [preview, setPreview] = useState<InvitePreview | null>(null);
+  const [joinPassphrase, setJoinPassphrase] = useState('');
+  const [joinedKey, setJoinedKey] = useState<CryptoKey | null>(null);
   const local = useLiveQuery(async () => ({ orders: await db.orders.count(), trips: await db.trips.count() }));
   const user = { userId: props.userId, email: props.email, name: name.trim() || props.name };
 
@@ -300,6 +304,34 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const pending = memberships?.[0] && !memberships[0].approved;
+  // Czekając na zgodę szefa, aplikacja sama sprawdza co 15 sekund.
+  useEffect(() => {
+    if (!pending) return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          setMemberships(await (await supabaseApi()).myMemberships());
+        } catch {
+          // Brak internetu: kolejna próba za chwilę.
+        }
+      })();
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [pending]);
+
+  // Po zgodzie szefa urządzenie łączy się kluczem odwiniętym przy dołączaniu, bez ponownego hasła.
+  const approvedNow = memberships?.[0]?.approved && memberships[0].dataKey ? memberships[0] : null;
+  useEffect(() => {
+    if (!approvedNow || !joinedKey) return;
+    setJoinedKey(null);
+    void run(async () => {
+      await startEncryptedSync(joinedKey, membershipAccount(approvedNow, user));
+      toast('Szef zatwierdził konto. Urządzenie połączone z firmą.');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [approvedNow, joinedKey]);
 
   const withBusy = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -321,10 +353,21 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
       toast('Firma utworzona, synchronizacja z szyfrowaniem włączona');
     });
 
+  const checkCode = () =>
+    withBusy(async () => {
+      setPreview(await (await supabaseApi()).invitePreview(code.trim()));
+    });
+
   const join = () =>
     withBusy(async () => {
-      await (await supabaseApi()).joinWithInvite(code, name.trim());
-      toast('Dołączono do firmy. Wpisz hasło szyfrowania od szefa.');
+      if (!preview?.dataKey) throw new CryptoError('Firma nie ma jeszcze hasła szyfrowania. Poproś szefa o nowy kod.');
+      const key = await unwrapDataKey(joinPassphrase, preview.dataKey);
+      const api = await supabaseApi();
+      const orgId = await api.joinWithInvite(code.trim(), name.trim(), await inviteProof(key, code.trim()));
+      if (!orgId) throw new CryptoError('Hasło nie pasuje do tego zaproszenia. Po 5 próbach kod przestaje działać.');
+      setJoinedKey(key);
+      setJoinPassphrase('');
+      toast('Prośba wysłana. Czekaj na zgodę szefa.');
       await load();
     });
 
@@ -347,7 +390,7 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
     <div className="form">
       <Group>
         <Info label="Konto">{props.email}</Info>
-        {membership && <Info label="Firma">{membership.orgName}</Info>}
+        {membership?.orgName && <Info label="Firma">{membership.orgName}</Info>}
         {membership?.branchName && <Info label="Oddział">{membership.branchName}</Info>}
       </Group>
       {hasLocal && (
@@ -359,7 +402,21 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
           </span>
         </div>
       )}
-      {membership?.dataKey ? (
+      {membership && !membership.approved ? (
+        <div className="form">
+          <p className="steps">Krok 3 z 3 · Zgoda szefa</p>
+          <div className="notice notice-info">
+            <Icon name="users" />
+            <span>
+              Kod i hasło są poprawne. Szef musi teraz zatwierdzić Twoje konto w aplikacji (Więcej → Oddziały). Do tego czasu nie
+              widzisz danych firmy. Ten ekran sprawdza to sam co 15 sekund.
+            </span>
+          </div>
+          <button type="button" className="btn btn-primary btn-block" disabled={busy} onClick={() => void withBusy(async () => setMemberships(await (await supabaseApi()).myMemberships()))}>
+            {busy ? 'Sprawdzam…' : 'Sprawdź teraz'}
+          </button>
+        </div>
+      ) : membership?.dataKey ? (
         <UnlockForm busyLabel="Łączę…" onUnlock={(passphrase) => unlockAndSync(membership, passphrase)} />
       ) : membership ? (
         <>
@@ -381,15 +438,57 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
           <Field label="Twoje imię">
             <input value={name} autoComplete="given-name" onChange={(e) => setName(e.target.value)} />
           </Field>
-          {mode === 'join' ? (
+          {mode === 'join' && !preview ? (
             <>
+              <p className="steps">Krok 1 z 3 · Kod zaproszenia</p>
               <Field label="Kod zaproszenia" hint="Szef tworzy go w aplikacji: Więcej → Oddziały. Kod przypisuje Cię do oddziału.">
-                <input value={code} autoCapitalize="characters" autoComplete="off" onChange={(e) => setCode(e.target.value.toUpperCase())} />
+                <input
+                  value={code}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  maxLength={INVITE_LENGTH + 4}
+                  onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ''))}
+                />
               </Field>
-              <button type="button" className="btn btn-primary btn-block" disabled={busy || !name.trim() || code.trim().length < 6} onClick={() => void join()}>
-                {busy ? 'Dołączam…' : 'Dołącz do firmy'}
+              <button
+                type="button"
+                className="btn btn-primary btn-block"
+                disabled={busy || !name.trim() || code.trim().length !== INVITE_LENGTH}
+                onClick={() => void checkCode()}
+              >
+                {busy ? 'Sprawdzam…' : 'Dalej'}
               </button>
             </>
+          ) : mode === 'join' && preview ? (
+            <form
+              className="form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void join();
+              }}
+            >
+              <p className="steps">Krok 2 z 3 · Hasło od szefa</p>
+              <Group>
+                <Info label="Firma">{preview.orgName}</Info>
+                <Info label="Oddział">{preview.branchName}</Info>
+              </Group>
+              <Field label="Hasło szyfrowania firmy" hint="Szef przekazuje je osobiście. Hasło nie jest wysyłane na serwer: urządzenie sprawdza je samo.">
+                <input type="password" autoComplete="off" value={joinPassphrase} onChange={(e) => setJoinPassphrase(e.target.value)} />
+              </Field>
+              <button type="submit" className="btn btn-primary btn-block" disabled={busy || !joinPassphrase}>
+                {busy ? 'Sprawdzam hasło…' : 'Wyślij prośbę o dołączenie'}
+              </button>
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  setPreview(null);
+                  setJoinPassphrase('');
+                }}
+              >
+                Inny kod
+              </button>
+            </form>
           ) : (
             <>
               <Field label="Nazwa firmy">
@@ -656,7 +755,7 @@ interface BranchView {
 
 /** Technicy oddziałów z ich zleceniami i obrotem. Szef widzi wszystkie oddziały, technik swój. */
 export function BranchesPage() {
-  const { run, toast } = useFeedback();
+  const { confirm, run, toast } = useFeedback();
   const { share } = useContactActions();
   const state = useLiveQuery(async () => (await getSyncState()) ?? null);
   const local = useLiveQuery(async () => ({ orders: await orders.all(), visits: await visits.all() }));
@@ -697,7 +796,9 @@ export function BranchesPage() {
       `Zaproszenie do aplikacji ${COMPANY_NAME} (oddział ${branch}).`,
       '1. Otwórz https://mariana1112.github.io/ddd-firma/ w Safari i dodaj do ekranu początkowego.',
       '2. Więcej → Konto i synchronizacja → Nie mam konta, załóż je.',
-      `3. Wybierz „Mam kod od szefa” i wpisz: ${code}`,
+      `3. Wybierz „Mam kod od szefa” i wpisz kod: ${code}`,
+      '4. Wpisz hasło szyfrowania firmy, które podam Ci osobiście.',
+      '5. Poczekaj, aż zatwierdzę Twoje konto.',
     ].join('\n');
 
   return (
@@ -706,8 +807,53 @@ export function BranchesPage() {
         <Loading />
       ) : (
         <>
+          {owner && view.members.some((m) => !m.approved) && (
+            <Group title="Czekają na Twoją zgodę">
+              {view.members
+                .filter((m) => !m.approved)
+                .map((m) => (
+                  <div key={m.userId} className="member">
+                    <Row
+                      icon="users"
+                      title={m.displayName || 'Bez imienia'}
+                      sub={`${m.email || 'bez adresu e-mail'} · oddział ${view.branches.find((b) => b.id === m.branchId)?.name ?? '—'}`}
+                    />
+                    <div className="member-actions">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        onClick={() =>
+                          void run(async () => {
+                            await (await supabaseApi()).approveMember(state.orgId, m.userId);
+                            await load();
+                            toast(`Zatwierdzono: ${m.displayName || m.email}`);
+                          })
+                        }
+                      >
+                        Zatwierdź
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger-quiet"
+                        onClick={() =>
+                          void run(async () => {
+                            await (await supabaseApi()).removeMember(state.orgId, m.userId);
+                            await load();
+                            toast('Odrzucono prośbę');
+                          })
+                        }
+                      >
+                        Odrzuć
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              <p className="field-hint member-hint">Zatwierdzaj tylko osoby, które znasz i którym przekazałeś kod oraz hasło.</p>
+            </Group>
+          )}
+
           {view.branches.map((branch) => {
-            const members = view.members.filter((m) => m.branchId === branch.id);
+            const members = view.members.filter((m) => m.approved && m.branchId === branch.id);
             return (
               <Group
                 key={branch.id}
@@ -718,9 +864,11 @@ export function BranchesPage() {
                       type="button"
                       className="link"
                       onClick={() =>
-                        void run(async () =>
-                          setInvite({ code: await (await supabaseApi()).createInvite(state.orgId, branch.id), branch: branch.name }),
-                        )
+                        void run(async () => {
+                          const key = await getDataKey();
+                          if (!key) throw new CryptoError('Najpierw odblokuj szyfrowanie na tym urządzeniu: Więcej → Konto.');
+                          setInvite({ code: await (await supabaseApi()).createInvite(state.orgId, branch.id, key), branch: branch.name });
+                        })
                       }
                     >
                       Zaproś technika
@@ -766,6 +914,30 @@ export function BranchesPage() {
                           </select>
                         </label>
                       )}
+                      {owner && m.role !== 'owner' && (
+                        <button
+                          type="button"
+                          className="link member-remove"
+                          onClick={() =>
+                            void (async () => {
+                              const ok = await confirm({
+                                title: `Usunąć ${m.displayName || 'technika'} z firmy?`,
+                                message: 'Konto straci dostęp do danych firmy przy następnej synchronizacji. Jego zlecenia i przejazdy zostają.',
+                                confirmLabel: 'Usuń z firmy',
+                                danger: true,
+                              });
+                              if (!ok) return;
+                              await run(async () => {
+                                await (await supabaseApi()).removeMember(state.orgId, m.userId);
+                                await load();
+                                toast('Usunięto z firmy');
+                              });
+                            })()
+                          }
+                        >
+                          Usuń z firmy
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -803,8 +975,9 @@ export function BranchesPage() {
           <>
             <p className="invite-code">{invite.code}</p>
             <p className="sheet-text">
-              Kod przypisuje do oddziału {invite.branch}, działa raz i jest ważny 14 dni. Hasło szyfrowania przekaż technikowi
-              osobno, najlepiej osobiście.
+              Kod przypisuje do oddziału {invite.branch}, działa raz i jest ważny 14 dni. Sam kod nie wystarczy: technik musi
+              wpisać też hasło szyfrowania, które przekazujesz osobiście, nigdy razem z kodem. Potem jego prośba pojawi się tutaj
+              i musisz ją zatwierdzić.
             </p>
             <button type="button" className="btn btn-primary btn-block" onClick={() => void share(inviteText(invite.code, invite.branch), 'Zaproszenie')}>
               <Icon name="share" /> Wyślij zaproszenie

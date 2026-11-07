@@ -30,8 +30,8 @@ Zlecenia        /zlecenia         szukanie po #numerze, nazwisku, telefonie, adr
 Raporty         /raporty          dzień, tydzień, miesiąc; rozliczenie tekstowe, PDF; ?technik= dla szefa
 Więcej          /wiecej
   Koszty        /koszty           autostrada, parking, paliwo, inne
-  Kilometry     /kilometry        przejazdy służbowe i prywatne, wydruk PDF
-  Oddziały      /oddzialy         oddziały, technicy, kody zaproszeń, przenoszenie (szef)
+  Kilometry     /kilometry        auto i kierowca, przejazdy, ewidencja VAT i prywatne (PDF)
+  Oddziały      /oddzialy         oddziały, technicy, kody zaproszeń, zgody, przenoszenie (szef)
   Ustawienia    /ustawienia       imię szefa w rozliczeniu, premia, VAT, zalecenia, czynności, miejsca, SMS
   Konto         /konto            logowanie, firma, oddział, imię, stan synchronizacji
   Kopie         /kopie            eksport i przywracanie, CSV zleceń
@@ -69,8 +69,19 @@ jako należący do jego użytkownika (`ownedBy` w `data/settings.ts`).
 
 ## 4. Konta, oddziały i uprawnienia
 
-Logowanie e-mailem i hasłem (min. 12 znaków). Przy rejestracji podaje się imię. Szef tworzy firmę z pierwszym oddziałem,
-technik dołącza jednorazowym kodem zaproszenia przypisanym do oddziału.
+Logowanie e-mailem i hasłem (min. 12 znaków). Przy rejestracji podaje się imię. Szef tworzy firmę z pierwszym oddziałem.
+
+Technik dołącza w trzech krokach (migracja `20261107000100_bezpieczne_dolaczanie.sql`):
+
+1. Kod zaproszenia: 10 znaków z alfabetu bez 0/O/1/I/L, losowany na urządzeniu szefa, jednorazowy, 14 dni.
+   `invite_preview` zwraca nazwę firmy, oddziału i klucz zawinięty hasłem.
+2. Hasło szyfrowania: urządzenie odwija klucz i liczy dowód `AES-GCM(klucz, IV = SHA-256("invite-iv/" + kod)[0..12],
+   dane dodatkowe "invite/" + kod, 16 bajtów zer)`. Urządzenie szefa przy tworzeniu kodu zapisuje na serwerze
+   `sha256(dowód)`, a `join_with_invite` porównuje skróty. Serwer nie zna hasła ani klucza. Zły dowód zwiększa licznik
+   prób (zwraca null, bo wyjątek cofnąłby licznik). Po 5 próbach kod nie działa.
+3. Zgoda szefa: członkostwo powstaje z `approved = false`. `private.is_member` i `private.has_role` wymagają
+   `approved`, więc konto przed zgodą nie czyta rekordów, firmy ani innych członków i nie zapisuje. Szef zatwierdza
+   (`approve_member`) albo odrzuca (`remove_member`, ta sama funkcja usuwa technika z firmy; szefa usunąć nie można).
 
 Serwer (Supabase, Postgres) przechowuje rekordy w jednej tabeli `records` (`org_id`, `tbl`, `id`, `data`, `rev`,
 `branch_id`). Uprawnienia egzekwują RLS i funkcje `security definer`:
@@ -82,7 +93,8 @@ Serwer (Supabase, Postgres) przechowuje rekordy w jednej tabeli `records` (`org_
 | `meta` (ustawienia firmy) | odczyt | zapis |
 | `changes` (historia) | brak | odczyt |
 | `branches`, `memberships` | swój oddział i jego technicy | wszystkie |
-| `invites` | brak dostępu; `join_with_invite` | `create_invite` |
+| `invites` | brak dostępu; `invite_preview`, `join_with_invite` | `create_invite` |
+| zgody i usuwanie (`approve_member`, `remove_member`) | brak | tak |
 | `reserve_numbers` | tak | tak |
 | zdjęcia w magazynie `attachments` | członkowie firmy (pliki zaszyfrowane, ścieżki znają tylko urządzenia widzące rekord) | tak |
 
@@ -92,6 +104,12 @@ Przeniesienie technika do innego oddziału nie przenosi jego wcześniejszych rek
 Izolację sprawdza test SQL z trzema tymczasowymi kontami (szef, technik A, technik B w innym oddziale), cofany na końcu:
 technik B widzi 1 rekord, 1 członka, 1 oddział, 0 wpisów historii, nie ma dostępu do zaproszeń, nie może zaprosić ani
 dołączyć drugi raz, jego próba zmiany rekordu A i ustawień firmy zostaje pominięta. Szef widzi oba rekordy i oba oddziały.
+
+Dołączanie sprawdza drugi taki test: obcy z samym kodem widzi nazwę firmy, ale bez hasła zostaje odrzucony; po 5 złych
+próbach kod nie działa nawet z dobrym hasłem; technik z kodem i hasłem przed zgodą widzi 0 rekordów, 0 firm i tylko
+swoje członkostwo, nie zapisuje i nie zatwierdza sam siebie; po zgodzie widzi rekordy, a po usunięciu z firmy znowu 0.
+Technik nie usunie szefa, szef nie usunie siebie. Zgodność skrótu dowodu z przeglądarki i z Postgresa sprawdzono na
+prawdziwym kodzie, usuniętym po teście.
 
 ## 5. Synchronizacja
 
@@ -148,7 +166,18 @@ kilometry i wynik gotówki dla szefa = gotówka − zwroty − premia − inne k
 szefowi i jest sprawdzany testem. PDF raportu i kilometrówki powstaje w `pdf/documents.ts` (pdfmake ładowany przy
 pierwszym użyciu, działa offline).
 
-Do zrobienia: wydruk kilometrówki dokładnie według wzoru firmy, gdy będzie dostępne zdjęcie wzoru.
+### Kilometrówka
+
+Przejazd zapisuje numer rejestracyjny i kierowcę z ustawień urządzenia (`vehicle` w meta, nie synchronizowane), więc
+zmiana auta nie zmienia starych wpisów. Licznik startowy to stan po ostatnim przejeździe tym autem w oddziale.
+`data/mileage.ts` buduje wpisy ewidencji: przejazdy z jednego dnia, auta i kierowcy, idące po sobie bez przerwy w liczniku,
+łączą się w jeden wpis z trasą „Łódź - Kutno - Łódź”. `mileageDocument` odwzorowuje urzędowy wzór „Ewidencja przebiegu
+pojazdu dla celów VAT”: nagłówek z danymi podatnika (adres i NIP z ustawień firmy), numerem rejestracyjnym, dniem
+rozpoczęcia i zakończenia (pierwszy i ostatni dzień miesiąca), stanami licznika i sumą km; miesiąc rzymski, 17 wpisów
+na pierwszej stronie i 23 na kolejnych, podsumowanie strony, z przeniesienia, razem, przypisy. Każdy wpis służbowy ma cel
+„SŁUŻBOWO”. Prywatne przejazdy drukują się w tym samym układzie na osobnych kartkach z dopiskiem „do wglądu
+pracodawcy” i stroną z zestawieniem kilometrów kierowców. Test odtwarza październik z wypełnionego ręcznie wzoru:
+25 wpisów, strony 3217 i 2331 km, razem 5548 km.
 
 ## 8. Testy i publikacja
 
@@ -156,7 +185,7 @@ Do zrobienia: wydruk kilometrówki dokładnie według wzoru firmy, gdy będzie d
 | --- | --- | --- |
 | Czyste funkcje i dane | Vitest + fake-indexeddb | kwoty, daty, zlecenia, zabiegi, premia, raporty, teksty SMS i dla centrali, propozycje terminów, kosz, kopie, migracje |
 | Synchronizacja | Vitest, dwa symulowane urządzenia i serwer w pamięci | scalanie pól, szyfrowanie, numeracja, zdjęcia, trwałe usuwanie |
-| PDF | Vitest + pdfmake w Node | raport i kilometrówka z polskimi znakami |
+| PDF | Vitest + pdfmake w Node | raport, ewidencja VAT według wzoru (sumy stron), prywatne z zestawieniem |
 | Uprawnienia serwera | test SQL w Supabase cofany wyjątkiem | izolacja oddziałów (rozdz. 4) |
 
 GitHub Actions uruchamia testy i build przy każdym pushu na `main`, a publikuje na GitHub Pages tylko po zielonych testach.

@@ -30,8 +30,13 @@ zaszyfrowane.
   - wyszukiwanie po `#numerze`, nazwisku, telefonie i adresie,
   - filtr płatności i „Tylko faktury”.
 - **Kilometrówka**:
-  - przejazdy służbowe i prywatne z godzinami, skąd–dokąd, celem i stanem licznika,
-  - suma na pulpicie i wydruk PDF.
+  - przejazdy służbowe i prywatne z godzinami, trasą (skąd, przez, dokąd) i stanem licznika,
+  - numer rejestracyjny auta i kierowca ustawiane raz, do zmiany, i zapisywane przy każdym przejeździe,
+  - wydruk **Ewidencji przebiegu pojazdu dla celów VAT** według urzędowego wzoru: osobno dla każdego auta, każdy
+    wpis jako „SŁUŻBOWO”, przejazdy z jednego dnia połączone w jeden wpis z całą trasą, 17 wpisów na pierwszej
+    stronie i 23 na kolejnych, z podsumowaniem strony, przeniesieniem i stanami licznika,
+  - przejazdy prywatne na osobnych kartkach, tylko do wglądu pracodawcy, z zestawieniem kilometrów kierowców,
+  - szef wybiera kierowcę albo wszystkich kierowców naraz.
 - **Koszty z dnia**: autostrada, parking, paliwo, inne.
 - **Raporty dzienne, tygodniowe i miesięczne**: obrót, gotówka, BLIK, przelew, zwroty za parkingi i autostrady, premia,
   inne koszty i wynik gotówki dla szefa, w formacie rozliczenia wysyłanego szefowi, do skopiowania, wysłania albo PDF.
@@ -69,9 +74,17 @@ kopii na serwerze Supabase. Zmiany przechodzą przy otwarciu aplikacji, po każd
 działa bez zmian, a zmiany czekają w kolejce. Opis rozwiązania: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
 
 **Szef** zakłada konto z imieniem, tworzy firmę z pierwszym oddziałem i ustawia hasło szyfrowania. W **Więcej → Oddziały**
-dodaje kolejne oddziały, przenosi techników i tworzy kod zaproszenia do wybranego oddziału (ważny 14 dni, jednorazowy).
+dodaje kolejne oddziały, przenosi techników, usuwa ich z firmy i tworzy kod zaproszenia do wybranego oddziału.
 
-**Technik** zakłada konto z imieniem, wpisuje kod zaproszenia i hasło szyfrowania firmy, które dostaje od szefa.
+**Technik** dołącza w trzech krokach:
+
+1. **Kod zaproszenia** od szefa: 10 znaków, jednorazowy, ważny 14 dni, przypisany do oddziału.
+2. **Hasło szyfrowania** firmy, które szef przekazuje osobiście, nigdy razem z kodem. Urządzenie technika odwija nim
+   klucz firmy i wysyła dowód, że go ma. Serwer porównuje skrót tego dowodu ze skrótem zapisanym przez urządzenie
+   szefa przy tworzeniu kodu, więc sprawdza hasło, nie znając ani hasła, ani klucza. Po 5 błędnych próbach kod
+   przestaje działać.
+3. **Zgoda szefa**: prośba z imieniem i adresem e-mail pojawia się w **Więcej → Oddziały**. Do zatwierdzenia konto
+   nie jest członkiem firmy: nie czyta ani nie zapisuje żadnych danych. Po zgodzie urządzenie łączy się samo.
 
 | | Technik | Szef |
 | --- | --- | --- |
@@ -79,6 +92,8 @@ dodaje kolejne oddziały, przenosi techników i tworzy kod zaproszenia do wybran
 | Zmiana rekordów | swojego oddziału | wszystkich |
 | Ustawienia firmy (zalecenia, SMS, premia) | odczyt | zmiana |
 | Oddziały, przenoszenie techników, zaproszenia | nie | tak |
+| Zatwierdzanie próśb, usuwanie techników z firmy | nie | tak |
+| Dane firmy do kilometrówki (adres, NIP) | odczyt | zmiana |
 | Historia zmian na serwerze | nie | tak |
 
 Uprawnienia egzekwuje serwer (RLS i funkcje `security definer`), więc urządzenie technika nie dostaje danych innych oddziałów.

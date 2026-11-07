@@ -1,7 +1,7 @@
 // Adapter Supabase. Ładowany dynamicznie, więc bez konfiguracji klient Supabase nie trafia do aplikacji.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SYNC_KEY, SYNC_URL } from './config';
-import { CryptoError, type WrappedKey } from './crypto';
+import { CryptoError, inviteProof, newInviteCode, sha256Hex, type WrappedKey } from './crypto';
 import { SyncError, type PushChange, type RemoteRecord, type SyncServer } from './engine';
 
 let client: SupabaseClient | undefined;
@@ -22,6 +22,7 @@ const MESSAGES: Record<string, string> = {
   FORBIDDEN: 'To konto nie ma uprawnień do zapisu w tej firmie.',
   ORG_EXISTS: 'To konto ma już firmę.',
   NOT_AUTHENTICATED: 'Sesja wygasła. Zaloguj się ponownie.',
+  NOT_PENDING: 'Ta prośba została już rozpatrzona.',
 };
 
 /** Komunikat po polsku dla błędu sieci, serwera lub logowania. */
@@ -110,6 +111,8 @@ export interface Membership {
   branchName: string;
   /** Klucz danych zawinięty hasłem szyfrowania; null dla firmy założonej przed szyfrowaniem. */
   dataKey: WrappedKey | null;
+  /** false: konto czeka na zgodę szefa i nie widzi danych firmy. */
+  approved: boolean;
 }
 
 export interface Branch {
@@ -122,6 +125,8 @@ export interface Member {
   displayName: string;
   role: 'owner' | 'technik';
   branchId: string | null;
+  approved: boolean;
+  email: string;
 }
 
 // Logowanie hasłem działa w całości w zainstalowanej aplikacji. Link z e-maila służy tylko
@@ -163,7 +168,7 @@ export async function myMemberships(): Promise<Membership[]> {
   if (!user) return [];
   const { data, error } = await supabase()
     .from('memberships')
-    .select('org_id, role, display_name, branch_id, orgs(name, data_key), branches(name)')
+    .select('org_id, role, display_name, branch_id, approved, orgs(name, data_key), branches(name)')
     .eq('user_id', user.userId);
   if (error) fail(error);
   return (data ?? []).map((row) => {
@@ -177,6 +182,7 @@ export async function myMemberships(): Promise<Membership[]> {
       branchName: branch?.name ?? '',
       orgName: org?.name ?? '',
       dataKey: org?.data_key ?? null,
+      approved: row.approved !== false,
     };
   });
 }
@@ -198,10 +204,36 @@ export async function setOrgKey(orgId: string, dataKey: WrappedKey): Promise<voi
   if (error) fail(error);
 }
 
-export async function joinWithInvite(code: string, displayName: string): Promise<string> {
-  const { data, error } = await supabase().rpc('join_with_invite', { p_code: code, p_display_name: displayName });
+export interface InvitePreview {
+  orgName: string;
+  branchName: string;
+  dataKey: WrappedKey | null;
+}
+
+/** Krok 1 dołączania: dokąd prowadzi kod. Zły, wykorzystany albo wygasły kod kończy się błędem. */
+export async function invitePreview(code: string): Promise<InvitePreview> {
+  const { data, error } = await supabase().rpc('invite_preview', { p_code: code });
   if (error) fail(error);
-  return data as string;
+  const row = data as { org_name: string; branch_name: string; data_key: WrappedKey | null };
+  return { orgName: row.org_name, branchName: row.branch_name, dataKey: row.data_key };
+}
+
+/** Krok 2: dowód hasła. Zwraca null, gdy hasło nie pasuje do zaproszenia. */
+export async function joinWithInvite(code: string, displayName: string, proof: string): Promise<string | null> {
+  const { data, error } = await supabase().rpc('join_with_invite', { p_code: code, p_display_name: displayName, p_proof: proof });
+  if (error) fail(error);
+  return (data as string | null) ?? null;
+}
+
+export async function approveMember(orgId: string, userId: string): Promise<void> {
+  const { error } = await supabase().rpc('approve_member', { p_org: orgId, p_user: userId });
+  if (error) fail(error);
+}
+
+/** Odrzuca prośbę o dołączenie albo usuwa technika z firmy. */
+export async function removeMember(orgId: string, userId: string): Promise<void> {
+  const { error } = await supabase().rpc('remove_member', { p_org: orgId, p_user: userId });
+  if (error) fail(error);
 }
 
 export async function updateMyProfile(orgId: string, displayName: string): Promise<void> {
@@ -216,13 +248,15 @@ export async function listBranches(orgId: string): Promise<Branch[]> {
 }
 
 export async function listMembers(orgId: string): Promise<Member[]> {
-  const { data, error } = await supabase().from('memberships').select('user_id, display_name, role, branch_id').eq('org_id', orgId);
+  const { data, error } = await supabase().from('memberships').select('user_id, display_name, role, branch_id, approved, email').eq('org_id', orgId);
   if (error) fail(error);
   return (data ?? []).map((row) => ({
     userId: row.user_id as string,
     displayName: (row.display_name as string) ?? '',
     role: row.role as Member['role'],
     branchId: (row.branch_id as string | null) ?? null,
+    approved: row.approved !== false,
+    email: (row.email as string) ?? '',
   }));
 }
 
@@ -242,9 +276,14 @@ export async function setMemberBranch(orgId: string, userId: string, branchId: s
   if (error) fail(error);
 }
 
-/** Jednorazowy kod, którym nowy technik dołącza do oddziału. Ważny 14 dni. */
-export async function createInvite(orgId: string, branchId: string): Promise<string> {
-  const { data, error } = await supabase().rpc('create_invite', { p_org: orgId, p_branch: branchId });
+/**
+ * Jednorazowy kod, którym nowy technik dołącza do oddziału. Ważny 14 dni. Działa tylko razem z hasłem
+ * szyfrowania: serwer dostaje skrót dowodu wyliczonego kluczem firmy z tego urządzenia.
+ */
+export async function createInvite(orgId: string, branchId: string, dataKey: CryptoKey): Promise<string> {
+  const code = newInviteCode();
+  const proofHash = await sha256Hex(await inviteProof(dataKey, code));
+  const { data, error } = await supabase().rpc('create_invite', { p_org: orgId, p_branch: branchId, p_code: code, p_proof_hash: proofHash });
   if (error) fail(error);
   return data as string;
 }

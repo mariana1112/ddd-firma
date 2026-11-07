@@ -270,7 +270,13 @@ export interface Trip extends BaseRecord {
   timeTo: string;
   from: string;
   to: string;
+  /** Miejscowości po drodze, np. „Kutno, Kłodawa”. Brak w przejazdach sprzed wersji z ewidencją VAT. */
+  via?: string;
   purpose: string;
+  /** Numer rejestracyjny auta ustawiony w chwili zapisu przejazdu. */
+  vehicle?: string;
+  /** Imię i nazwisko kierowcy w chwili zapisu przejazdu. */
+  driver?: string;
   odometerStart: number;
   odometerEnd: number;
 }
