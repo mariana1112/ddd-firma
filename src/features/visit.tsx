@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { finishVisit, orderVisits, startVisit, type NextVisit } from '../data/orders';
+import { finishVisit, normalizeInterview, orderVisits, startVisit, type NextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, type AppSettings } from '../data/settings';
 import {
@@ -17,7 +17,7 @@ import {
   reminderSms,
   workSummary,
 } from '../data/texts';
-import type { Interview, InvoiceType, Order, PayMethod, Visit } from '../data/types';
+import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
 import { addMinutes, formatDate, formatTerm } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
@@ -26,15 +26,27 @@ import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui
 import { ContactBar, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
 import { Photos } from './photos';
 
-const INTERVIEW_FIELDS: Array<[keyof Interview, string, string]> = [
-  ['since', 'Kiedy się zaczęło?', 'Np. od miesiąca, po wakacjach'],
-  ['what', 'Co dokładnie się dzieje?', ''],
-  ['where', 'Gdzie?', 'Kuchnia, łazienka, sypialnia…'],
-  ['bites', 'Czy są ugryzienia?', ''],
-  ['seen', 'Czy widziano owady?', 'Ile, jakie, o jakiej porze'],
-  ['selfTreatment', 'Środki użyte na własną rękę', ''],
-  ['other', 'Inne uwagi', 'Dzieci, zwierzęta, alergie'],
-];
+/** Pytanie tak/nie. Ponowne dotknięcie zaznaczonej odpowiedzi ją czyści. */
+function YesNoField(props: { label: string; value: YesNo; onChange: (value: YesNo) => void }) {
+  return (
+    <div className="field">
+      <span className="field-label">{props.label}</span>
+      <div className="segmented yes-no" role="group" aria-label={props.label}>
+        {(['tak', 'nie'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            className={props.value === v ? 'active' : ''}
+            aria-pressed={props.value === v}
+            onClick={() => props.onChange(props.value === v ? '' : v)}
+          >
+            {v === 'tak' ? 'Tak' : 'Nie'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** Pole zapisywane na bieżąco: każda zmiana trafia do bazy po chwili bezczynności i przy opuszczeniu pola. */
 function AutoText(props: { label: string; value: string; placeholder?: string; rows?: number; onSave: (value: string) => void }) {
@@ -154,7 +166,7 @@ function History({ list, current }: { list: Visit[]; current: Visit }) {
           {workSummary(v) && <span>Wykonano: {workSummary(v)}</span>}
           {v.findings && <span>Zastano: {v.findings}</span>}
           {v.problems && <span>Problemy: {v.problems}</span>}
-          {v.interview.where && <span>Gdzie: {v.interview.where}</span>}
+          {normalizeInterview(v.interview).situation && <span>Sytuacja: {normalizeInterview(v.interview).situation}</span>}
           {v.amount !== null && v.payMethod && (
             <span>
               Płatność: {moneyToInput(v.amount)} zł, {PAY_NAMES[v.payMethod]}
@@ -272,11 +284,13 @@ export function VisitPage() {
   const price = priceRange(order, settings.vatRate);
   const save = (patch: Partial<Visit>) => void run(() => visits.update(visit.id, patch));
   // Świeży odczyt z bazy: dwa pola zapisane tuż po sobie nie mogą nadpisać się nawzajem.
-  const saveInterview = (key: keyof Interview, value: string) =>
+  // Zapis zawsze w obecnej postaci wywiadu, także dla zabiegu zapisanego w dawnej.
+  const saveInterview = <K extends keyof Interview>(key: K, value: Interview[K]) =>
     void run(async () => {
       const current = await visits.get(visit.id);
-      if (current) await visits.update(visit.id, { interview: { ...current.interview, [key]: value } });
+      if (current) await visits.update(visit.id, { interview: { ...normalizeInterview(current.interview), [key]: value } });
     });
+  const interview = normalizeInterview(visit.interview);
   const active = visit.status === 'w_trakcie' || visit.status === 'wykonany';
 
   const sendFinishSms = async (done: Visit, next: Visit | null) => {
@@ -401,9 +415,20 @@ export function VisitPage() {
           </Group>
 
           <Group title="Wywiad" plain>
-            {INTERVIEW_FIELDS.map(([key, label, placeholder]) => (
-              <AutoText key={key} label={label} placeholder={placeholder} value={visit.interview[key]} onSave={(v) => saveInterview(key, v)} />
-            ))}
+            <AutoText
+              label="Opis sytuacji"
+              placeholder="Co się dzieje, gdzie, od kiedy"
+              rows={4}
+              value={interview.situation}
+              onSave={(v) => saveInterview('situation', v)}
+            />
+            <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />
+            <YesNoField label="Czy widziano owady?" value={interview.seen} onChange={(v) => saveInterview('seen', v)} />
+            {interview.seen === 'tak' && (
+              <AutoText label="Ile owadów?" placeholder="Np. kilka, ok. 20" rows={1} value={interview.seenCount} onSave={(v) => saveInterview('seenCount', v)} />
+            )}
+            <YesNoField label="Czy klient używał środków na własną rękę?" value={interview.selfTreatment} onChange={(v) => saveInterview('selfTreatment', v)} />
+            <AutoText label="Inne uwagi" placeholder="Czy coś zauważyłem podczas zabiegu" rows={3} value={interview.other} onSave={(v) => saveInterview('other', v)} />
           </Group>
 
           <Group title="Wykonane" plain>

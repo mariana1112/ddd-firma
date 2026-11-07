@@ -1737,3 +1737,7 @@ legend + * {
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
+
+.yes-no {
+  max-width: 220px;
+}

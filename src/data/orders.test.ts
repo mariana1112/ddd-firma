@@ -4,8 +4,8 @@ import { createOrder, finishVisit, orderVisits, startVisit, type OrderDraft } fr
 import { buildReport, formatPln, periodOf, reportText, shiftPeriod } from './reports';
 import { expenses, orders, trips, visits } from './repo';
 import { DEFAULT_APP, getProfile, nextOrderNumber, ownedBy, saveProfile, setOrderCounter, setSyncState } from './settings';
-import { centralExport, finishSms, mapsUrl, orderAddress, priceRange, reminderSms, smsUrl, workSummary } from './texts';
-import { EMPTY_INTERVIEW } from './orders';
+import { centralExport, finishSms, interviewLines, mapsUrl, orderAddress, priceRange, reminderSms, smsUrl, workSummary } from './texts';
+import { EMPTY_INTERVIEW, normalizeInterview } from './orders';
 import type { Visit } from './types';
 
 const draft = (over: Partial<OrderDraft> = {}): OrderDraft => ({
@@ -157,14 +157,17 @@ describe('teksty', () => {
       places: ['listwy'],
       findings: 'Duża kolonia za lodówką',
       problems: 'Sąsiad też ma karaluchy',
-      interview: { ...EMPTY_INTERVIEW, since: 'od miesiąca' },
+      interview: { ...EMPTY_INTERVIEW, situation: 'Karaluchy w kuchni od miesiąca', seen: 'tak', seenCount: 'ok. 20', bites: 'nie' },
     };
     const text = centralExport(order, done, [done]);
     expect(text).toContain(`Zlecenie #${order.number}, zabieg 1 z 1`);
     expect(text).toContain('blok, klatka B, piętro 3');
     expect(text).toContain('Co zastałem: Duża kolonia za lodówką');
     expect(text).toContain('Problemy: Sąsiad też ma karaluchy');
-    expect(text).toContain('- Od kiedy: od miesiąca');
+    expect(text).toContain('- Opis sytuacji: Karaluchy w kuchni od miesiąca');
+    expect(text).toContain('- Ugryzienia: nie');
+    expect(text).toContain('- Widziane owady: tak, ile: ok. 20');
+    expect(text).not.toContain('Środki na własną rękę');
     expect(text).toContain('Płatność: 350 zł, BLIK, bez faktury');
     expect(text).toContain('KOD PINK: agresywny pies');
   });
@@ -302,5 +305,26 @@ describe('właściciel rekordów', () => {
     expect(ownedBy('u1', 'u1', false)).toBe(true);
     expect(ownedBy('u2', 'u1', true)).toBe(false);
     expect(ownedBy('u2', null, true)).toBe(true);
+  });
+});
+
+describe('wywiad', () => {
+  it('dawny wywiad tekstowy przechodzi do opisu sytuacji i odpowiedzi tak/nie', () => {
+    const old = { since: 'od miesiąca', what: 'Karaluchy nocą', where: 'kuchnia', bites: 'Tak, na nogach', seen: 'kilka w kuchni', selfTreatment: 'nie', other: 'pies' };
+    expect(normalizeInterview(old)).toEqual({
+      situation: ['Karaluchy nocą', 'Gdzie: kuchnia', 'Od kiedy: od miesiąca', 'Ugryzienia: na nogach'].join('\n'),
+      bites: 'tak',
+      seen: 'tak',
+      seenCount: 'kilka w kuchni',
+      selfTreatment: 'nie',
+      other: 'pies',
+    });
+    expect(normalizeInterview(undefined)).toEqual(EMPTY_INTERVIEW);
+  });
+
+  it('obecny wywiad zostaje bez zmian', () => {
+    const now = { situation: 'Pluskwy w sypialni', bites: 'tak', seen: 'nie', seenCount: '', selfTreatment: 'tak', other: '' } as const;
+    expect(normalizeInterview(now)).toEqual(now);
+    expect(interviewLines(now)).toEqual(['Opis sytuacji: Pluskwy w sypialni', 'Ugryzienia: tak', 'Widziane owady: nie', 'Środki na własną rękę: tak']);
   });
 });

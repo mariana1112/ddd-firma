@@ -221,13 +221,21 @@ export interface Order extends BaseRecord {
 export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';
 
 /** Wywiad na wzór SAMPLE: co, gdzie, od kiedy, objawy i wcześniejsze działania klienta. */
+/** Odpowiedź tak/nie; pusta, gdy technik jeszcze nie zapytał. */
+export type YesNo = '' | 'tak' | 'nie';
+
+/**
+ * Wywiad z klientem. Zabiegi sprzed tej postaci miały osobne pola tekstowe since, what i where;
+ * normalizeInterview w data/orders.ts przenosi je do opisu sytuacji.
+ */
 export interface Interview {
-  since: string;
-  what: string;
-  where: string;
-  bites: string;
-  seen: string;
-  selfTreatment: string;
+  /** Jeden opis sytuacji: co się dzieje, gdzie, od kiedy. */
+  situation: string;
+  bites: YesNo;
+  seen: YesNo;
+  /** Ile owadów widziano, gdy seen = 'tak', np. „kilka”, „ok. 20”. */
+  seenCount: string;
+  selfTreatment: YesNo;
   other: string;
 }
 

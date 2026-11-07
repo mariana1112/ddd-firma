@@ -1,5 +1,6 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
+import { normalizeInterview } from './interview';
 import type { AppSettings } from './settings';
 import type { BuildingType, InvoiceType, Order, PayMethod, PestCategory, Visit } from './types';
 
@@ -120,15 +121,17 @@ export function finishSms(visit: Visit, next: Visit | null, settings: AppSetting
   return lines.join('\n');
 }
 
-const INTERVIEW_LABELS: Array<[keyof Visit['interview'], string]> = [
-  ['since', 'Od kiedy'],
-  ['what', 'Co się dzieje'],
-  ['where', 'Gdzie'],
-  ['bites', 'Ugryzienia'],
-  ['seen', 'Widziane owady'],
-  ['selfTreatment', 'Środki na własną rękę'],
-  ['other', 'Inne'],
-];
+/** Wywiad jako wiersze „etykieta: wartość”, tylko z odpowiedziami, które technik zapisał. */
+export function interviewLines(raw: Visit['interview']): string[] {
+  const i = normalizeInterview(raw);
+  const lines: string[] = [];
+  if (i.situation) lines.push(`Opis sytuacji: ${i.situation.replace(/\n+/g, '; ')}`);
+  if (i.bites) lines.push(`Ugryzienia: ${i.bites}`);
+  if (i.seen) lines.push(`Widziane owady: ${i.seen}${i.seen === 'tak' && i.seenCount ? `, ile: ${i.seenCount}` : ''}`);
+  if (i.selfTreatment) lines.push(`Środki na własną rękę: ${i.selfTreatment}`);
+  if (i.other.trim()) lines.push(`Inne uwagi: ${i.other.trim()}`);
+  return lines;
+}
 
 /** Dane zabiegu dla centrali, która przygotowuje protokół. */
 export function centralExport(order: Order, visit: Visit, all: Visit[]): string {
@@ -146,9 +149,7 @@ export function centralExport(order: Order, visit: Visit, all: Visit[]): string 
     `Co zastałem: ${visit.findings.trim() || '—'}`,
     `Problemy: ${visit.problems.trim() || 'brak'}`,
   ];
-  const interview = INTERVIEW_LABELS.filter(([key]) => visit.interview[key].trim()).map(
-    ([key, label]) => `${label}: ${visit.interview[key].trim()}`,
-  );
+  const interview = interviewLines(visit.interview);
   if (interview.length) lines.push('Wywiad:', ...interview.map((l) => `- ${l}`));
   if (visit.recommendations.length) lines.push('Zalecenia:', ...visit.recommendations.map((r) => `- ${r}`));
   const pay = visit.amount ? `${zl(visit.amount)} zł, ${visit.payMethod ? PAY_NAMES[visit.payMethod] : 'forma nieznana'}` : 'brak';

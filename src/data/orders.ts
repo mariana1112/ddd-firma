@@ -6,19 +6,11 @@ import { DomainError } from './domain';
 import { normalizePlate, tripKm } from './mileage';
 import { attachments, orders, visits, trips, type NewRecord } from './repo';
 import { getAppSettings, getProfile, nextOrderNumber, ownedBy } from './settings';
-import type { Interview, Order, PayMethod, Visit } from './types';
+import { EMPTY_INTERVIEW } from './interview';
+import type { Order, PayMethod, Visit } from './types';
 
 export { orders, visits, trips };
-
-export const EMPTY_INTERVIEW: Interview = {
-  since: '',
-  what: '',
-  where: '',
-  bites: '',
-  seen: '',
-  selfTreatment: '',
-  other: '',
-};
+export { EMPTY_INTERVIEW, normalizeInterview } from './interview';
 
 export type OrderDraft = Omit<NewRecord<Order>, 'number' | 'ownerId' | 'ownerName' | 'closed'>;
 
