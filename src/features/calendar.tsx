@@ -9,7 +9,7 @@ import '@fullcalendar/react/skeleton.css';
 import '@fullcalendar/react/themes/classic/theme.css';
 import '@fullcalendar/react/themes/classic/palette.css';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
 import { pestName } from '../data/texts';
@@ -37,6 +37,20 @@ function initialView(): string {
   return window.matchMedia('(min-width: 900px)').matches ? 'timeGridWeek' : 'listWeek';
 }
 
+const NARROW = '(max-width: 600px)';
+
+/** Wąski ekran telefonu: w widoku miesiąca mieści się tylko numer zlecenia. */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
+  useEffect(() => {
+    const query = window.matchMedia(NARROW);
+    const onChange = () => setNarrow(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
+
 /** Kalendarz działa w "UTC", a terminy są czasem warszawskim, więc nic ich nie przesuwa. */
 const stripZone = (d: Date) => d.toISOString().slice(0, 16);
 
@@ -44,6 +58,7 @@ export default function CalendarPage() {
   const navigate = useNavigate();
   const { run, toast } = useFeedback();
   const [view] = useState(initialView);
+  const narrow = useNarrow();
   const rows = useLiveQuery(async () => ({ visits: await visits.all(), orders: await orders.all() }));
 
   const events = useMemo(() => {
@@ -61,6 +76,7 @@ export default function CalendarPage() {
           color: STATUS_COLOR[v.status],
           textColor: 'var(--surface)',
           editable: v.status === 'zaplanowany',
+          extendedProps: { number: order.number, pink: order.pink },
         };
       });
   }, [rows]);
@@ -91,6 +107,19 @@ export default function CalendarPage() {
           scrollTime="07:00:00"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           dayMaxEvents={3}
+          views={{
+            // Na telefonie dzień miesiąca ma ok. 50 px: zamiast opisu kolorowy znacznik z numerem, wszystkie bez „+więcej”.
+            dayGridMonth: narrow ? { eventDisplay: 'block', dayMaxEvents: false } : {},
+          }}
+          eventContent={(arg) => {
+            if (!narrow || arg.view.type !== 'dayGridMonth') return true;
+            const { number, pink } = arg.event.extendedProps as { number: number; pink: boolean };
+            return (
+              <span className={pink ? 'cal-pill cal-pill-pink' : 'cal-pill'} title={arg.event.title}>
+                #{number}
+              </span>
+            );
+          }}
           noEventsText="Brak zabiegów w tym okresie"
           listItemEventTimeClass="cal-list-time"
           listItemEventTitleClass="cal-list-title"

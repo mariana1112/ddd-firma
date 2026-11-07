@@ -85,7 +85,8 @@ export function ReportsPage() {
         <Stat label="Parkingi i autostrady" value={formatPln(report.refunds)} />
         <Stat label="Premia" value={formatPln(report.bonus)} />
         <Stat label="Inne koszty" value={formatPln(report.otherCosts)} />
-        <Stat label="Kilometry" value={`${report.km.sluzbowy} służb. / ${report.km.prywatny} pryw.`} />
+        <Stat label="Km służbowo" value={`${report.km.sluzbowy} km`} />
+        <Stat label="Km prywatnie" value={`${report.km.prywatny} km`} />
       </div>
       {report.unpaid > 0 && <Badge tone="warn">Zabiegi bez zapisanej płatności: {report.unpaid}</Badge>}
 
