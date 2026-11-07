@@ -8,14 +8,14 @@ import {
   getDataKey,
   getDeviceId,
   getSyncState,
-  localJobCounter,
-  numberBlocksKey,
+  localOrderCounter,
+  saveProfile,
+  ORDER_NUMBERS_KEY,
   setDataKey,
   setSyncState,
   SYNCED_META_KEYS,
 } from '../settings';
 import type { Attachment, ChangeOp, MetaRow, NumberBlock, SyncState, SyncTable } from '../types';
-import { todayWarsaw } from '../../lib/dates';
 import { decryptFields, decryptFile, encryptFields, encryptFile } from './crypto';
 
 export interface PushChange {
@@ -51,7 +51,7 @@ export interface SyncServer {
 
 export class SyncError extends Error {}
 
-export type Account = Pick<SyncState, 'orgId' | 'orgName' | 'userId' | 'email'>;
+export type Account = Pick<SyncState, 'orgId' | 'orgName' | 'userId' | 'email' | 'role' | 'displayName' | 'branchId' | 'branchName'>;
 
 const PUSH_BATCH = 200;
 const PULL_PAGE = 500;
@@ -86,6 +86,8 @@ export async function enableSync(server: SyncServer, account: Account): Promise<
       if (row) await logChange('meta', key, 'put', row);
     }
     await setSyncState({ ...account, cursor: 0, lastSyncAt: null, lastError: null });
+    // Imię z konta podpisuje zlecenia, zabiegi i raporty tego urządzenia.
+    await saveProfile({ name: account.displayName ?? '', userId: account.userId });
   });
   await syncNow(server);
 }
@@ -240,22 +242,16 @@ export async function applyRemote(rows: RemoteRecord[]): Promise<void> {
   });
 }
 
-/** Pula numerów zleceń na bieżący rok, a w grudniu także na następny. */
+/** Pula numerów zleceń (#210) zarezerwowana na serwerze, żeby urządzenia nie nadawały tych samych. */
 async function topUpNumbers(server: SyncServer, state: SyncState): Promise<void> {
-  const today = todayWarsaw();
-  const year = today.slice(0, 4);
-  const years = today.slice(5, 7) === '12' ? [year, String(Number(year) + 1)] : [year];
-  for (const y of years) {
-    const key = numberBlocksKey(y);
-    const blocks = (((await db.meta.get(key))?.value as NumberBlock[] | undefined) ?? []).filter((b) => b.next <= b.end);
-    const left = blocks.reduce((sum, b) => sum + b.end - b.next + 1, 0);
-    if (left >= NUMBER_LOW_WATER) continue;
-    // Numery nadane przed włączeniem synchronizacji nie mogą się powtórzyć.
-    const minNext = (await localJobCounter(y)) + 1;
-    const first = await server.reserveNumbers(state.orgId, `job:${y}`, minNext, NUMBER_BLOCK);
-    blocks.push({ next: first, end: first + NUMBER_BLOCK - 1 });
-    await db.meta.put({ key, value: blocks, updatedAt: new Date().toISOString() });
-  }
+  const blocks = (((await db.meta.get(ORDER_NUMBERS_KEY))?.value as NumberBlock[] | undefined) ?? []).filter((b) => b.next <= b.end);
+  const left = blocks.reduce((sum, b) => sum + b.end - b.next + 1, 0);
+  if (left >= NUMBER_LOW_WATER) return;
+  // Numery nadane przed włączeniem synchronizacji albo bez internetu nie mogą się powtórzyć.
+  const minNext = (await localOrderCounter()) + 1;
+  const first = await server.reserveNumbers(state.orgId, 'order', minNext, NUMBER_BLOCK);
+  blocks.push({ next: first, end: first + NUMBER_BLOCK - 1 });
+  await db.meta.put({ key: ORDER_NUMBERS_KEY, value: blocks, updatedAt: new Date().toISOString() });
 }
 
 /** Plik zdjęcia zrobionego na innym urządzeniu, pobierany i odszyfrowywany przy pierwszym wyświetleniu. */

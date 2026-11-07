@@ -5,8 +5,9 @@ import { stockOf } from './calc';
 import { pendingCount } from './changes';
 import { db } from './db';
 import { addPurchase, createJob, deleteClient, emptyTrash, restoreRecord } from './domain';
-import { attachments, clients, jobs, newId, preparations, stockMovements } from './repo';
-import { getCompany, getDataKey, getSyncState, saveCompany, setDataKey } from './settings';
+import { attachments, clients, jobs, newId, orders, preparations, stockMovements } from './repo';
+import { createOrder, type OrderDraft } from './orders';
+import { getCompany, getDataKey, getSyncState, saveCompany, setDataKey, setOrderCounter } from './settings';
 import { createDataKey, decryptFields } from './sync/crypto';
 import { applyRemote, decryptRows, disableSync, enableSync, ensurePhoto, SyncError, syncNow, type Account } from './sync/engine';
 import type { Client } from './types';
@@ -310,33 +311,61 @@ describe('odporność', () => {
 });
 
 describe('numery zleceń', () => {
+  const draft = (): OrderDraft => ({
+    building: 'dom',
+    street: 'Polna',
+    houseNo: '1',
+    flatNo: '',
+    floor: '',
+    staircase: '',
+    postalCode: '',
+    city: 'Gdynia',
+    access: '',
+    pest: 'karaluchy',
+    pestOther: '',
+    description: '',
+    areaM2: null,
+    priceMin: null,
+    priceMax: null,
+    invoice: 'brak',
+    clientName: 'Klient',
+    email: '',
+    nip: '',
+    invoiceAddress: '',
+    phones: [{ number: '600700800', label: '' }],
+    pink: false,
+    pinkNote: '',
+  });
+  const plan = { start: null, durationMin: 60 };
+
   it('dwa urządzenia nie nadają tego samego numeru, a numery sprzed synchronizacji się nie powtarzają', async () => {
     await useDevice('telefon');
-    const c = await clients.create(clientData('A'));
-    await createJob(jobDraft(c.id));
-    await createJob(jobDraft(c.id));
+    await setOrderCounter(209);
+    await createOrder(draft(), plan, null);
     await enableSync(server, account);
     await useDevice('komputer');
     await enableSync(server, account);
 
-    const numbers = new Set((await jobs.all()).map((j) => j.number));
-    for (let i = 0; i < 3; i++) numbers.add((await createJob(jobDraft(c.id))).number);
+    const numbers = new Set((await orders.all()).map((o) => o.number));
+    for (let i = 0; i < 3; i++) numbers.add((await createOrder(draft(), plan, null)).order.number);
     await syncNow(server);
     await useDevice('telefon');
-    for (let i = 0; i < 3; i++) numbers.add((await createJob(jobDraft(c.id))).number);
-    expect(numbers.size).toBe(8);
-    const year = String(new Date().getFullYear());
-    expect([...numbers].sort()).toContain(`Z/${year}/0003`);
+    for (let i = 0; i < 3; i++) numbers.add((await createOrder(draft(), plan, null)).order.number);
+    expect(numbers.size).toBe(7);
+    // Numeracja ciągnie się dalej od #210 nadanego przed włączeniem synchronizacji.
+    expect(Math.min(...numbers)).toBe(210);
+    expect([...numbers].every((n) => n >= 210)).toBe(true);
   });
 
-  it('po wyczerpaniu puli bez internetu numer dostaje znacznik urządzenia', async () => {
+  it('po wyczerpaniu puli bez internetu numeracja ciągnie się dalej od ostatniego numeru', async () => {
     await useDevice('telefon');
     await enableSync(server, account);
-    const c = await clients.create(clientData('A'));
-    const numbers: string[] = [];
-    for (let i = 0; i < 21; i++) numbers.push((await createJob(jobDraft(c.id))).number);
-    expect(numbers[19]).toMatch(/^Z\/\d{4}\/0020$/);
-    expect(numbers[20]).toMatch(/^Z\/\d{4}\/[0-9A-F]{4}-0001$/);
+    server.offline = true;
+    const numbers: number[] = [];
+    for (let i = 0; i < 21; i++) numbers.push((await createOrder(draft(), plan, null)).order.number);
+    expect(numbers.slice(0, 3)).toEqual([1, 2, 3]);
+    expect(numbers[20]).toBe(21);
+    expect(new Set(numbers).size).toBe(21);
   });
 });
 
@@ -461,6 +490,6 @@ describe('wylogowanie', () => {
 
     await disableSync({ wipe: true });
     expect(await clients.all()).toHaveLength(0);
-    expect((await getCompany()).name).toBe('');
+    expect((await getCompany()).name).not.toBe('Żółta Pszczółka');
   });
 });

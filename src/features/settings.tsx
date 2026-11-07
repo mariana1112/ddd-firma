@@ -1,8 +1,5 @@
-import { zodResolver } from '@hookform/resolvers/zod';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 import {
   exportBackup,
   listSnapshots,
@@ -13,19 +10,27 @@ import {
   type BackupSummary,
   type RestoreMode,
 } from '../data/backup';
-import { jobTotals, paidForJob } from '../data/calc';
 import { RECORD_TABLES, recordTable, type RecordTableName } from '../data/db';
 import { emptyTrash, restoreRecord } from '../data/domain';
-import { clients, jobs, payments, sites } from '../data/repo';
-import { getCompany, getLastBackupAt, getSyncState, saveCompany } from '../data/settings';
+import { orders, visits } from '../data/repo';
+import {
+  getAppSettings,
+  getLastBackupAt,
+  getProfile,
+  getSyncState,
+  localOrderCounter,
+  saveAppSettings,
+  saveProfile,
+  setOrderCounter,
+  type AppSettings,
+} from '../data/settings';
 import { isSyncConfigured } from '../data/sync/config';
-import type { BaseRecord, CompanySettings } from '../data/types';
+import { BUILDINGS, INVOICES, orderAddress, PAY_NAMES, pestName } from '../data/texts';
+import type { BaseRecord } from '../data/types';
 import { csvBlob, csvMoney } from '../lib/csv';
-import { formatDate, formatInstant, formatTerm } from '../lib/dates';
-import { imageToPngDataUrl } from '../lib/images';
-import { CLIENT_KINDS, joinAddress, STATUSES } from '../lib/labels';
+import { formatDate, formatInstant } from '../lib/dates';
+import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
-import { emailText, nipText, postalText, required } from '../ui/forms';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Field, Group, Info, Loading, Page, Row, Sheet } from '../ui/kit';
 
@@ -36,14 +41,22 @@ export function MorePage() {
   const sync = useLiveQuery(async () => (await getSyncState()) ?? null);
   return (
     <Page title="Więcej">
-      <Group title="Firma">
-        <Row to="/finanse" icon="wallet" title="Finanse" sub="Wpływy, koszty, należności" />
-        <Row to="/preparaty" icon="flask" title="Preparaty" sub="Stan, partie, terminy ważności" />
-        <Row to="/ewidencja" icon="book" title="Ewidencja zużycia" sub="Zestawienie do kontroli" />
-        <Row to="/cennik" icon="tag" title="Cennik usług" />
+      <Group title="Praca">
+        <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />
+        <Row to="/kilometry" icon="car" title="Kilometry" sub="Przejazdy służbowe i prywatne, wydruk" />
+        <Row to="/raporty" icon="chart" title="Raporty" sub="Dzień, tydzień, miesiąc, rozliczenie gotówki" />
+        {sync && <Row to="/oddzialy" icon="building" title="Oddziały" sub="Technicy i zlecenia oddziałów" />}
       </Group>
       <Group title="Aplikacja">
-        <Row to="/ustawienia" icon="gear" title="Dane firmy" sub="Na protokoły i oferty" />
+        <Row to="/ustawienia" icon="gear" title="Ustawienia" sub="Imię, premia, zalecenia, treść SMS" />
+        {isSyncConfigured && (
+          <Row
+            to="/konto"
+            icon="users"
+            title="Konto i synchronizacja"
+            sub={sync ? `${sync.email}, ostatnio ${sync.lastSyncAt ? formatInstant(sync.lastSyncAt) : 'jeszcze nie'}` : 'Wyłączona'}
+          />
+        )}
         <Row
           to="/kopie"
           icon="database"
@@ -51,175 +64,145 @@ export function MorePage() {
           sub={lastBackup ? `Ostatnia: ${formatInstant(lastBackup)}` : 'Nie zrobiono jeszcze kopii'}
         />
         <Row to="/kosz" icon="trash" title="Kosz" />
-        {isSyncConfigured && (
-          <Row
-            to="/konto"
-            icon="users"
-            title="Konto i synchronizacja"
-            sub={sync ? `${sync.email}, ostatnio ${sync.lastSyncAt ? formatInstant(sync.lastSyncAt) : "jeszcze nie"}` : "Wyłączona"}
-          />
-        )}
       </Group>
       <p className="about">
         {sync
-          ? "Dane są na tym urządzeniu i w kopii na serwerze firmy. Aplikacja działa bez internetu, a zmiany wysyła, gdy jest połączenie."
-          : "Wszystkie dane są zapisane wyłącznie na tym urządzeniu. Aplikacja działa bez internetu i nie wysyła danych nigdzie."}
+          ? 'Dane są na tym urządzeniu i w zaszyfrowanej kopii na serwerze firmy. Aplikacja działa bez internetu.'
+          : 'Wszystkie dane są zapisane wyłącznie na tym urządzeniu. Aplikacja działa bez internetu.'}
       </p>
     </Page>
   );
 }
 
-// ---------- Dane firmy ----------
+// ---------- Ustawienia ----------
 
-const companySchema = z.object({
-  name: required('Podaj nazwę firmy'),
-  owner: z.string(),
-  nip: nipText,
-  regon: z.string(),
-  street: z.string(),
-  postalCode: postalText,
-  city: z.string(),
-  phone: z.string(),
-  email: emailText,
-  bankAccount: z.string(),
-  vatPayer: z.boolean(),
-  defaultVatRate: z.string(),
-  offerValidityDays: z.string().refine((v) => Number(v) > 0, 'Podaj liczbę dni'),
-  protocolFooter: z.string(),
-});
-type CompanyValues = z.infer<typeof companySchema>;
+function ListEditor(props: { label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string }) {
+  const [draft, setDraft] = useState('');
+  return (
+    <div className="field">
+      <span className="field-label">{props.label}</span>
+      <div className="list-editor">
+        {props.items.map((item, i) => (
+          <div key={`${item}-${i}`} className="list-editor-row">
+            <span>{item}</span>
+            <button type="button" className="icon-btn" aria-label={`Usuń: ${item}`} onClick={() => props.onChange(props.items.filter((_, j) => j !== i))}>
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="inline-add">
+        <input value={draft} placeholder={props.placeholder} onChange={(e) => setDraft(e.target.value)} />
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={!draft.trim()}
+          onClick={() => {
+            props.onChange([...props.items, draft.trim()]);
+            setDraft('');
+          }}
+        >
+          Dodaj
+        </button>
+      </div>
+    </div>
+  );
+}
 
-function CompanyForm({ company }: { company: CompanySettings }) {
+function SettingsForm(props: { settings: AppSettings; name: string; synced: boolean; readOnly: boolean; counter: number }) {
   const { run, toast } = useFeedback();
-  const [logo, setLogo] = useState(company.logoDataUrl);
-  const { register, handleSubmit, watch, formState } = useForm<CompanyValues>({
-    resolver: zodResolver(companySchema),
-    defaultValues: {
-      ...company,
-      defaultVatRate: String(company.defaultVatRate),
-      offerValidityDays: String(company.offerValidityDays),
-    },
-  });
-  const { errors } = formState;
-  const vatPayer = watch('vatPayer');
+  const [s, setS] = useState(props.settings);
+  const [name, setName] = useState(props.name);
+  const [bonus, setBonus] = useState(moneyToInput(props.settings.thirdVisitBonus));
+  const [next, setNext] = useState(String(props.counter + 1));
+  const set = (patch: Partial<AppSettings>) => setS((prev) => ({ ...prev, ...patch }));
+  const bonusValue = parseMoney(bonus);
+  const nextValue = Number(next);
+  const valid = bonusValue !== null && Number.isInteger(nextValue) && nextValue > 0 && s.vatRate >= 0;
 
-  const onSubmit = (v: CompanyValues) =>
+  const save = () =>
     run(async () => {
-      await saveCompany({
-        ...v,
-        logoDataUrl: logo,
-        defaultVatRate: Number(v.defaultVatRate),
-        offerValidityDays: Number(v.offerValidityDays),
-      });
-      toast('Zapisano dane firmy');
+      if (!props.synced) await saveProfile({ ...(await getProfile()), name: name.trim() });
+      await saveAppSettings({ ...s, bossName: s.bossName.trim(), thirdVisitBonus: bonusValue! });
+      if (nextValue - 1 > props.counter) await setOrderCounter(nextValue - 1);
+      toast('Zapisano ustawienia');
     });
 
   return (
-    <form className="form" onSubmit={handleSubmit(onSubmit)} noValidate>
-      <fieldset>
-        <legend>Dane na dokumentach</legend>
-        <Field label="Nazwa firmy" error={errors.name?.message}>
-          <input {...register('name')} autoComplete="off" />
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valid) void save();
+      }}
+    >
+      {props.readOnly && <p className="notice notice-info">Ustawienia firmy zmienia szef. Zmiany docierają tu przy synchronizacji.</p>}
+      <fieldset disabled={props.readOnly}>
+        <legend>Rozliczenie</legend>
+        <Field label="Twoje imię" hint={props.synced ? 'Przy synchronizacji imię pochodzi z konta.' : 'Pojawia się w raportach i danych dla centrali.'}>
+          <input value={name} disabled={props.synced} onChange={(e) => setName(e.target.value)} autoComplete="given-name" />
         </Field>
-        <Field label="Właściciel / osoba wykonująca">
-          <input {...register('owner')} autoComplete="off" />
+        <Field label="Gotówkę rozliczam z (dopełniacz)" hint="W raporcie: „Wynik gotówka dla Piotrka”.">
+          <input value={s.bossName} onChange={(e) => set({ bossName: e.target.value })} />
         </Field>
         <div className="form-row">
-          <Field label="NIP" error={errors.nip?.message}>
-            <input {...register('nip')} inputMode="numeric" autoComplete="off" />
+          <Field label="Premia za 3. zabieg (zł)" error={bonusValue === null ? 'Podaj kwotę' : undefined}>
+            <input inputMode="decimal" value={bonus} onChange={(e) => setBonus(e.target.value)} />
           </Field>
-          <Field label="REGON">
-            <input {...register('regon')} inputMode="numeric" autoComplete="off" />
-          </Field>
-        </div>
-        <Field label="Ulica i numer">
-          <input {...register('street')} autoComplete="off" />
-        </Field>
-        <div className="form-row form-row-postal">
-          <Field label="Kod" error={errors.postalCode?.message}>
-            <input {...register('postalCode')} inputMode="numeric" placeholder="00-000" autoComplete="off" />
-          </Field>
-          <Field label="Miejscowość">
-            <input {...register('city')} autoComplete="off" />
+          <Field label="VAT (%)">
+            <input inputMode="numeric" value={String(s.vatRate)} onChange={(e) => set({ vatRate: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
           </Field>
         </div>
-        <div className="form-row">
-          <Field label="Telefon">
-            <input {...register('phone')} type="tel" inputMode="tel" autoComplete="off" />
-          </Field>
-          <Field label="E-mail" error={errors.email?.message}>
-            <input {...register('email')} type="email" inputMode="email" autoCapitalize="none" autoComplete="off" />
-          </Field>
-        </div>
-        <Field label="Numer konta">
-          <input {...register('bankAccount')} inputMode="numeric" autoComplete="off" />
-        </Field>
-        <div className="field">
-          <span className="field-label">Logo</span>
-          {logo && <img className="logo-preview" src={logo} alt="Logo firmy" />}
-          <div className="inline-actions">
-            <label className="btn btn-file">
-              {logo ? 'Zmień logo' : 'Wybierz logo'}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = '';
-                  if (file) void run(async () => setLogo(await imageToPngDataUrl(file)));
-                }}
-              />
-            </label>
-            {logo && (
-              <button type="button" className="link link-danger" onClick={() => setLogo(null)}>Usuń logo</button>
-            )}
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Rozliczenia</legend>
-        <label className="check">
-          <input type="checkbox" {...register('vatPayer')} />
-          Jestem płatnikiem VAT
-        </label>
-        <div className="form-row">
-          {vatPayer && (
-            <Field label="Domyślna stawka VAT">
-              <select {...register('defaultVatRate')}>
-                <option value="23">23%</option>
-                <option value="8">8%</option>
-                <option value="5">5%</option>
-                <option value="0">0%</option>
-              </select>
-            </Field>
-          )}
-          <Field label="Ważność oferty (dni)" error={errors.offerValidityDays?.message}>
-            <input {...register('offerValidityDays')} inputMode="numeric" autoComplete="off" />
-          </Field>
-        </div>
-        <Field label="Stopka dokumentów">
-          <textarea {...register('protocolFooter')} rows={2} />
+        <Field label="Następny numer zlecenia" hint={`Ostatni nadany: #${props.counter}. Numer można tylko podnieść.`}>
+          <input inputMode="numeric" value={next} onChange={(e) => setNext(e.target.value.replace(/\D/g, ''))} />
         </Field>
       </fieldset>
 
-      <button type="submit" className="btn btn-primary btn-block" disabled={formState.isSubmitting}>
-        Zapisz dane firmy
-      </button>
+      <fieldset disabled={props.readOnly}>
+        <legend>Zabieg</legend>
+        <ListEditor label="Zalecenia dla klienta" items={s.recommendations} placeholder="Nowe zalecenie" onChange={(recommendations) => set({ recommendations })} />
+        <ListEditor label="Rodzaje zabiegu" items={s.treatments} placeholder="Np. Oprysk ciśnieniowy" onChange={(treatments) => set({ treatments })} />
+        <ListEditor label="Miejsca" items={s.places} placeholder="Np. listwy" onChange={(places) => set({ places })} />
+      </fieldset>
+
+      <fieldset disabled={props.readOnly}>
+        <legend>Wiadomości SMS</legend>
+        <Field label="Przypomnienie o terminie" hint="Wstawki: {data}, {godzina}, {adres}, {numer}.">
+          <textarea rows={4} value={s.reminderTemplate} onChange={(e) => set({ reminderTemplate: e.target.value })} />
+        </Field>
+        <Field label="Początek wiadomości po zabiegu">
+          <textarea rows={2} value={s.finishGreeting} onChange={(e) => set({ finishGreeting: e.target.value })} />
+        </Field>
+      </fieldset>
+
+      {!props.readOnly && (
+        <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>
+          Zapisz ustawienia
+        </button>
+      )}
     </form>
   );
 }
 
 export function SettingsPage() {
-  const company = useLiveQuery(() => getCompany());
-  const [loaded, setLoaded] = useState<CompanySettings>();
-  // Formularz startuje z jednego odczytu, żeby zapis nie resetował pól w trakcie edycji.
+  const [loaded, setLoaded] = useState<{ settings: AppSettings; name: string; synced: boolean; readOnly: boolean; counter: number }>();
+  // Formularz startuje z jednego odczytu, żeby synchronizacja nie resetowała pól w trakcie edycji.
   useEffect(() => {
-    if (company && !loaded) setLoaded(company);
-  }, [company, loaded]);
+    void (async () => {
+      const sync = await getSyncState();
+      setLoaded({
+        settings: await getAppSettings(),
+        name: (await getProfile()).name,
+        synced: Boolean(sync),
+        // Ustawienia firmy na serwerze zmienia tylko szef, więc technik ich nie edytuje.
+        readOnly: Boolean(sync && sync.role && sync.role !== 'owner'),
+        counter: await localOrderCounter(),
+      });
+    })();
+  }, []);
   return (
-    <Page title="Dane firmy" back="/wiecej">
-      {loaded ? <CompanyForm company={loaded} /> : <Loading />}
+    <Page title="Ustawienia" back="/wiecej">
+      {loaded ? <SettingsForm {...loaded} /> : <Loading />}
     </Page>
   );
 }
@@ -232,12 +215,9 @@ function formatBytes(bytes: number): string {
 }
 
 const SUMMARY_LABELS: Array<[keyof BackupSummary['counts'], string]> = [
-  ['clients', 'Klienci'],
-  ['sites', 'Obiekty'],
-  ['jobs', 'Zlecenia'],
-  ['preparations', 'Preparaty'],
-  ['services', 'Usługi w cenniku'],
-  ['payments', 'Wpłaty'],
+  ['orders', 'Zlecenia'],
+  ['visits', 'Zabiegi'],
+  ['trips', 'Przejazdy'],
   ['expenses', 'Koszty'],
   ['attachments', 'Zdjęcia'],
 ];
@@ -318,40 +298,36 @@ export function BackupPage() {
     setBusy(null);
   };
 
-  const exportClientsCsv = () =>
+  const exportOrdersCsv = () =>
     run(async () => {
-      const rows = (await clients.all()).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+      const [orderRows, visitRows] = await Promise.all([orders.all(), visits.all()]);
+      const orderById = new Map(orderRows.map((o) => [o.id, o]));
+      const rows = visitRows
+        .filter((v) => orderById.has(v.orderId))
+        .sort((x, y) => (x.doneOn ?? x.start ?? '').localeCompare(y.doneOn ?? y.start ?? ''));
       deliverFile(
         csvBlob(
-          ['Nazwa', 'Rodzaj', 'Kontakt', 'Telefon', 'E-mail', 'NIP', 'Adres', 'Notatki'],
-          rows.map((c) => [c.name, CLIENT_KINDS[c.kind], c.contactPerson, c.phone, c.email, c.nip, joinAddress(c.street, c.postalCode, c.city), c.notes]),
-        ),
-        'klienci.csv',
-      );
-    });
-
-  const exportJobsCsv = () =>
-    run(async () => {
-      const [jobRows, clientRows, siteRows, paymentRows] = await Promise.all([jobs.all(), clients.all(), sites.all(), payments.all()]);
-      const clientById = new Map(clientRows.map((c) => [c.id, c]));
-      const siteById = new Map(siteRows.map((s) => [s.id, s]));
-      const sorted = jobRows.sort((a, b) => (a.start ?? '').localeCompare(b.start ?? ''));
-      deliverFile(
-        csvBlob(
-          ['Numer', 'Status', 'Termin', 'Wykonano', 'Klient', 'Obiekt', 'Usługa', 'Szkodnik', 'Brutto PLN', 'Wpłacono PLN', 'Faktura'],
-          sorted.map((j) => [
-            j.number,
-            STATUSES[j.status],
-            j.start ? formatTerm(j.start) : '',
-            j.completedOn ? formatDate(j.completedOn) : '',
-            clientById.get(j.clientId)?.name ?? '',
-            j.siteId ? (siteById.get(j.siteId)?.name ?? '') : '',
-            j.title,
-            j.pest,
-            csvMoney(jobTotals(j.lines).gross),
-            csvMoney(paidForJob(j.id, paymentRows)),
-            j.invoiceNo,
-          ]),
+          ['Numer', 'Zabieg', 'Termin', 'Wykonano', 'Technik', 'Klient', 'Telefon', 'Adres', 'Budynek', 'Szkodnik', 'Faktura', 'Forma płatności', 'Kwota PLN', 'Premia PLN', 'Kod pink'],
+          rows.map((v) => {
+            const o = orderById.get(v.orderId)!;
+            return [
+              o.number,
+              v.seq,
+              v.start ? formatDate(v.start) : '',
+              v.doneOn ? formatDate(v.doneOn) : '',
+              v.technicianName,
+              o.clientName,
+              o.phones[0]?.number ?? '',
+              orderAddress(o),
+              BUILDINGS[o.building],
+              pestName(o),
+              INVOICES[o.invoice],
+              v.payMethod ? PAY_NAMES[v.payMethod] : '',
+              v.amount !== null ? csvMoney(v.amount) : '',
+              csvMoney(v.bonus),
+              o.pink ? 'tak' : '',
+            ];
+          }),
         ),
         'zlecenia.csv',
       );
@@ -362,8 +338,9 @@ export function BackupPage() {
       <div className="notice notice-info">
         <Icon name="database" />
         <span>
-          Dane są tylko na tym urządzeniu. Utrata telefonu lub usunięcie aplikacji oznacza utratę danych, dlatego regularnie
-          zapisuj kopię, np. w iCloud Drive.
+          {synced
+            ? 'Dane są też w zaszyfrowanej kopii na serwerze. Własna kopia chroni przed pomyłkowym usunięciem i utratą hasła szyfrowania.'
+            : 'Dane są tylko na tym urządzeniu. Utrata telefonu lub usunięcie aplikacji oznacza utratę danych, dlatego regularnie zapisuj kopię, np. w iCloud Drive.'}
         </span>
       </div>
 
@@ -411,8 +388,7 @@ export function BackupPage() {
       </Group>
 
       <Group title="Eksport do arkusza">
-        <Row onClick={() => void exportClientsCsv()} icon="users" title="Klienci (CSV)" />
-        <Row onClick={() => void exportJobsCsv()} icon="clipboard" title="Zlecenia (CSV)" />
+        <Row onClick={() => void exportOrdersCsv()} icon="clipboard" title="Zlecenia i zabiegi (CSV)" />
       </Group>
 
       <Group title="Pamięć urządzenia">
@@ -479,6 +455,9 @@ const TRASH_LABELS: Record<RecordTableName, string> = {
   payments: 'Wpłata',
   expenses: 'Koszt',
   attachments: 'Zdjęcie',
+  orders: 'Zlecenie',
+  visits: 'Zabieg',
+  trips: 'Przejazd',
 };
 
 function trashTitle(table: RecordTableName, row: BaseRecord): string {
@@ -490,6 +469,12 @@ function trashTitle(table: RecordTableName, row: BaseRecord): string {
       return `${(Number(r.amount) / 100).toFixed(2).replace('.', ',')} zł, ${formatDate(r.date as string)}`;
     case 'expenses':
       return `${r.category}, ${(Number(r.amount) / 100).toFixed(2).replace('.', ',')} zł`;
+    case 'orders':
+      return `#${r.number} ${r.clientName}`;
+    case 'visits':
+      return `Zabieg ${r.seq}${r.doneOn ? `, ${formatDate(r.doneOn as string)}` : ''}`;
+    case 'trips':
+      return `${r.from} → ${r.to}, ${formatDate(r.date as string)}`;
     case 'stockMovements':
       return `${r.type === 'zakup' ? 'Zakup' : 'Korekta'}, ${formatDate(r.date as string)}`;
     default:

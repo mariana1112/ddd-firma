@@ -1199,3 +1199,464 @@ legend + * {
 .group-hint {
   padding: 0 4px;
 }
+
+/* ---------- Pogromcy Insektów: płatności, kod pink, kontakt ---------- */
+
+:root {
+  --cash: #1d7a44;
+  --cash-soft: #dcf2e3;
+  --blik: #6b3fb8;
+  --blik-soft: #ece4fa;
+  --transfer: #1f5fa8;
+  --transfer-soft: #dfeafa;
+  --pink: #c2185b;
+  --pink-soft: #fde4ee;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --cash: #6fd39a;
+    --cash-soft: #173a26;
+    --blik: #c4a6f5;
+    --blik-soft: #2e2346;
+    --transfer: #8fbaf0;
+    --transfer-soft: #1b2e47;
+    --pink: #f48fb8;
+    --pink-soft: #4a1c2e;
+  }
+}
+
+.sheet-text {
+  white-space: pre-line;
+}
+
+.pay-badge,
+.pink-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.pay-gotowka { color: var(--cash); background: var(--cash-soft); }
+.pay-blik { color: var(--blik); background: var(--blik-soft); }
+.pay-przelew { color: var(--transfer); background: var(--transfer-soft); }
+.pink-badge { color: #fff; background: var(--pink); }
+
+.chip.chip-gotowka.active { color: #fff; background: var(--cash); }
+.chip.chip-blik.active { color: #fff; background: var(--blik); }
+.chip.chip-przelew.active { color: #fff; background: var(--transfer); }
+
+.notice-pink {
+  color: var(--pink);
+  background: var(--pink-soft);
+  font-weight: 600;
+}
+
+.check-pink {
+  color: var(--pink);
+  font-weight: 600;
+}
+
+.check-pink input {
+  accent-color: var(--pink);
+}
+
+.order-number {
+  font-weight: 700;
+  color: var(--primary);
+  margin-right: 2px;
+}
+
+.row-time {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-right: 8px;
+}
+
+.hero-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.contact-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.contact-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 64px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+
+.contact-btn:active {
+  background: var(--surface-2);
+}
+
+.contact-btn[disabled] {
+  opacity: 0.45;
+}
+
+.btn-big {
+  min-height: 58px;
+  font-size: 1.08rem;
+}
+
+.btn-sm {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+
+.card {
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* ---------- Pulpit ---------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 86px;
+  padding: 10px 6px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: 650;
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+.tile-primary {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.km-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.km-label {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.km-values {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.km-values strong {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* ---------- Kreator zlecenia ---------- */
+
+.wizard-progress {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+}
+
+.wizard-progress span {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+
+.wizard-progress span.done {
+  background: var(--primary);
+}
+
+.wizard-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.wizard-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.wizard-nav .btn {
+  flex: 1;
+}
+
+.edit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.choice-item {
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.choice-item.active {
+  color: var(--on-primary);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.input-short {
+  max-width: 110px;
+}
+
+.suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  text-align: left;
+  color: var(--text);
+  background: var(--primary-soft);
+}
+
+.suggestion strong::first-letter {
+  text-transform: uppercase;
+}
+
+.suggestion span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.price-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.price-box span {
+  color: var(--muted);
+}
+
+/* ---------- Zabieg ---------- */
+
+.pay-choice {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.pay-option {
+  min-height: 52px;
+  border-radius: 12px;
+  font-weight: 700;
+  border: 2px solid transparent;
+}
+
+.pay-option.active {
+  border-color: currentColor;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.chips-wrap {
+  flex-wrap: wrap;
+  overflow: visible;
+  margin-inline: 0;
+  padding-inline: 0;
+}
+
+.inline-add {
+  display: flex;
+  gap: 8px;
+}
+
+.inline-add input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 11px;
+  font-size: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.check-list .check {
+  align-items: flex-start;
+  min-height: 0;
+  padding: 6px 0;
+  font-size: 0.94rem;
+}
+
+.check-list .check input {
+  flex: none;
+  margin-top: 1px;
+}
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  font-size: 0.92rem;
+}
+
+.history span {
+  color: var(--muted);
+}
+
+/* ---------- Kilometry, raporty, ustawienia ---------- */
+
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.segmented button {
+  min-height: 40px;
+  border-radius: 10px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.segmented button.active {
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+}
+
+.segmented button.seg-sluzbowy.active {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.segmented button.seg-prywatny.active {
+  color: #fff;
+  background: var(--transfer);
+}
+
+.report-text {
+  margin: 0;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-family: inherit;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.list-editor {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.list-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 11px;
+  font-size: 0.92rem;
+}
+
+.list-editor-row + .list-editor-row {
+  border-top: 1px solid var(--line);
+}
+
+.list-editor-row span {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+}
+
+.member-move {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px 10px 56px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.member-move select {
+  flex: 1;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+}
+
+.invite-code {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding: 10px 0;
+}

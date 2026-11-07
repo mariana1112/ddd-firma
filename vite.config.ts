@@ -13,9 +13,9 @@ export default defineConfig({
       includeAssets: ['icons/apple-touch-icon.png', 'icons/icon.svg'],
       manifest: {
         id: './',
-        name: 'DDD Firma',
-        short_name: 'DDD Firma',
-        description: 'Lokalne zarządzanie firmą DDD: zlecenia, klienci, preparaty, finanse.',
+        name: 'Pogromcy Insektów',
+        short_name: 'Pogromcy',
+        description: 'Zlecenia, zabiegi, kilometrówka i rozliczenia technika Pogromców Insektów.',
         lang: 'pl',
         dir: 'ltr',
         start_url: './',

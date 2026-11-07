@@ -20,7 +20,7 @@ export function BackButton({ fallback }: { fallback: string }) {
 export function Page(props: { title: string; back?: string; actions?: ReactNode; children: ReactNode }) {
   useEffect(() => {
     window.scrollTo(0, 0);
-    document.title = `${props.title} · DDD Firma`;
+    document.title = `${props.title} · Pogromcy Insektów`;
   }, [props.title]);
   return (
     <div className={props.back ? 'page page-sub' : 'page'}>

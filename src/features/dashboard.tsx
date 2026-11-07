@@ -1,30 +1,49 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
-import { followUpsDue, monthSummary, outstandingJobs, overdueJobs, stockAlerts } from '../data/calc';
-import * as repo from '../data/repo';
-import { getCompany, getLastBackupAt, getSyncState } from '../data/settings';
-import { addDays, formatDate, formatDateLong, formatMonth, monthOf, todayWarsaw } from '../lib/dates';
-import { UNITS } from '../lib/labels';
-import { formatMoney, formatQty } from '../lib/money';
+import { buildReport, formatPln, periodOf } from '../data/reports';
+import { expenses, orders, trips, visits } from '../data/repo';
+import { getLastBackupAt, getProfile, getSyncState, ownedBy } from '../data/settings';
+import { orderAddress, pestName } from '../data/texts';
+import type { Order, Visit } from '../data/types';
+import { addDays, formatDate, formatDateLong, formatTime, monthOf, todayWarsaw } from '../lib/dates';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Group, Loading, Page, Row, Stat } from '../ui/kit';
 import { SyncNotice } from './account';
-import { JobRow } from './job-row';
+import { PinkBadge, VisitBadge } from './common';
+import { kmSummary } from './trips';
 
 const BACKUP_REMINDER_DAYS = 7;
 // Przy synchronizacji dane są też na serwerze, więc własna kopia jest rzadziej potrzebna.
 const SYNCED_BACKUP_REMINDER_DAYS = 30;
 
+function VisitRow({ visit, order, timeOnly }: { visit: Visit; order: Order; timeOnly?: boolean }) {
+  return (
+    <Row
+      to={`/zabieg/${visit.id}`}
+      title={
+        <>
+          {visit.start && <span className="row-time">{timeOnly ? formatTime(visit.start) : `${formatDate(visit.start)} ${formatTime(visit.start)}`}</span>}
+          <span className="order-number">#{order.number}</span> {order.clientName}
+        </>
+      }
+      sub={`${orderAddress(order)} · ${pestName(order)}, zabieg ${visit.seq}`}
+      trailing={
+        <span className="row-end">
+          {order.pink && <PinkBadge />}
+          <VisitBadge visit={visit} />
+        </span>
+      }
+    />
+  );
+}
+
 export function DashboardPage() {
   const data = useLiveQuery(async () => ({
-    jobs: await repo.jobs.all(),
-    clients: await repo.clients.all(),
-    sites: await repo.sites.all(),
-    payments: await repo.payments.all(),
-    expenses: await repo.expenses.all(),
-    preparations: await repo.preparations.all(),
-    movements: await repo.stockMovements.all(),
-    company: await getCompany(),
+    visits: await visits.all(),
+    orders: await orders.all(),
+    expenses: await expenses.all(),
+    trips: await trips.all(),
+    profile: await getProfile(),
     lastBackup: await getLastBackupAt(),
     synced: Boolean(await getSyncState()),
   }));
@@ -38,128 +57,125 @@ export function DashboardPage() {
   }
 
   const today = todayWarsaw();
-  const { jobs, clients, sites, payments, expenses, preparations, movements, company, lastBackup } = data;
-  const clientById = new Map(clients.map((c) => [c.id, c]));
-  const siteById = new Map(sites.map((s) => [s.id, s]));
+  const orderById = new Map(data.orders.map((o) => [o.id, o]));
+  const mine = <T extends { ownerId?: string | null }>(list: T[]) =>
+    list.filter((x) => ownedBy(x.ownerId, data.profile.userId, true));
+  const withOrder = data.visits
+    .filter((v) => orderById.has(v.orderId))
+    .map((visit) => ({ visit, order: orderById.get(visit.orderId)! }));
+  const planned = withOrder
+    .filter(({ visit }) => (visit.status === 'zaplanowany' || visit.status === 'w_trakcie') && visit.start)
+    .sort((a, b) => a.visit.start!.localeCompare(b.visit.start!));
+  // Dzisiaj pokazuje cały dzień, także zakończone zabiegi.
+  const todayList = withOrder
+    .filter(({ visit }) => visit.status !== 'odwolany' && visit.start?.slice(0, 10) === today)
+    .sort((a, b) => a.visit.start!.localeCompare(b.visit.start!));
+  const overdue = planned.filter(({ visit }) => visit.start!.slice(0, 10) < today);
+  const upcoming = planned.filter(({ visit }) => visit.start!.slice(0, 10) > today && visit.start!.slice(0, 10) <= addDays(today, 7));
+  const toSchedule = withOrder.filter(({ visit }) => visit.status === 'zaplanowany' && !visit.start);
 
-  const planned = jobs
-    .filter((j) => j.status === 'zaplanowane' && j.start)
-    .sort((a, b) => a.start!.localeCompare(b.start!));
-  const todayJobs = planned.filter((j) => j.start!.slice(0, 10) === today);
-  const weekLimit = addDays(today, 7);
-  const upcoming = planned.filter((j) => j.start!.slice(0, 10) > today && j.start!.slice(0, 10) <= weekLimit);
-  const overdue = overdueJobs(jobs, today);
-  const followUps = followUpsDue(jobs, today);
-  const unpaid = outstandingJobs(jobs, payments);
-  const unpaidTotal = unpaid.reduce((sum, u) => sum + u.balance, 0);
-  const alerts = stockAlerts(preparations, movements, jobs, today);
   const month = monthOf(today);
-  const summary = monthSummary(month, payments, expenses);
+  const km = kmSummary(mine(data.trips), `${month}-01`, `${month}-31`);
+  const week = buildReport(periodOf('tydzien', today), {
+    visits: data.visits.filter((v) => ownedBy(v.technicianId, data.profile.userId, true)),
+    orders: data.orders,
+    expenses: mine(data.expenses),
+    trips: [],
+  });
 
-  const hasData = clients.length + jobs.length > 0;
-  const backupDue =
-    hasData &&
-    (!lastBackup ||
-      lastBackup.slice(0, 10) < addDays(today, -(data.synced ? SYNCED_BACKUP_REMINDER_DAYS : BACKUP_REMINDER_DAYS)));
-  const setupDone = Boolean(company.name);
+  const hasData = data.orders.length > 0;
+  const remindAfter = data.synced ? SYNCED_BACKUP_REMINDER_DAYS : BACKUP_REMINDER_DAYS;
+  const backupDue = hasData && (!data.lastBackup || data.lastBackup.slice(0, 10) < addDays(today, -remindAfter));
 
   return (
-    <Page title="Pulpit">
+    <Page title={data.profile.name ? `Cześć, ${data.profile.name}` : 'Pulpit'}>
       <p className="page-date">{formatDateLong(today)}</p>
 
-      {!setupDone && (
-        <Group title="Na początek">
-          <Row to="/ustawienia" icon="gear" title="Uzupełnij dane firmy" sub="Trafią na protokoły i oferty" />
-          {clients.length === 0 && <Row to="/klienci/nowy" icon="users" title="Dodaj pierwszego klienta" />}
-          {preparations.length === 0 && <Row to="/preparaty/nowy" icon="flask" title="Dodaj preparaty" sub="Magazyn i ewidencja zużycia" />}
-        </Group>
-      )}
-
       <SyncNotice />
+
+      <div className="tiles">
+        <Link to="/zlecenia/nowe" className="tile tile-primary">
+          <Icon name="plus" size={26} />
+          <span>Nowe zlecenie</span>
+        </Link>
+        <Link to="/koszty" className="tile">
+          <Icon name="receipt" size={26} />
+          <span>Dodaj koszt</span>
+        </Link>
+        <Link to="/kilometry" className="tile">
+          <Icon name="car" size={26} />
+          <span>Przejazd</span>
+        </Link>
+      </div>
+
+      <Link to="/kilometry" className="km-card">
+        <span className="km-label">Kilometry w tym miesiącu</span>
+        <span className="km-values">
+          <span>
+            <strong className="num">{km.sluzbowy}</strong> km służbowo
+          </span>
+          <span>
+            <strong className="num">{km.prywatny}</strong> km prywatnie
+          </span>
+        </span>
+      </Link>
+
+      {!data.profile.name && (
+        <Link to="/ustawienia" className="notice notice-info">
+          <Icon name="users" />
+          <span>Wpisz swoje imię w ustawieniach. Trafi do raportów i danych dla centrali.</span>
+        </Link>
+      )}
 
       {backupDue && (
         <Link to="/kopie" className="notice notice-warn">
           <Icon name="alert" />
           <span>
-            <strong>Zrób kopię zapasową.</strong>{' '}
-            {lastBackup
-              ? `Ostatnia: ${formatDate(lastBackup)}.`
-              : data.synced
-                ? 'Serwer synchronizacji nie chroni przed pomyłkowym usunięciem danych.'
-                : 'Dane są tylko na tym urządzeniu.'}
+            <strong>Zrób kopię zapasową.</strong> {data.lastBackup ? `Ostatnia: ${formatDate(data.lastBackup)}.` : ''}
           </span>
         </Link>
       )}
 
-      <Link to="/zlecenia/nowe" className="btn btn-primary btn-block">
-        <Icon name="plus" /> Nowe zlecenie
-      </Link>
-
-      <Group title={`Dzisiaj${todayJobs.length ? ` (${todayJobs.length})` : ''}`}>
-        {todayJobs.length === 0 && <Empty title="Brak zleceń na dziś" />}
-        {todayJobs.map((job) => (
-          <JobRow key={job.id} job={job} client={clientById.get(job.clientId)} site={job.siteId ? siteById.get(job.siteId) : undefined} timeOnly />
+      <Group title={`Dzisiaj${todayList.length ? ` (${todayList.length})` : ''}`}>
+        {todayList.length === 0 && <Empty title="Brak zabiegów na dziś" />}
+        {todayList.map(({ visit, order }) => (
+          <VisitRow key={visit.id} visit={visit} order={order} timeOnly />
         ))}
       </Group>
 
       {overdue.length > 0 && (
-        <Group title={`Do zamknięcia (${overdue.length})`}>
-          {overdue.map((job) => (
-            <JobRow key={job.id} job={job} client={clientById.get(job.clientId)} site={job.siteId ? siteById.get(job.siteId) : undefined} overdue />
+        <Group title={`Niezakończone z poprzednich dni (${overdue.length})`}>
+          {overdue.map(({ visit, order }) => (
+            <VisitRow key={visit.id} visit={visit} order={order} />
           ))}
         </Group>
       )}
 
-      {followUps.length > 0 && (
-        <Group title={`Wizyty do umówienia (${followUps.length})`}>
-          {followUps.map((job) => (
-            <Row
-              key={job.id}
-              to={`/zlecenia/${job.id}`}
-              title={clientById.get(job.clientId)?.name ?? 'Klient'}
-              sub={job.title}
-              trailing={
-                <Badge tone={job.followUpDate! < today ? 'danger' : 'warn'}>{formatDate(job.followUpDate)}</Badge>
-              }
-            />
+      {toSchedule.length > 0 && (
+        <Group title={`Do umówienia z klientem (${toSchedule.length})`}>
+          {toSchedule.map(({ visit, order }) => (
+            <VisitRow key={visit.id} visit={visit} order={order} />
           ))}
         </Group>
       )}
 
       {upcoming.length > 0 && (
         <Group title={`Najbliższe 7 dni (${upcoming.length})`}>
-          {upcoming.map((job) => (
-            <JobRow key={job.id} job={job} client={clientById.get(job.clientId)} site={job.siteId ? siteById.get(job.siteId) : undefined} />
+          {upcoming.map(({ visit, order }) => (
+            <VisitRow key={visit.id} visit={visit} order={order} />
           ))}
         </Group>
       )}
 
       {hasData && (
-        <Group title={formatMonth(month)} action={<Link className="link" to="/finanse">Finanse</Link>} plain>
+        <Group title="Ten tydzień" action={<Link className="link" to="/raporty">Raporty</Link>} plain>
           <div className="stats">
-            <Stat label="Wpływy" value={formatMoney(summary.income)} />
-            <Stat label="Koszty" value={formatMoney(summary.costs)} />
-            <Stat label="Wynik" value={formatMoney(summary.result)} tone={summary.result < 0 ? 'danger' : 'ok'} />
-            <Stat label="Do zapłaty" value={formatMoney(unpaidTotal)} tone={unpaidTotal > 0 ? 'warn' : undefined} />
+            <Stat label="Obrót" value={formatPln(week.turnover)} />
+            <Stat label="Gotówka do oddania" value={formatPln(week.cashForBoss)} />
+            <Stat label="Koszty" value={formatPln(week.refunds + week.otherCosts)} />
+            <Stat label="Premia" value={formatPln(week.bonus)} tone={week.bonus > 0 ? 'ok' : undefined} />
           </div>
-        </Group>
-      )}
-
-      {alerts.length > 0 && (
-        <Group title={`Magazyn (${alerts.length})`}>
-          {alerts.map((alert) => (
-            <Row
-              key={`${alert.preparation.id}-${alert.kind}-${alert.batchNo ?? ''}`}
-              to={`/preparaty/${alert.preparation.id}`}
-              title={alert.preparation.name}
-              sub={
-                alert.batchNo !== undefined
-                  ? `Partia ${alert.batchNo || 'bez numeru'}, termin ${formatDate(alert.expiryDate)}`
-                  : `Stan: ${formatQty(alert.stockMilli)} ${UNITS[alert.preparation.unit]}`
-              }
-              trailing={<Badge tone={alert.kind === 'termin' ? 'warn' : 'danger'}>{alert.message}</Badge>}
-            />
-          ))}
+          {week.unpaid > 0 && <Badge tone="warn">Zabiegi bez zapisanej płatności: {week.unpaid}</Badge>}
         </Group>
       )}
     </Page>

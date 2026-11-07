@@ -669,7 +669,7 @@ describe('kopie zapasowe', () => {
 
     it('przywraca się i dostaje puste listy stacji oraz przeglądów', async () => {
       const { backup, summary } = await parseBackup(await v1File());
-      expect(summary.counts).toMatchObject({ clients: 1, sites: 1, jobs: 1 });
+      expect(summary.counts).toMatchObject({ clients: 1, jobs: 1 });
 
       await restoreBackup(backup, 'replace');
 
@@ -797,7 +797,7 @@ describe('migracja bazy', () => {
 
   it('wersja bazy zgadza się z SCHEMA_VERSION', () => {
     expect(db.verno).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(4);
+    expect(SCHEMA_VERSION).toBe(5);
   });
 
   it('dane z bazy w wersji 1 przechodzą na najnowszą wersję bez zmiany znaczników', async () => {

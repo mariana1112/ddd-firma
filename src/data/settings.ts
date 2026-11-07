@@ -3,8 +3,11 @@ import { logChange } from './changes';
 import { db, writeTransaction } from './db';
 import type { CompanySettings, NumberBlock, SyncState } from './types';
 
+/** Jedna firma, więc nazwa jest stała. */
+export const COMPANY_NAME = 'Pogromcy Insektów';
+
 export const DEFAULT_COMPANY: CompanySettings = {
-  name: '',
+  name: COMPANY_NAME,
   owner: '',
   nip: '',
   regon: '',
@@ -22,7 +25,7 @@ export const DEFAULT_COMPANY: CompanySettings = {
 };
 
 /** Klucze meta wspólne dla wszystkich urządzeń firmy. */
-export const SYNCED_META_KEYS = ['company'];
+export const SYNCED_META_KEYS = ['company', 'app'];
 
 /** Klucze opisujące to jedno urządzenie. Nie trafiają do kopii zapasowej ani na serwer. */
 export function isDeviceMetaKey(key: string): boolean {
@@ -30,6 +33,8 @@ export function isDeviceMetaKey(key: string): boolean {
     key === 'sync' ||
     key === 'deviceId' ||
     key === 'dataKey' ||
+    key === 'profile' ||
+    key.startsWith('geo:') ||
     key.startsWith('numbers:') ||
     key.startsWith('counter:offline:')
   );
@@ -127,5 +132,113 @@ export async function nextJobNumber(year: string): Promise<string> {
     const next = (await localJobCounter(year)) + 1;
     await db.meta.put({ key, value: next, updatedAt: new Date().toISOString() });
     return formatNumber(year, next);
+  });
+}
+
+// ---------- Ustawienia pracy technika ----------
+
+/** Ustawienia wspólne dla firmy: rozliczenie, premie i szablony wiadomości. */
+export interface AppSettings {
+  bossName: string;
+  /** Premia za samodzielne umówienie trzeciego zabiegu, w groszach. */
+  thirdVisitBonus: number;
+  vatRate: number;
+  treatments: string[];
+  places: string[];
+  recommendations: string[];
+  reminderTemplate: string;
+  finishGreeting: string;
+}
+
+export const DEFAULT_APP: AppSettings = {
+  bossName: 'Piotrka',
+  thirdVisitBonus: 5000,
+  vatRate: 23,
+  treatments: ['Oprysk ciśnieniowy', 'Żel', 'Zamgławianie', 'Opylanie', 'Pułapki lepowe', 'Stacje deratyzacyjne'],
+  places: ['listwy', 'kratka wentylacyjna', 'łóżka', 'materace', 'kuchnia', 'łazienka', 'szafki', 'za lodówką', 'piwnica', 'pralka'],
+  recommendations: [
+    'Nie myć podłóg ani listew przez 14 dni.',
+    'Wywietrzyć mieszkanie przez 2 godziny po powrocie.',
+    'Nie przebywać w mieszkaniu przez 4 godziny od zabiegu.',
+    'Zwierzęta i dzieci poza mieszkaniem w trakcie zabiegu i 4 godziny po nim.',
+    'Akwarium przykryć i wyłączyć napowietrzanie na czas zabiegu.',
+    'Pościel wyprać w 60°C i wysuszyć w suszarce.',
+    'Nie odkurzać miejsc, w których jest żel.',
+    'Chować żywność w szczelnych pojemnikach i nie zostawiać resztek.',
+    'Uszczelnić szczeliny i otwory przy rurach.',
+    'Zgłosić obecność owadów przed kolejnym zabiegiem.',
+  ],
+  reminderTemplate:
+    'Dzień dobry, przypominamy o zabiegu {data} o {godzina}, adres: {adres}. Prosimy o potwierdzenie, że termin jest aktualny. Pogromcy Insektów',
+  finishGreeting: 'Dzień dobry, dziękujemy za skorzystanie z usług Pogromców Insektów.',
+};
+
+export async function getAppSettings(): Promise<AppSettings> {
+  return { ...DEFAULT_APP, ...(await getMeta<Partial<AppSettings>>('app')) };
+}
+
+export async function saveAppSettings(settings: AppSettings): Promise<void> {
+  await setMeta('app', settings);
+}
+
+/** Kim jest użytkownik tego urządzenia. Przy synchronizacji imię pochodzi z konta. */
+export interface Profile {
+  name: string;
+  userId: string | null;
+}
+
+export async function getProfile(): Promise<Profile> {
+  const saved = await getMeta<Partial<Profile>>('profile');
+  // Urządzenie zalogowane przed dodaniem profilu ma imię i identyfikator tylko w stanie synchronizacji.
+  const sync = await getSyncState();
+  return {
+    name: saved?.name || sync?.displayName || '',
+    userId: saved?.userId ?? sync?.userId ?? null,
+  };
+}
+
+/** Rekord bez właściciela powstał na tym urządzeniu przed zalogowaniem, więc należy do jego użytkownika. */
+export function ownedBy(ownerId: string | null | undefined, userId: string | null, self: boolean): boolean {
+  if (!userId) return true;
+  return ownerId === userId || (self && !ownerId);
+}
+
+export async function saveProfile(profile: Profile): Promise<void> {
+  await db.meta.put({ key: 'profile', value: profile, updatedAt: new Date().toISOString() });
+}
+
+export const ORDER_NUMBERS_KEY = 'numbers:order';
+
+/** Numer, od którego zaczyna się numeracja, np. żeby kontynuować dotychczasową (#210). */
+export async function localOrderCounter(): Promise<number> {
+  return (await getMeta<number>('counter:order')) ?? 0;
+}
+
+export async function setOrderCounter(last: number): Promise<void> {
+  await db.meta.put({ key: 'counter:order', value: last, updatedAt: new Date().toISOString() });
+}
+
+/**
+ * Kolejny numer zlecenia. Przy synchronizacji pochodzi z puli zarezerwowanej na serwerze, więc
+ * urządzenia nie nadają tych samych numerów. Gdy pula wyczerpie się bez internetu, numer jest
+ * kolejnym po najwyższym znanym. Rzadki duplikat nie psuje danych, bo numer służy do wyszukiwania.
+ */
+export async function nextOrderNumber(): Promise<number> {
+  return db.transaction('rw', db.meta, async () => {
+    const counter = await localOrderCounter();
+    if (await getMeta<SyncState>('sync')) {
+      const blocks = (await getMeta<NumberBlock[]>(ORDER_NUMBERS_KEY)) ?? [];
+      const block = blocks.find((b) => b.next <= b.end);
+      if (block) {
+        const number = block.next;
+        block.next += 1;
+        await db.meta.put({ key: ORDER_NUMBERS_KEY, value: blocks, updatedAt: new Date().toISOString() });
+        await db.meta.put({ key: 'counter:order', value: Math.max(counter, number), updatedAt: new Date().toISOString() });
+        return number;
+      }
+    }
+    const next = counter + 1;
+    await db.meta.put({ key: 'counter:order', value: next, updatedAt: new Date().toISOString() });
+    return next;
   });
 }

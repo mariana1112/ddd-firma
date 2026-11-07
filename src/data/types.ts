@@ -167,6 +167,112 @@ export interface Expense extends BaseRecord {
   description: string;
   docNo: string;
   movementId: string | null;
+  /** Technik, który poniósł koszt. Brak w danych sprzed wersji 5 i w trybie bez konta. */
+  ownerId?: string | null;
+}
+
+// ---------- Zlecenia Pogromców Insektów (schemat 5) ----------
+
+export type BuildingType = 'dom' | 'blizniak' | 'blok';
+export type PestCategory = 'karaluchy' | 'chrzaszczowate' | 'pluskwy' | 'gryzonie' | 'inne';
+export type InvoiceType = 'brak' | 'imienna' | 'vat';
+export type PayMethod = 'gotowka' | 'blik' | 'przelew';
+
+export interface Phone {
+  number: string;
+  /** Np. "tata", "tutaj dzwonić". Pusty dla numeru głównego. */
+  label: string;
+}
+
+/** Zlecenie: klient, adres i problem. Kolejne zabiegi (wizyty) są osobnymi rekordami Visit. */
+export interface Order extends BaseRecord {
+  /** Numer do wyszukiwania, wyświetlany jako #210. */
+  number: number;
+  ownerId: string | null;
+  ownerName: string;
+  building: BuildingType;
+  street: string;
+  houseNo: string;
+  flatNo: string;
+  floor: string;
+  staircase: string;
+  postalCode: string;
+  city: string;
+  access: string;
+  pest: PestCategory;
+  pestOther: string;
+  description: string;
+  areaM2: number | null;
+  /** Widełki cenowe netto w groszach. */
+  priceMin: number | null;
+  priceMax: number | null;
+  invoice: InvoiceType;
+  clientName: string;
+  email: string;
+  nip: string;
+  invoiceAddress: string;
+  phones: Phone[];
+  /** Kod pink: trudny klient lub problematyczne mieszkanie. */
+  pink: boolean;
+  pinkNote: string;
+  closed: boolean;
+}
+
+export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';
+
+/** Wywiad na wzór SAMPLE: co, gdzie, od kiedy, objawy i wcześniejsze działania klienta. */
+export interface Interview {
+  since: string;
+  what: string;
+  where: string;
+  bites: string;
+  seen: string;
+  selfTreatment: string;
+  other: string;
+}
+
+/** Zabieg w ramach zlecenia: pierwszy, drugi, trzeci. */
+export interface Visit extends BaseRecord {
+  orderId: string;
+  seq: number;
+  /** Termin w Europe/Warsaw albo null, gdy technik umawia się sam z klientem. */
+  start: string | null;
+  durationMin: number;
+  status: VisitStatus;
+  technicianId: string | null;
+  technicianName: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  /** Dzień rozliczenia: data wykonania w Europe/Warsaw. */
+  doneOn: string | null;
+  payMethod: PayMethod | null;
+  /** Kwota pobrana od klienta, w groszach. */
+  amount: number | null;
+  interview: Interview;
+  treatments: string[];
+  places: string[];
+  findings: string;
+  problems: string;
+  recommendations: string[];
+  /** Premia technika za ten zabieg, np. za samodzielne umówienie trzeciej wizyty. */
+  bonus: number;
+  notes: string;
+}
+
+export type TripKind = 'sluzbowy' | 'prywatny';
+
+/** Przejazd do kilometrówki. Licznik w pełnych kilometrach. */
+export interface Trip extends BaseRecord {
+  ownerId: string | null;
+  date: string;
+  kind: TripKind;
+  timeFrom: string;
+  timeTo: string;
+  from: string;
+  to: string;
+  purpose: string;
+  odometerStart: number;
+  odometerEnd: number;
 }
 
 export interface Attachment extends BaseRecord {
@@ -190,6 +296,9 @@ export type SyncTable =
   | 'payments'
   | 'expenses'
   | 'attachments'
+  | 'orders'
+  | 'visits'
+  | 'trips'
   | 'meta';
 
 /**
@@ -226,6 +335,11 @@ export interface SyncState {
   cursor: number;
   lastSyncAt: string | null;
   lastError: string | null;
+  /** Rola w firmie: szef widzi wszystkie oddziały, technik swój. */
+  role?: 'owner' | 'technik';
+  displayName?: string;
+  branchId?: string | null;
+  branchName?: string;
 }
 
 export interface CompanySettings {

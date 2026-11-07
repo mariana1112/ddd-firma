@@ -13,9 +13,12 @@ import type {
   Site,
   Snapshot,
   StockMovement,
+  Order,
+  Visit,
+  Trip,
 } from './types';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 class AppDatabase extends Dexie {
   clients!: Table<Client, string>;
@@ -29,6 +32,9 @@ class AppDatabase extends Dexie {
   attachments!: Table<Attachment, string>;
   meta!: Table<MetaRow, string>;
   snapshots!: Table<Snapshot, string>;
+  orders!: Table<Order, string>;
+  visits!: Table<Visit, string>;
+  trips!: Table<Trip, string>;
   changes!: Table<ChangeRow, number>;
 
   constructor() {
@@ -69,6 +75,13 @@ class AppDatabase extends Dexie {
     // Szyfrowanie end-to-end. Bez zmian w tabelach: wersja mówi serwerowi, że aplikacja szyfruje,
     // a serwer odrzuca zmiany z wersji niższych (app_config.min_schema).
     this.version(4).stores({});
+    // Przebudowa pod Pogromców Insektów: zlecenia z danymi klienta, zabiegi i kilometrówka.
+    // Dawne tabele zostają, żeby aktualizacja nie usunęła żadnych danych z urządzenia.
+    this.version(5).stores({
+      orders: 'id, number, updatedAt',
+      visits: 'id, orderId, start, status, doneOn, updatedAt',
+      trips: 'id, date, updatedAt',
+    });
   }
 }
 
@@ -93,6 +106,9 @@ export const RECORD_TABLES = [
   'payments',
   'expenses',
   'attachments',
+  'orders',
+  'visits',
+  'trips',
 ] as const;
 
 export type RecordTableName = (typeof RECORD_TABLES)[number];

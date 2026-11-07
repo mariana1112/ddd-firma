@@ -1,13 +1,15 @@
 import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { ClientDetailPage, ClientEditPage, ClientNewPage, ClientsPage, SiteEditPage, SiteNewPage } from './features/clients';
-import { AccountPage } from './features/account';
+import { AccountPage, BranchesPage } from './features/account';
+import { CostsPage } from './features/costs';
 import { DashboardPage } from './features/dashboard';
-import { FinancePage } from './features/finance';
-import { JobCompletePage, JobDetailPage, JobEditPage, JobNewPage, JobsPage } from './features/jobs';
+import { OrderEditPage, OrderNewPage } from './features/order-form';
+import { OrderDetailPage, OrdersPage } from './features/orders';
+import { ReportsPage } from './features/reports';
 import { BackupPage, MorePage, SettingsPage, TrashPage } from './features/settings';
-import { PreparationDetailPage, PreparationEditPage, PreparationNewPage, PreparationsPage, ServicesPage, UsagePage } from './features/stock';
+import { TripsPage } from './features/trips';
+import { VisitPage } from './features/visit';
 import { FeedbackProvider } from './ui/feedback';
 import { Icon, type IconName } from './ui/icons';
 import { Loading } from './ui/kit';
@@ -18,16 +20,16 @@ const CalendarPage = lazy(() => import('./features/calendar'));
 const TABS: Array<{ to: string; label: string; icon: IconName; end?: boolean; also?: string[] }> = [
   { to: '/', label: 'Pulpit', icon: 'home', end: true },
   { to: '/kalendarz', label: 'Kalendarz', icon: 'calendar' },
-  { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard' },
-  { to: '/klienci', label: 'Klienci', icon: 'users', also: ['/obiekty'] },
-  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/cennik', '/preparaty', '/ewidencja', '/finanse', '/ustawienia', '/kopie', '/kosz', '/konto'] },
+  { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard', also: ['/zabieg'] },
+  { to: '/raporty', label: 'Raporty', icon: 'chart' },
+  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto'] },
 ];
 
 function Navigation() {
   const { pathname } = useLocation();
   return (
     <nav className="tabs" aria-label="Główna nawigacja">
-      <div className="tabs-brand">DDD Firma</div>
+      <div className="tabs-brand">Pogromcy Insektów</div>
       {TABS.map((tab) => (
         <NavLink
           key={tab.to}
@@ -96,29 +98,20 @@ export function App() {
                 <Routes>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/kalendarz" element={<CalendarPage />} />
-                  <Route path="/zlecenia" element={<JobsPage />} />
-                  <Route path="/zlecenia/nowe" element={<JobNewPage />} />
-                  <Route path="/zlecenia/:id" element={<JobDetailPage />} />
-                  <Route path="/zlecenia/:id/edycja" element={<JobEditPage />} />
-                  <Route path="/zlecenia/:id/protokol" element={<JobCompletePage />} />
-                  <Route path="/klienci" element={<ClientsPage />} />
-                  <Route path="/klienci/nowy" element={<ClientNewPage />} />
-                  <Route path="/klienci/:id" element={<ClientDetailPage />} />
-                  <Route path="/klienci/:id/edycja" element={<ClientEditPage />} />
-                  <Route path="/klienci/:id/obiekty/nowy" element={<SiteNewPage />} />
-                  <Route path="/obiekty/:id/edycja" element={<SiteEditPage />} />
+                  <Route path="/zlecenia" element={<OrdersPage />} />
+                  <Route path="/zlecenia/nowe" element={<OrderNewPage />} />
+                  <Route path="/zlecenia/:id" element={<OrderDetailPage />} />
+                  <Route path="/zlecenia/:id/edycja" element={<OrderEditPage />} />
+                  <Route path="/zabieg/:id" element={<VisitPage />} />
+                  <Route path="/raporty" element={<ReportsPage />} />
+                  <Route path="/koszty" element={<CostsPage />} />
+                  <Route path="/kilometry" element={<TripsPage />} />
                   <Route path="/wiecej" element={<MorePage />} />
-                  <Route path="/cennik" element={<ServicesPage />} />
-                  <Route path="/preparaty" element={<PreparationsPage />} />
-                  <Route path="/preparaty/nowy" element={<PreparationNewPage />} />
-                  <Route path="/preparaty/:id" element={<PreparationDetailPage />} />
-                  <Route path="/preparaty/:id/edycja" element={<PreparationEditPage />} />
-                  <Route path="/ewidencja" element={<UsagePage />} />
-                  <Route path="/finanse" element={<FinancePage />} />
                   <Route path="/ustawienia" element={<SettingsPage />} />
                   <Route path="/kopie" element={<BackupPage />} />
                   <Route path="/kosz" element={<TrashPage />} />
                   <Route path="/konto" element={<AccountPage />} />
+                  <Route path="/oddzialy" element={<BranchesPage />} />
                   <Route path="*" element={<DashboardPage />} />
                 </Routes>
               </Suspense>

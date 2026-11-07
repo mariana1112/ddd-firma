@@ -24,6 +24,9 @@ export interface BackupTables {
   payments: BaseRecord[];
   expenses: BaseRecord[];
   attachments: SerializedAttachment[];
+  orders: BaseRecord[];
+  visits: BaseRecord[];
+  trips: BaseRecord[];
   meta: MetaRow[];
 }
 
@@ -83,6 +86,10 @@ const tablesSchema = z.object({
   payments: z.array(base.extend({ jobId: z.string(), amount: grosze, date: z.string() })),
   expenses: z.array(base.extend({ amount: grosze, date: z.string() })),
   attachments: z.array(base.extend({ jobId: z.string(), mime: z.string(), dataBase64: z.string() })),
+  // Kopie sprzed wersji 5 nie mają tych tabel.
+  orders: z.array(base.extend({ number: z.number().int() })).default([]),
+  visits: z.array(base.extend({ orderId: z.string(), seq: z.number().int(), amount: grosze.nullable(), bonus: grosze })).default([]),
+  trips: z.array(base.extend({ date: z.string(), odometerStart: z.number(), odometerEnd: z.number() })).default([]),
   meta: z.array(z.looseObject({ key: z.string().min(1), updatedAt: z.string() })),
 });
 
@@ -183,7 +190,7 @@ export async function exportBackup(options: { includePhotos: boolean }): Promise
 export interface BackupSummary {
   exportedAt: string;
   includesPhotos: boolean;
-  counts: Record<'clients' | 'sites' | 'services' | 'jobs' | 'preparations' | 'payments' | 'expenses' | 'attachments', number>;
+  counts: Record<'orders' | 'visits' | 'trips' | 'expenses' | 'attachments' | 'clients' | 'jobs', number>;
 }
 
 /** Odczytuje plik kopii i sprawdza go w całości, zanim cokolwiek zostanie zapisane. */
@@ -219,14 +226,13 @@ export async function parseBackup(text: string): Promise<{ backup: BackupFile; s
       exportedAt: backup.exportedAt,
       includesPhotos: backup.includesPhotos,
       counts: {
-        clients: active(t.clients),
-        sites: active(t.sites),
-        services: active(t.services),
-        jobs: active(t.jobs),
-        preparations: active(t.preparations),
-        payments: active(t.payments),
+        orders: active(t.orders),
+        visits: active(t.visits),
+        trips: active(t.trips),
         expenses: active(t.expenses),
         attachments: active(t.attachments),
+        clients: active(t.clients),
+        jobs: active(t.jobs),
       },
     },
   };

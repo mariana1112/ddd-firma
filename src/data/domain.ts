@@ -2,9 +2,9 @@
 import { logChange } from './changes';
 import { db, RECORD_TABLES, writeTransaction, type RecordTableName } from './db';
 import { todayWarsaw } from '../lib/dates';
-import { attachments, clients, expenses, jobs, newId, payments, preparations, services, sites, stockMovements, type NewRecord } from './repo';
+import { attachments, clients, expenses, jobs, newId, orders, payments, preparations, services, sites, stockMovements, trips, visits, type NewRecord } from './repo';
 import { getSyncState, nextJobNumber } from './settings';
-import type { Attachment, BaitStation, BaseRecord, Expense, Job, JobStationCheck, Payment, Site, StationState, StockMovement } from './types';
+import type { Attachment, BaitStation, BaseRecord, Expense, Job, JobStationCheck, Payment, Site, StationState, StockMovement, Visit } from './types';
 
 export class DomainError extends Error {}
 
@@ -361,9 +361,26 @@ export async function restoreRecord(name: RecordTableName, id: string): Promise<
       case 'services':
         await services.restore(id);
         break;
+      case 'orders':
+        await restoreTogether(await db.visits.where('orderId').equals(id).toArray(), visits);
+        for (const visit of await db.visits.where('orderId').equals(id).toArray()) {
+          await restoreTogether(await db.attachments.where('jobId').equals(visit.id).toArray(), attachments);
+        }
+        await orders.restore(id);
+        break;
+      case 'visits':
+        await restoreParent(orders, (record as Visit).orderId);
+        await visits.restore(id);
+        break;
+      case 'trips':
+        await trips.restore(id);
+        break;
     }
 
     async function restoreJobChain(jobId: string) {
+      // Zdjęcie należy do zabiegu albo, w danych sprzed wersji 5, do dawnego zlecenia.
+      const visit = await restoreParent(visits, jobId);
+      if (visit) await restoreParent(orders, visit.orderId);
       const job = await restoreParent(jobs, jobId);
       if (job) {
         await restoreParent(clients, job.clientId);

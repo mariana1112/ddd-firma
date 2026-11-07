@@ -11,19 +11,20 @@ import '@fullcalendar/react/themes/classic/palette.css';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { clients, jobs } from '../data/repo';
-import type { JobStatus } from '../data/types';
+import { orders, visits } from '../data/repo';
+import { pestName } from '../data/texts';
+import type { VisitStatus } from '../data/types';
 import { addMinutes, formatTerm, nowWarsaw } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
 import { AddLink, Page } from '../ui/kit';
 
 const VIEW_KEY = 'ddd-kalendarz-widok';
 
-const STATUS_COLOR: Record<JobStatus, string> = {
-  wycena: 'var(--info)',
-  zaplanowane: 'var(--primary)',
-  wykonane: 'var(--ok)',
-  anulowane: 'var(--muted)',
+const STATUS_COLOR: Record<VisitStatus, string> = {
+  zaplanowany: 'var(--primary)',
+  w_trakcie: 'var(--warn)',
+  wykonany: 'var(--ok)',
+  odwolany: 'var(--muted)',
 };
 
 function initialView(): string {
@@ -43,22 +44,25 @@ export default function CalendarPage() {
   const navigate = useNavigate();
   const { run, toast } = useFeedback();
   const [view] = useState(initialView);
-  const rows = useLiveQuery(async () => ({ jobs: await jobs.all(), clients: await clients.all() }));
+  const rows = useLiveQuery(async () => ({ visits: await visits.all(), orders: await orders.all() }));
 
   const events = useMemo(() => {
     if (!rows) return [];
-    const nameOf = new Map(rows.clients.map((c) => [c.id, c.name]));
-    return rows.jobs
-      .filter((j) => j.start && j.status !== 'anulowane')
-      .map((j) => ({
-        id: j.id,
-        title: `${nameOf.get(j.clientId) ?? 'Klient'} · ${j.title}`,
-        start: j.start!,
-        end: addMinutes(j.start!, j.durationMin),
-        color: STATUS_COLOR[j.status],
-        textColor: 'var(--surface)',
-        editable: j.status === 'zaplanowane',
-      }));
+    const orderById = new Map(rows.orders.map((o) => [o.id, o]));
+    return rows.visits
+      .filter((v) => v.start && v.status !== 'odwolany' && orderById.has(v.orderId))
+      .map((v) => {
+        const order = orderById.get(v.orderId)!;
+        return {
+          id: v.id,
+          title: `#${order.number} ${pestName(order)}, ${order.city}${order.pink ? ' · PINK' : ''}`,
+          start: v.start!,
+          end: addMinutes(v.start!, v.durationMin),
+          color: STATUS_COLOR[v.status],
+          textColor: 'var(--surface)',
+          editable: v.status === 'zaplanowany',
+        };
+      });
   }, [rows]);
 
   return (
@@ -87,7 +91,7 @@ export default function CalendarPage() {
           scrollTime="07:00:00"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           dayMaxEvents={3}
-          noEventsText="Brak zleceń w tym okresie"
+          noEventsText="Brak zabiegów w tym okresie"
           listItemEventTimeClass="cal-list-time"
           listItemEventTitleClass="cal-list-title"
           events={events}
@@ -106,16 +110,16 @@ export default function CalendarPage() {
             const time = info.allDay ? '' : `&czas=${info.dateStr.slice(11, 16)}`;
             navigate(`/zlecenia/nowe?data=${date}${time}`);
           }}
-          eventClick={(info) => navigate(`/zlecenia/${info.event.id}`)}
+          eventClick={(info) => navigate(`/zabieg/${info.event.id}`)}
           eventDrop={(info) => {
             const { id, start: newStart } = info.event;
             if (!newStart) return;
             const oldStart = info.oldEvent.start ? stripZone(info.oldEvent.start) : null;
             const start = stripZone(newStart);
             void run(async () => {
-              await jobs.update(id, { start });
+              await visits.update(id, { start });
               toast(`Nowy termin: ${formatTerm(start)}`, {
-                action: { label: 'Cofnij', onClick: () => void run(() => jobs.update(id, { start: oldStart })) },
+                action: { label: 'Cofnij', onClick: () => void run(() => visits.update(id, { start: oldStart })) },
               });
             });
           }}
