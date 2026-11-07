@@ -1103,6 +1103,8 @@ legend + * {
 /* W widoku listy na telefonie nazwa klienta ma się zawijać, nie urywać. */
 .calendar .cal-block {
   display: flex;
+  box-sizing: border-box;
+  width: 100%;
   flex-direction: column;
   overflow: hidden;
   padding: 1px 3px 2px;

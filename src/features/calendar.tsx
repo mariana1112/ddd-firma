@@ -116,7 +116,7 @@ export default function CalendarPage() {
             const { number, pink } = arg.event.extendedProps as { number: number; pink: boolean };
             return (
               <span className={pink ? 'cal-block cal-block-pink' : 'cal-block'} title={arg.event.title}>
-                <span className="cal-block-time">{arg.timeText}</span>
+                <span className="cal-block-time">{arg.event.start ? stripZone(arg.event.start).slice(11, 16) : ''}</span>
                 <span className="cal-block-number">#{number}</span>
               </span>
             );
