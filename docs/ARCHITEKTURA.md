@@ -57,8 +57,9 @@ snapshots            migawki przed przywróceniem kopii (tylko lokalnie)
   widełki netto, faktura (`brak` | `imienna` | `vat`), klient, e-mail, NIP, adres do faktury, telefony z dopiskami,
   kod pink, zamknięcie.
 - **Visit**: zlecenie, numer kolejny, termin, czas, status (`zaplanowany` | `w_trakcie` | `wykonany` | `odwolany`),
-  technik, czas rozpoczęcia i zakończenia, dzień wykonania, płatność, kwota, wywiad, czynności, miejsca, co zastałem,
-  problemy, zalecenia, premia.
+  technik, czas rozpoczęcia i zakończenia, dzień wykonania, płatność, kwota, wywiad (opis sytuacji, odpowiedzi tak/nie,
+  liczba owadów, inne uwagi), czynności, miejsca, zalecenia, premia. Pola „co zastałem” i „problemy” zostały w modelu
+  dla dawnych zabiegów, ale ekran ich już nie pokazuje; dane dla centrali zawierają je tylko, gdy są wypełnione.
 - **Trip**: dzień, rodzaj (`sluzbowy` | `prywatny`), godziny, skąd, dokąd, cel, licznik przed i po.
 - Kwoty to grosze, terminy to czas ścienny Warszawy `YYYY-MM-DDTHH:mm`, znaczniki rekordów w UTC.
 - Tabele poprzedniej wersji (klienci, obiekty, preparaty, cennik, protokoły) zostały w schemacie `version(1–4)`, żeby

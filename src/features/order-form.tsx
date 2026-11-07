@@ -5,7 +5,7 @@ import { locate, suggestSlots, type Suggestion } from '../data/geo';
 import { createOrder, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
-import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange } from '../data/texts';
+import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
 import type { BuildingType, InvoiceType, Order, PestCategory } from '../data/types';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
@@ -374,15 +374,17 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           <Field label="Metraż (m²)" error={errors.area}>
             <input value={s.area} onChange={(e) => set({ area: e.target.value })} inputMode="decimal" autoComplete="off" />
           </Field>
-          <label className="check check-pink">
-            <input type="checkbox" checked={s.pink} onChange={(e) => set({ pink: e.target.checked })} />
-            Kod pink: trudny klient lub problematyczne mieszkanie
-          </label>
-          {s.pink && (
-            <Field label="Na co uważać">
-              <input value={s.pinkNote} onChange={(e) => set({ pinkNote: e.target.value })} autoComplete="off" />
-            </Field>
-          )}
+          <div className={s.pink ? 'pink-box active' : 'pink-box'}>
+            <label className="check check-pink">
+              <input type="checkbox" checked={s.pink} onChange={(e) => set({ pink: e.target.checked })} />
+              Kod pink: trudny klient lub problematyczne mieszkanie
+            </label>
+            {s.pink && (
+              <Field label="Co i jak?">
+                <textarea rows={3} value={s.pinkNote} placeholder={PINK_PLACEHOLDER} autoFocus onChange={(e) => set({ pinkNote: e.target.value })} />
+              </Field>
+            )}
+          </div>
         </div>
       );
     case 'termin':

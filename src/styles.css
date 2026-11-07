@@ -1264,6 +1264,19 @@ legend + * {
   accent-color: var(--pink);
 }
 
+.pink-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: var(--radius);
+}
+
+.pink-box.active {
+  padding: 10px 12px 12px;
+  border: 1.5px solid var(--pink);
+  background: var(--pink-soft);
+}
+
 .order-number {
   font-weight: 700;
   color: var(--primary);

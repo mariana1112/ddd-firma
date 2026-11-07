@@ -170,6 +170,10 @@ describe('teksty', () => {
     expect(text).not.toContain('Środki na własną rękę');
     expect(text).toContain('Płatność: 350 zł, BLIK, bez faktury');
     expect(text).toContain('KOD PINK: agresywny pies');
+    // Bez wypełnionych dawnych pól „co zastałem” i „problemy” tych wierszy nie ma.
+    const plain = centralExport(order, { ...done, findings: '', problems: '' }, [done]);
+    expect(plain).not.toContain('Co zastałem');
+    expect(plain).not.toContain('Problemy');
   });
 });
 

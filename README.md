@@ -16,8 +16,10 @@ zaszyfrowane.
   Niedokończony kreator zostaje zapamiętany. Numery `#210` są wspólne dla całej firmy.
 - **Zabieg u klienta**:
   - przycisk rozpoczęcia, płatność z kolorami (gotówka, BLIK, przelew), zmiana faktury,
-  - wywiad zapisywany na bieżąco, który nie znika po zamknięciu aplikacji,
-  - wykonane czynności i miejsca, co zastałem, problemy, zdjęcia, historia zabiegów u tego klienta.
+  - wywiad zapisywany na bieżąco, który nie znika po zamknięciu aplikacji: opis sytuacji, ugryzienia, widziane owady
+    (z liczbą), środki użyte na własną rękę (tak/nie) i inne uwagi,
+  - wykonane czynności i miejsca, zdjęcia, historia zabiegów u tego klienta,
+  - kod pink z opisem „co i jak”, który pojawia się po zaznaczeniu.
 - **Zakończenie zabiegu**:
   - zalecenia z szablonów i SMS do klienta z podsumowaniem „Oprysk ciśnieniowy (listwy, kratka, łóżka)”,
   - drugi albo trzeci zabieg, a za trzeci umówiony przez technika premia 50 zł,

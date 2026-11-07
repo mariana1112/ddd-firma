@@ -133,6 +133,9 @@ export function interviewLines(raw: Visit['interview']): string[] {
   return lines;
 }
 
+/** Podpowiedź w opisie kodu pink. */
+export const PINK_PLACEHOLDER = 'Opisz, co się dzieje i jak postępować, np. agresywny pies, klient nie otwiera bez telefonu';
+
 /** Dane zabiegu dla centrali, która przygotowuje protokół. */
 export function centralExport(order: Order, visit: Visit, all: Visit[]): string {
   const total = Math.max(all.length, visit.seq);
@@ -146,8 +149,9 @@ export function centralExport(order: Order, visit: Visit, all: Visit[]): string 
     order.areaM2 ? `Metraż: ${order.areaM2} m²` : '',
     `Szkodnik: ${pestName(order)}`,
     `Wykonano: ${workSummary(visit) || '—'}`,
-    `Co zastałem: ${visit.findings.trim() || '—'}`,
-    `Problemy: ${visit.problems.trim() || 'brak'}`,
+    // Zabiegi sprzed usunięcia tych pól mogą je mieć wypełnione.
+    visit.findings.trim() && `Co zastałem: ${visit.findings.trim()}`,
+    visit.problems.trim() && `Problemy: ${visit.problems.trim()}`,
   ];
   const interview = interviewLines(visit.interview);
   if (interview.length) lines.push('Wywiad:', ...interview.map((l) => `- ${l}`));

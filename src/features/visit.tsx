@@ -12,6 +12,7 @@ import {
   mapsUrl,
   orderAddress,
   PAY_NAMES,
+  PINK_PLACEHOLDER,
   pestName,
   priceRange,
   reminderSms,
@@ -52,7 +53,14 @@ function YesNoField(props: { label: string; value: YesNo; onChange: (value: YesN
 }
 
 /** Pole zapisywane na bieżąco: każda zmiana trafia do bazy po chwili bezczynności i przy opuszczeniu pola. */
-function AutoText(props: { label: string; value: string; placeholder?: string; rows?: number; onSave: (value: string) => void }) {
+function AutoText(props: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  rows?: number;
+  autoFocus?: boolean;
+  onSave: (value: string) => void;
+}) {
   const [value, setValue] = useState(props.value);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const latest = useRef(value);
@@ -84,6 +92,7 @@ function AutoText(props: { label: string; value: string; placeholder?: string; r
         rows={props.rows ?? 2}
         value={value}
         placeholder={props.placeholder}
+        autoFocus={props.autoFocus}
         onChange={(e) => {
           setValue(e.target.value);
           latest.current = e.target.value;
@@ -270,6 +279,8 @@ export function VisitPage() {
   const { sms, share } = useContactActions();
   const [finishing, setFinishing] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
+  // Pole opisu kodu pink dostaje kursor tylko zaraz po zaznaczeniu, a nie przy każdym wejściu na ekran.
+  const [pinkJustOn, setPinkJustOn] = useState(false);
 
   const data = useLiveQuery(async () => {
     const visit = await visits.get(id);
@@ -445,22 +456,33 @@ export function VisitPage() {
             {workSummary(visit) && <p className="field-hint">Do wiadomości: {workSummary(visit)}</p>}
           </Group>
 
-          <Group title="Co zastałem i problemy" plain>
-            <AutoText label="Co zastałem" value={visit.findings} rows={3} onSave={(findings) => save({ findings })} />
-            <AutoText label="Problemy" value={visit.problems} rows={2} onSave={(problems) => save({ problems })} />
-          </Group>
-
           <Group title="Zdjęcia" plain>
             <Photos visitId={visit.id} />
           </Group>
 
-          <label className="check check-pink">
-            <input type="checkbox" checked={order.pink} onChange={(e) => void run(() => orders.update(order.id, { pink: e.target.checked }))} />
-            Kod pink: trudny klient lub problematyczne mieszkanie
-          </label>
-          {order.pink && (
-            <AutoText label="Na co uważać" value={order.pinkNote} onSave={(pinkNote) => void run(() => orders.update(order.id, { pinkNote }))} />
-          )}
+          <div className={order.pink ? 'pink-box active' : 'pink-box'}>
+            <label className="check check-pink">
+              <input
+                type="checkbox"
+                checked={order.pink}
+                onChange={(e) => {
+                  setPinkJustOn(e.target.checked);
+                  void run(() => orders.update(order.id, { pink: e.target.checked }));
+                }}
+              />
+              Kod pink: trudny klient lub problematyczne mieszkanie
+            </label>
+            {order.pink && (
+              <AutoText
+                label="Co i jak?"
+                placeholder={PINK_PLACEHOLDER}
+                rows={3}
+                autoFocus={pinkJustOn}
+                value={order.pinkNote}
+                onSave={(pinkNote) => void run(() => orders.update(order.id, { pinkNote }))}
+              />
+            )}
+          </div>
 
           {visit.status === 'w_trakcie' ? (
             <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => setFinishing(true)}>
