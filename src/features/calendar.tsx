@@ -107,16 +107,17 @@ export default function CalendarPage() {
           scrollTime="07:00:00"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           dayMaxEvents={3}
-          views={{
-            // Na telefonie dzień miesiąca ma ok. 50 px: zamiast opisu kolorowy znacznik z numerem, wszystkie bez „+więcej”.
-            dayGridMonth: narrow ? { eventDisplay: 'block', dayMaxEvents: false } : {},
-          }}
+          // Na telefonie dzień miesiąca ma ok. 50 px: zabiegi jak w tygodniu, kolorowe bloczki z godziną
+          // i numerem zlecenia, wszystkie bez „+więcej”.
+          eventDisplay={narrow ? 'block' : 'auto'}
+          views={{ dayGridMonth: narrow ? { dayMaxEvents: false } : {} }}
           eventContent={(arg) => {
             if (!narrow || arg.view.type !== 'dayGridMonth') return true;
             const { number, pink } = arg.event.extendedProps as { number: number; pink: boolean };
             return (
-              <span className={pink ? 'cal-pill cal-pill-pink' : 'cal-pill'} title={arg.event.title}>
-                #{number}
+              <span className={pink ? 'cal-block cal-block-pink' : 'cal-block'} title={arg.event.title}>
+                <span className="cal-block-time">{arg.timeText}</span>
+                <span className="cal-block-number">#{number}</span>
               </span>
             );
           }}
