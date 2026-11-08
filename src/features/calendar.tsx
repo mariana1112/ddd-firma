@@ -9,7 +9,7 @@ import '@fullcalendar/react/skeleton.css';
 import '@fullcalendar/react/themes/classic/theme.css';
 import '@fullcalendar/react/themes/classic/palette.css';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { visitCode } from '../data/codes';
+import { roman, visitCode } from '../data/codes';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
@@ -77,7 +77,7 @@ export default function CalendarPage() {
           color: STATUS_COLOR[v.status],
           textColor: 'var(--surface)',
           editable: v.status === 'zaplanowany',
-          extendedProps: { number: visitCode(order, v.seq), pink: order.pink, label: `${pestName(order)}, ${order.city}` },
+          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, label: `${pestName(order)}, ${order.city}` },
         };
       });
   }, [rows]);
@@ -109,19 +109,21 @@ export default function CalendarPage() {
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           dayMaxEvents={3}
           // Miesiąc wygląda jak tydzień: kolorowe bloczki z godziną i numerem zlecenia, wszystkie bez „+więcej”.
-          // Na komputerze bloczek ma też szkodnika i miejscowość, na telefonie (dzień ok. 50 px) tylko numer.
+          // Na komputerze bloczek ma pełny kod, szkodnika i miejscowość. Na telefonie (dzień ok. 50 px) mieszczą się tylko
+          // cztery cyfry, a numer kolejnego zabiegu (II, III) jest w osobnej, małej linii.
           eventDisplay="block"
           views={{ dayGridMonth: { dayMaxEvents: false } }}
           eventContent={(arg) => {
             if (arg.view.type !== 'dayGridMonth') return true;
-            const { number, pink, label } = arg.event.extendedProps as { number: string; pink: boolean; label: string };
+            const { number, digits, seq, pink, label } = arg.event.extendedProps as { number: string; digits: string; seq: number; pink: boolean; label: string };
             return (
               <span className={pink ? 'cal-block cal-block-pink' : 'cal-block'} title={arg.event.title}>
                 <span className="cal-block-time">{arg.event.start ? stripZone(arg.event.start).slice(11, 16) : ''}</span>
                 <span className="cal-block-number">
-                  {number}
+                  {narrow ? digits : number}
                   {!narrow && <span className="cal-block-label"> {label}</span>}
                 </span>
+                {narrow && seq > 1 && <span className="cal-block-seq">{roman(seq)}</span>}
               </span>
             );
           }}

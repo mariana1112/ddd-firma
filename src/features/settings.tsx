@@ -117,6 +117,13 @@ function ListEditor(props: { label: string; items: string[]; onChange: (items: s
   );
 }
 
+/** 1 zlecenie nie ma, 3 zlecenia nie mają, 5 zleceń nie ma. */
+function ordersWithout(n: number): string {
+  if (n === 1) return 'zlecenie nie ma';
+  const few = n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14);
+  return few ? 'zlecenia nie mają' : 'zleceń nie ma';
+}
+
 function SettingsForm(props: {
   settings: AppSettings;
   company: CompanySettings;
@@ -169,7 +176,7 @@ function SettingsForm(props: {
     if (old.length === 0) return;
     const ok = await confirm({
       title: `Nadać prefiks ${value} wcześniejszym zleceniom?`,
-      message: `${old.length} ${old.length === 1 ? 'zlecenie nie ma' : 'zleceń nie ma'} prefiksu, np. ${orderCode(old[0])}. Po zmianie: ${orderCode({ ...old[0], prefix: value })}. Numery zostają te same.`,
+      message: `${old.length} ${ordersWithout(old.length)} prefiksu, np. ${orderCode(old[0])}. Po zmianie: ${orderCode({ ...old[0], prefix: value })}. Numery zostają te same.`,
       confirmLabel: 'Nadaj prefiks',
     });
     if (!ok) return;
