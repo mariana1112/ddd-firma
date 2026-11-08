@@ -15,6 +15,9 @@ zaszyfrowane.
   - klient wpisywany przy zleceniu, bez bazy klientów: telefony z dopiskiem, e-mail i NIP.
   Żadne pole nie jest obowiązkowe: przy pustym adresie, telefonie czy nazwisku aplikacja pyta, czy na pewno ich nie
   uzupełnić; błędnie wpisane wartości (np. kod 00-00) trzeba poprawić. Z każdego kroku można zapisać od razu.
+- **Gdy dzwoni klient**: pole „Kto dzwoni?” na Pulpicie szuka we wszystkich zleceniach, także zakończonych, po numerze
+  telefonu w dowolnym zapisie (+48, spacje, myślniki, fragment), nazwisku, adresie albo kodzie. Telefon klienta jest widoczny
+  na liście zleceń, na Pulpicie i w kalendarzu.
 - **Szybkie zlecenie**: telefon, nazwisko, adres, szkodnik, termin, zakres i cena na jednej stronie; reszta w edycji.
   Niedokończony kreator zostaje zapamiętany. Każde zlecenie ma kod z prefiksem regionu i czterocyfrowym numerem, np. `LDZ-0210`;
   zabiegi mają ten sam kod z numerem rzymskim: `LDZ-0210/I`, `LDZ-0210/II`. Prefiks ustawia się w Ustawieniach

@@ -2092,3 +2092,39 @@ legend + * {
   background: var(--bg);
   text-transform: uppercase;
 }
+
+/* Szybkie szukanie zlecenia na Pulpicie (np. gdy dzwoni klient) */
+.quick-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.quick-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font-size: 16px;
+  color: var(--text);
+  background: transparent;
+}
+
+.quick-search:focus-within {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+/* Telefon w bloczku kalendarza (komputer) */
+.calendar .cal-block-phone {
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  opacity: 0.9;
+}

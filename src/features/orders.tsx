@@ -1,7 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { matchesCode, orderCode, roman, visitCode } from '../data/codes';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { mainPhone, orderMatches } from '../data/order-search';
+import { orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, nextVisitState, orderTerm, sortOrderRows, type OrderSort } from '../data/order-list';
 import { deleteOrder, orderVisits, scheduleNextVisit } from '../data/orders';
@@ -25,20 +26,13 @@ type PayFilter = 'wszystkie' | PayMethod;
 /** Domyślna kolejność: do zrobienia od najbliższego terminu, zakończone od ostatniego. */
 const defaultSort = (status: StatusFilter): OrderSort => (status === 'aktywne' ? 'najwczesniej' : 'najpozniej');
 
-function matches(order: Order, query: string): boolean {
-  const q = normalizeForSearch(query.trim().replace(/^#/, ''));
-  if (!q) return true;
-  if (matchesCode(order, query)) return true;
-  const hay = normalizeForSearch(
-    [orderCode(order), order.clientName, orderAddress(order), order.postalCode, pestName(order), ...order.phones.map((p) => p.number.replace(/\s/g, ''))].join(' '),
-  );
-  return q.split(/\s+/).every((word) => hay.includes(word));
-}
-
 export function OrdersPage() {
   const data = useLiveQuery(async () => ({ orders: await orders.all(), visits: await visits.all() }));
-  const [query, setQuery] = useState('');
+  // Wyszukiwanie z Pulpitu przychodzi w adresie (?q=…), np. numer osoby, która dzwoni.
+  const [params] = useSearchParams();
+  const [query, setQuery] = useState(() => params.get('q') ?? '');
   const [status, setStatus] = useState<StatusFilter>('aktywne');
+  const searching = query.trim().length > 0;
   const [pay, setPay] = useState<PayFilter>('wszystkie');
   const [invoicesOnly, setInvoicesOnly] = useState(false);
   const [sort, setSort] = useState<OrderSort>('najwczesniej');
@@ -55,16 +49,18 @@ export function OrdersPage() {
     const filtered = data.orders
       .map((order) => ({ order, visits: byOrder.get(order.id) ?? [] }))
       .filter(({ order, visits: list }) => {
-        if (!matches(order, query)) return false;
+        if (!orderMatches(order, query)) return false;
         if (invoicesOnly && order.invoice === 'brak') return false;
         if (pay !== 'wszystkie' && !list.some((v) => v.payMethod === pay)) return false;
         const active = list.some((v) => v.status === 'zaplanowany' || v.status === 'w_trakcie');
+        // Szukanie obejmuje wszystkie zlecenia, także zakończone: dzwoniący klient może pytać o dawny zabieg.
+        if (searching) return true;
         if (status === 'aktywne') return active;
         if (status === 'wykonane') return !active;
         return true;
       });
     return sortOrderRows(filtered, sort);
-  }, [data, query, status, pay, invoicesOnly, sort]);
+  }, [data, query, status, pay, invoicesOnly, sort, searching]);
 
   return (
     <Page title="Zlecenia" actions={<AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
@@ -76,7 +72,8 @@ export function OrdersPage() {
         </Empty>
       ) : (
         <>
-          <Search value={query} onChange={setQuery} placeholder="Szukaj: kod (np. 0210), nazwisko, adres, telefon" />
+          <Search value={query} onChange={setQuery} placeholder="Szukaj: telefon, nazwisko, adres, kod (np. 0210)" />
+          {searching && <p className="field-hint">Szukam we wszystkich zleceniach, także zakończonych. Znalezione: {rows.length}.</p>}
           <Chips
             value={status}
             onChange={changeStatus}
@@ -175,7 +172,7 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
           <span className="order-number">{orderCode(order)}</span> {order.clientName}
         </>
       }
-      sub={`${orderAddress(order)} · ${pestName(order)}`}
+      sub={[orderAddress(order), pestName(order), mainPhone(order) && `tel. ${mainPhone(order)}`].filter(Boolean).join(' · ')}
       meta={
         current ? (
           <>

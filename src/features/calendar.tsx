@@ -10,6 +10,7 @@ import '@fullcalendar/react/themes/classic/theme.css';
 import '@fullcalendar/react/themes/classic/palette.css';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { roman, visitCode } from '../data/codes';
+import { mainPhone } from '../data/order-search';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
@@ -69,15 +70,16 @@ export default function CalendarPage() {
       .filter((v) => v.start && v.status !== 'odwolany' && orderById.has(v.orderId))
       .map((v) => {
         const order = orderById.get(v.orderId)!;
+        const phone = mainPhone(order);
         return {
           id: v.id,
-          title: `${visitCode(order, v.seq)} ${pestName(order)}, ${order.city}${order.pink ? ' · PINK' : ''}`,
+          title: `${visitCode(order, v.seq)} ${pestName(order)}, ${order.city}${phone ? ` · tel. ${phone}` : ''}${order.pink ? ' · PINK' : ''}`,
           start: v.start!,
           end: addMinutes(v.start!, v.durationMin),
           color: STATUS_COLOR[v.status],
           textColor: 'var(--surface)',
           editable: v.status === 'zaplanowany',
-          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, label: `${pestName(order)}, ${order.city}` },
+          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, label: `${pestName(order)}, ${order.city}`, phone },
         };
       });
   }, [rows]);
@@ -117,7 +119,14 @@ export default function CalendarPage() {
           views={{ dayGridMonth: { dayMaxEvents: false } }}
           eventContent={(arg) => {
             if (arg.view.type !== 'dayGridMonth') return true;
-            const { number, digits, seq, pink, label } = arg.event.extendedProps as { number: string; digits: string; seq: number; pink: boolean; label: string };
+            const { number, digits, seq, pink, label, phone } = arg.event.extendedProps as {
+              number: string;
+              digits: string;
+              seq: number;
+              pink: boolean;
+              label: string;
+              phone: string;
+            };
             return (
               <span className={pink ? 'cal-block cal-block-pink' : 'cal-block'} title={arg.event.title}>
                 <span className="cal-block-time">{arg.event.start ? stripZone(arg.event.start).slice(11, 16) : ''}</span>
@@ -126,6 +135,7 @@ export default function CalendarPage() {
                   {!narrow && <span className="cal-block-label"> {label}</span>}
                 </span>
                 {narrow && seq > 1 && <span className="cal-block-seq">{roman(seq)}</span>}
+                {!narrow && phone && <span className="cal-block-phone">tel. {phone}</span>}
               </span>
             );
           }}

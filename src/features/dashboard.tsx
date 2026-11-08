@@ -1,7 +1,9 @@
 import { roman, visitCode } from '../data/codes';
 import { scopeText } from '../data/visit-terms';
+import { mainPhone } from '../data/order-search';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { buildReport, formatPln, periodOf } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getLastBackupAt, getProfile, getSyncState, ownedBy } from '../data/settings';
@@ -18,6 +20,35 @@ const BACKUP_REMINDER_DAYS = 7;
 // Przy synchronizacji dane są też na serwerze, więc własna kopia jest rzadziej potrzebna.
 const SYNCED_BACKUP_REMINDER_DAYS = 30;
 
+/** Szybkie szukanie zlecenia, np. gdy dzwoni klient: numer telefonu, nazwisko, adres albo kod. */
+function QuickSearch() {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  return (
+    <form
+      className="quick-search"
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (query.trim()) navigate(`/zlecenia?q=${encodeURIComponent(query.trim())}`);
+      }}
+    >
+      <Icon name="search" size={18} />
+      <input
+        type="search"
+        inputMode="search"
+        value={query}
+        placeholder="Kto dzwoni? Telefon, nazwisko, adres, kod"
+        aria-label="Szukaj zlecenia"
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      <button type="submit" className="btn btn-sm btn-primary" disabled={!query.trim()}>
+        Szukaj
+      </button>
+    </form>
+  );
+}
+
 function VisitRow({ visit, order, timeOnly }: { visit: Visit; order: Order; timeOnly?: boolean }) {
   return (
     <Row
@@ -28,7 +59,7 @@ function VisitRow({ visit, order, timeOnly }: { visit: Visit; order: Order; time
           <span className="order-number">{visitCode(order, visit.seq)}</span> {order.clientName}
         </>
       }
-      sub={`${orderAddress(order)} · ${pestName(order)}, zabieg ${roman(visit.seq)}${visit.scope && visit.scope.kind !== 'calosc' ? ` · ${scopeText(visit.scope)}` : ''}`}
+      sub={`${orderAddress(order)} · ${pestName(order)}, zabieg ${roman(visit.seq)}${visit.scope && visit.scope.kind !== 'calosc' ? ` · ${scopeText(visit.scope)}` : ''}${mainPhone(order) ? ` · tel. ${mainPhone(order)}` : ''}`}
       trailing={
         <span className="row-end">
           {order.pink && <PinkBadge />}
@@ -94,6 +125,8 @@ export function DashboardPage() {
       <p className="page-date">{formatDateLong(today)}</p>
 
       <SyncNotice />
+
+      <QuickSearch />
 
       <div className="tiles">
         <Link to="/zlecenia/nowe" className="tile tile-primary">

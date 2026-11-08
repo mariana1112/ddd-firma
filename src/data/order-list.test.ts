@@ -102,3 +102,31 @@ describe('zakres i cena zabiegu', () => {
     expect(termsFromDraft({ kind: 'calosc', note: '', min: '500', max: '400' })).toBeNull();
   });
 });
+
+describe('szukanie zlecenia, gdy dzwoni klient', () => {
+  it('numer w dowolnym zapisie, fragment numeru, nazwisko i kod', async () => {
+    const { orderMatches, phoneDigits, looksLikePhone, mainPhone } = await import('./order-search');
+    const o = {
+      number: 42,
+      prefix: 'LDZ',
+      clientName: 'Jan Kowalski',
+      street: 'Piotrkowska',
+      houseNo: '12',
+      flatNo: '3',
+      building: 'blok',
+      city: 'Łódź',
+      postalCode: '90-001',
+      pest: 'karaluchy',
+      pestOther: '',
+      phones: [{ number: '', label: '' }, { number: '500 600 700', label: 'żona' }],
+    } as unknown as Order;
+    expect(phoneDigits('+48 500-600-700')).toBe('500600700');
+    expect(phoneDigits('0048500600700')).toBe('500600700');
+    expect(looksLikePhone('kowalski')).toBe(false);
+    expect(mainPhone(o)).toBe('500 600 700');
+    for (const q of ['+48 500 600 700', '500600700', '600 700', '0048 500 600 700', 'kowalski', 'piotrkowska 12', 'LDZ-0042', '0042']) {
+      expect(orderMatches(o, q), q).toBe(true);
+    }
+    for (const q of ['501 600 700', 'nowak', 'LDZ-0043']) expect(orderMatches(o, q), q).toBe(false);
+  });
+});
