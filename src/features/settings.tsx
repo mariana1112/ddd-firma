@@ -54,7 +54,8 @@ export function MorePage() {
         <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />
         <Row to="/kilometry" icon="car" title="Kilometry" sub="Przejazdy służbowe i prywatne, wydruk" />
         <Row to="/raporty" icon="chart" title="Raporty" sub="Dzień, tydzień, miesiąc, rozliczenie gotówki" />
-        {sync && <Row to="/oddzialy" icon="building" title="Oddziały" sub="Technicy i zlecenia oddziałów" />}
+        {sync && sync.role === 'owner' && <Row to="/admin" icon="building" title="Panel admina" sub="Wszystkie regiony, raporty firmy, ranking, prefiksy" />}
+        {sync && sync.role !== 'owner' && sync.branchName && <Row to="/konto" icon="building" title={`Region: ${sync.branchName}`} sub="Urządzenie zalogowane na stałe do regionu" />}
       </Group>
       <Group title="Aplikacja">
         <Row to="/ustawienia" icon="gear" title="Ustawienia" sub="Imię, premia, zalecenia, treść SMS" />
@@ -173,6 +174,8 @@ function SettingsForm(props: {
   readOnly: boolean;
   counter: number;
   prefix: string;
+  regionLocked: boolean;
+  regionName: string;
 }) {
   const { confirm, run, toast } = useFeedback();
   const [prefix, setPrefix] = useState(props.prefix);
@@ -190,7 +193,7 @@ function SettingsForm(props: {
 
   const save = () =>
     run(async () => {
-      await saveRegion({ prefix });
+      if (!props.regionLocked) await saveRegion({ prefix });
       if (prefix) await offerPrefixForOldOrders(prefix);
       if (props.readOnly) {
         toast('Zapisano prefiks regionu');
@@ -234,12 +237,20 @@ function SettingsForm(props: {
     >
       <fieldset>
         <legend>Region i kody zleceń</legend>
-        <Field
-          label="Prefiks regionu"
-          hint={`Litery, do ${PREFIX_MAX} znaków, np. LDZ. Nowe zlecenia dostaną kod ${orderCode({ number: props.counter + 1, prefix })}, a ich zabiegi ${visitCode({ number: props.counter + 1, prefix }, 1)}, ${visitCode({ number: props.counter + 1, prefix }, 2)} itd. Ustawienie tego urządzenia.`}
-        >
-          <input value={prefix} maxLength={PREFIX_MAX} autoCapitalize="characters" placeholder="Np. LDZ" onChange={(e) => setPrefix(normalizePrefix(e.target.value))} />
-        </Field>
+        {props.regionLocked ? (
+          <p className="field-hint">
+            Region <strong>{props.regionName || 'tego konta'}</strong>, prefiks <strong>{prefix}</strong>: nowe zlecenia dostaną kod{' '}
+            {orderCode({ number: props.counter + 1, prefix })}, a zabiegi {visitCode({ number: props.counter + 1, prefix }, 1)},{' '}
+            {visitCode({ number: props.counter + 1, prefix }, 2)} itd. Prefiks regionu ustawia admin w panelu admina.
+          </p>
+        ) : (
+          <Field
+            label="Prefiks regionu"
+            hint={`Litery, do ${PREFIX_MAX} znaków, np. LDZ. Nowe zlecenia dostaną kod ${orderCode({ number: props.counter + 1, prefix })}, a ich zabiegi ${visitCode({ number: props.counter + 1, prefix }, 1)}, ${visitCode({ number: props.counter + 1, prefix }, 2)} itd. Ustawienie tego urządzenia; przy koncie firmowym prefiks regionu nadaje admin.`}
+          >
+            <input value={prefix} maxLength={PREFIX_MAX} autoCapitalize="characters" placeholder="Np. LDZ" onChange={(e) => setPrefix(normalizePrefix(e.target.value))} />
+          </Field>
+        )}
       </fieldset>
 
       {props.readOnly && <p className="notice notice-info">Pozostałe ustawienia firmy zmienia szef. Zmiany docierają tu przy synchronizacji.</p>}
@@ -319,6 +330,8 @@ export function SettingsPage() {
     readOnly: boolean;
     counter: number;
     prefix: string;
+    regionLocked: boolean;
+    regionName: string;
   }>();
   // Formularz startuje z jednego odczytu, żeby synchronizacja nie resetowała pól w trakcie edycji.
   useEffect(() => {
@@ -332,7 +345,10 @@ export function SettingsPage() {
         // Ustawienia firmy na serwerze zmienia tylko szef, więc technik ich nie edytuje.
         readOnly: Boolean(sync && sync.role && sync.role !== 'owner'),
         counter: await localOrderCounter(),
-        prefix: (await getRegion()).prefix,
+        ...(await (async () => {
+          const region = await getRegion();
+          return { prefix: region.prefix, regionLocked: region.locked, regionName: region.name };
+        })()),
       });
     })();
   }, []);

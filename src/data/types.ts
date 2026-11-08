@@ -5,6 +5,11 @@ export interface BaseRecord {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  /**
+   * Region (oddział), do którego rekord należy na serwerze. Ustawia go synchronizacja przy pobraniu;
+   * pole nie jest wysyłane z urządzenia. Brak: rekord jeszcze niewysłany albo urządzenie bez synchronizacji.
+   */
+  branchId?: string | null;
 }
 
 export type ClientKind = 'firma' | 'osoba' | 'wspolnota' | 'instytucja';
@@ -373,6 +378,8 @@ export interface SyncState {
   displayName?: string;
   branchId?: string | null;
   branchName?: string;
+  /** Rekordy na urządzeniu mają już znacznik regionu z serwera (jednorazowe pobranie od nowa po aktualizacji). */
+  regionsTagged?: boolean;
 }
 
 export interface CompanySettings {

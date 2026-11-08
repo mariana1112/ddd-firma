@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './icons';
 
@@ -17,13 +17,18 @@ export function BackButton({ fallback }: { fallback: string }) {
   );
 }
 
+/** Pasek nad tytułem strony, np. „Panel admina · Pomorskie”, gdy ekran pokazuje region wybrany w panelu. */
+export const ScopeBannerContext = createContext<ReactNode>(null);
+
 export function Page(props: { title: string; back?: string; actions?: ReactNode; children: ReactNode }) {
+  const banner = useContext(ScopeBannerContext);
   useEffect(() => {
     window.scrollTo(0, 0);
     document.title = `${props.title} · Pogromcy Insektów`;
   }, [props.title]);
   return (
     <div className={props.back ? 'page page-sub' : 'page'}>
+      {banner}
       <header className="page-head">
         {props.back && <BackButton fallback={props.back} />}
         <h1>{props.title}</h1>

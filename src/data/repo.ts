@@ -2,6 +2,7 @@ import type { Table } from 'dexie';
 import { newId } from '../lib/ids';
 import { logChange } from './changes';
 import { db, type RecordTableName } from './db';
+import { scopeFilter } from './scope';
 import type {
   Attachment,
   BaseRecord,
@@ -45,8 +46,15 @@ export class Repository<T extends BaseRecord> {
     return db.transaction('rw', this.table, db.changes, scope);
   }
 
-  /** Rekordy nieusunięte. */
+  /** Rekordy nieusunięte z regionu, który teraz pokazują ekrany (zob. scope.ts). */
   async all(): Promise<T[]> {
+    const rows = await this.table.toArray();
+    const inScope = scopeFilter();
+    return rows.filter((r) => !r.deletedAt && (!inScope || inScope(r)));
+  }
+
+  /** Rekordy nieusunięte ze wszystkich regionów, bez względu na widok (kopie, eksport, liczniki). */
+  async allRegions(): Promise<T[]> {
     const rows = await this.table.toArray();
     return rows.filter((r) => !r.deletedAt);
   }

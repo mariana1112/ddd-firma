@@ -1,6 +1,7 @@
 import { newId } from '../lib/ids';
 import { logChange } from './changes';
 import { db, writeTransaction } from './db';
+import { setOwnBranch } from './scope';
 import type { CompanySettings, NumberBlock, SyncState } from './types';
 
 /** Jedna firma, więc nazwa jest stała. */
@@ -25,7 +26,7 @@ export const DEFAULT_COMPANY: CompanySettings = {
 };
 
 /** Klucze meta wspólne dla wszystkich urządzeń firmy. */
-export const SYNCED_META_KEYS = ['company', 'app'];
+export const SYNCED_META_KEYS = ['company', 'app', 'regions'];
 
 /** Klucze opisujące to jedno urządzenie. Nie trafiają do kopii zapasowej ani na serwer. */
 export function isDeviceMetaKey(key: string): boolean {
@@ -74,6 +75,7 @@ export async function getSyncState(): Promise<SyncState | null> {
 }
 
 export async function setSyncState(state: SyncState | null): Promise<void> {
+  setOwnBranch(state);
   if (state) await db.meta.put({ key: 'sync', value: state, updatedAt: new Date().toISOString() });
   else await db.meta.delete('sync');
 }
@@ -228,8 +230,33 @@ export interface RegionSettings {
   prefix: string;
 }
 
-export async function getRegion(): Promise<RegionSettings> {
-  return { prefix: '', ...(await getMeta<Partial<RegionSettings>>('region')) };
+/**
+ * Prefiks dla nowych zleceń. Przy synchronizacji pochodzi z regionu (oddziału) konta, ustawianego przez admina
+ * w panelu; bez synchronizacji albo gdy admin go nie ustawił, z ustawień tego urządzenia.
+ */
+export async function getRegion(): Promise<RegionSettings & { locked: boolean; name: string }> {
+  const device = { prefix: '', ...(await getMeta<Partial<RegionSettings>>('region')) };
+  const sync = await getSyncState();
+  if (sync?.branchId) {
+    const region = (await getRegions())[sync.branchId];
+    if (region?.prefix) return { prefix: region.prefix, locked: true, name: region.name || sync.branchName || '' };
+    return { prefix: device.prefix, locked: false, name: sync.branchName ?? '' };
+  }
+  return { prefix: device.prefix, locked: false, name: '' };
+}
+
+/** Ustawienia regionu (oddziału) wspólne dla całej firmy: nazwa i prefiks kodów zleceń. Zmienia je tylko admin. */
+export interface RegionInfo {
+  name: string;
+  prefix: string;
+}
+
+export async function getRegions(): Promise<Record<string, RegionInfo>> {
+  return (await getMeta<Record<string, RegionInfo>>('regions')) ?? {};
+}
+
+export async function saveRegions(regions: Record<string, RegionInfo>): Promise<void> {
+  await setMeta('regions', regions);
 }
 
 export async function saveRegion(region: RegionSettings): Promise<void> {

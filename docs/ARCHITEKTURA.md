@@ -112,6 +112,23 @@ swoje członkostwo, nie zapisuje i nie zatwierdza sam siebie; po zgodzie widzi r
 Technik nie usunie szefa, szef nie usunie siebie. Zgodność skrótu dowodu z przeglądarki i z Postgresa sprawdzono na
 prawdziwym kodzie, usuniętym po teście.
 
+### Regiony i panel admina
+
+- Region to oddział na serwerze (`branches`). Pobierany rekord dostaje lokalnie `branchId` z kolumny `records.branch_id`;
+  pole nie trafia do dziennika zmian, więc nie wraca na serwer. Urządzenia sprzed tej wersji pobierają jednorazowo
+  wszystko od nowa (`regionsTagged` w stanie synchronizacji).
+- `data/scope.ts`: `Repository.all()` zwraca rekordy z regionu, który pokazują ekrany: własny region konta
+  (domyślnie), wybrany region albo całą firmę (panel admina). Rekord bez znacznika (jeszcze niewysłany) należy do
+  regionu urządzenia. `allRegions()` pomija filtr. Technik dostaje z serwera tylko swój region, więc filtr niczego mu
+  nie ukrywa; granicę między regionami wyznacza RLS.
+- Nazwy i prefiksy regionów są we wspólnych ustawieniach firmy (`meta.regions`, zmienia tylko admin). Nowe zlecenie
+  bierze prefiks regionu konta; prefiks z ustawień urządzenia zostaje dla pracy bez konta firmowego.
+- Panel admina (`features/admin.tsx`) wymaga konta z rolą `owner` i ponownego podania loginu i hasła (sprawdzane przez
+  Supabase Auth, tylko dla e-maila konta zalogowanego na urządzeniu); odblokowanie trwa 15 minut od ostatniego użycia
+  i nie przetrwa zamknięcia aplikacji. Ekrany techników w panelu (`/admin/zlecenia` itd.) to te same komponenty
+  z zakresem regionu z adresu. `data/company.ts` liczy raport każdego regionu, ranking (obrót, potem wynik gotówki)
+  i tekst podsumowania firmy.
+
 ## 5. Synchronizacja
 
 ```

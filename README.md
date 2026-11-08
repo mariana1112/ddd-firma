@@ -53,7 +53,12 @@ zaszyfrowane.
   - dzień: kwoty według formy płatności i każdy zabieg z adresem, koszty odjęte przy gotówce,
   - tydzień: kwoty według dni tygodnia, koszty z premią i wynik gotówki,
   - miesiąc: kwoty według tygodni miesiąca, koszty z premiami i wynik gotówki.
-- **Oddziały**: technik widzi dane swojego oddziału, a szef wszystkie oddziały, raporty techników i kody zaproszeń.
+- **Regiony** (oddziały na serwerze), każdy z własnym prefiksem kodów zleceń: technik jest na stałe zalogowany do swojego
+  regionu i nie widzi innych. Admin (szef) w zwykłych ekranach widzi tylko swój region, a wszystko w **panelu admina**.
+- **Panel admina** (Więcej → Panel admina, login i hasło konta admina, odblokowany na 15 minut): cała firma albo wybrany
+  region; zlecenia, kalendarz, raporty w formacie technika (dzień, tydzień, miesiąc, PDF), kilometrówka i koszty
+  regionu; podsumowanie firmy z łącznymi kosztami i kilometrami oraz ranking regionów do wysłania; dodawanie regionów,
+  prefiksy, technicy i zaproszenia, ustawienia firmy.
 - **Bezpieczeństwo danych**: kopie zapasowe, scalanie, migawki przed przywróceniem, kosz, cofanie usunięć.
 
 Aplikacja **nie wystawia faktur ani protokołów**. Robi to centrala na podstawie danych z zabiegu.
@@ -80,14 +85,19 @@ npm run build
 
 `npm run preview` uruchamia zbudowaną wersję razem z service workerem.
 
-## Konta, oddziały i synchronizacja
+## Konta, regiony i synchronizacja
 
 Bez konfiguracji serwera aplikacja działa wyłącznie lokalnie. Po zalogowaniu dane są na każdym urządzeniu i w zaszyfrowanej
 kopii na serwerze Supabase. Zmiany przechodzą przy otwarciu aplikacji, po każdej zmianie i co minutę. Praca bez internetu
 działa bez zmian, a zmiany czekają w kolejce. Opis rozwiązania: [docs/ARCHITEKTURA.md](docs/ARCHITEKTURA.md).
 
-**Szef** zakłada konto z imieniem, tworzy firmę z pierwszym oddziałem i ustawia hasło szyfrowania. W **Więcej → Oddziały**
-dodaje kolejne oddziały, przenosi techników, usuwa ich z firmy i tworzy kod zaproszenia do wybranego oddziału.
+**Admin (szef)** zakłada konto z imieniem, tworzy firmę z pierwszym regionem i ustawia hasło szyfrowania. W **panelu
+admina** dodaje regiony i nadaje im prefiksy (np. GDA dla pomorskiego), a w „Technicy i zaproszenia” przenosi techników,
+usuwa ich z firmy i tworzy kod zaproszenia do wybranego regionu. Prefiks regionu trafia sam do każdego nowego zlecenia
+technika z tego regionu.
+
+**Stałe logowanie**: urządzenie technika po dołączeniu zostaje zalogowane do swojego regionu i przy każdym uruchomieniu
+wchodzi od razu do niego. Technik nie ma przycisku wylogowania; region zmienia albo konto odłącza admin.
 
 **Technik** dołącza w trzech krokach:
 
@@ -99,9 +109,9 @@ dodaje kolejne oddziały, przenosi techników, usuwa ich z firmy i tworzy kod za
 3. **Zgoda szefa**: prośba z imieniem i adresem e-mail pojawia się w **Więcej → Oddziały**. Do zatwierdzenia konto
    nie jest członkiem firmy: nie czyta ani nie zapisuje żadnych danych. Po zgodzie urządzenie łączy się samo.
 
-| | Technik | Szef |
+| | Technik | Admin (szef) |
 | --- | --- | --- |
-| Zlecenia, zabiegi, koszty, przejazdy | swojego oddziału | wszystkich oddziałów |
+| Zlecenia, zabiegi, koszty, przejazdy | swojego regionu | swojego w ekranach, wszystkich w panelu admina |
 | Zmiana rekordów | swojego oddziału | wszystkich |
 | Ustawienia firmy (zalecenia, SMS, premia) | odczyt | zmiana |
 | Oddziały, przenoszenie techników, zaproszenia | nie | tak |

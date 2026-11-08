@@ -33,6 +33,8 @@ export interface RemoteRecord {
   data: Record<string, unknown>;
   rev: number;
   purged: boolean;
+  /** Region (oddział) rekordu na serwerze. */
+  branchId?: string | null;
 }
 
 /** Wszystko, czego silnik potrzebuje od serwera. Dostawcę można zmienić bez zmian w silniku. */
@@ -166,11 +168,16 @@ const KNOWN_TABLES = new Set<string>([...RECORD_TABLES, 'meta']);
 
 /** Zwraca liczbę rekordów, których nie dało się odszyfrować. */
 async function pullAll(server: SyncServer, state: SyncState, key: CryptoKey): Promise<number> {
-  let cursor = state.cursor;
+  // Rekordy pobrane przed wersją z regionami nie mają znacznika regionu: jednorazowo pobieramy wszystko od nowa.
+  let cursor = state.regionsTagged ? state.cursor : 0;
   let unreadable = 0;
   for (;;) {
     const rows = await server.pull(state.orgId, cursor, PULL_PAGE);
-    if (rows.length === 0) return unreadable;
+    if (rows.length === 0) {
+      const latest = await getSyncState();
+      if (latest && !latest.regionsTagged) await setSyncState({ ...latest, regionsTagged: true });
+      return unreadable;
+    }
     // Odszyfrowanie przed transakcją: IndexedDB zamyka transakcję, gdy czeka ona na WebCrypto.
     const { readable, failed } = await decryptRows(key, rows);
     unreadable += failed;
@@ -178,7 +185,7 @@ async function pullAll(server: SyncServer, state: SyncState, key: CryptoKey): Pr
     cursor = rows[rows.length - 1].rev;
     const latest = await getSyncState();
     if (!latest) return unreadable;
-    await setSyncState({ ...latest, cursor });
+    await setSyncState({ ...latest, cursor, regionsTagged: true });
     if (rows.length < PULL_PAGE) return unreadable;
   }
 }
@@ -232,6 +239,8 @@ export async function applyRemote(rows: RemoteRecord[]): Promise<void> {
         continue;
       }
       const merged: Record<string, unknown> = { ...row.data, ...local, id: row.id };
+      // Region rekordu nadaje serwer; zapisany tylko lokalnie, bez wpisu w dzienniku zmian.
+      if (row.branchId !== undefined) merged.branchId = row.branchId;
       if (row.tbl === 'attachments') {
         // Plik zdjęcia nie jest częścią rekordu. Zostaje ten, który już jest na urządzeniu.
         const existing = (await table.get(row.id)) as Attachment | undefined;

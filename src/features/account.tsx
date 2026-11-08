@@ -677,9 +677,9 @@ function SyncStatus({ state }: { state: SyncState }) {
             <Info label="Firma">{state.orgName}</Info>
             {state.displayName && <Info label="Imię">{state.displayName}</Info>}
             {state.branchName && (
-              <Info label="Oddział">
+              <Info label="Region">
                 {state.branchName}
-                {state.role === 'owner' ? ' · szef' : ''}
+                {state.role === 'owner' ? ' · admin' : ''}
               </Info>
             )}
             <Info label="Ostatnio">{running ? 'Synchronizuję…' : state.lastSyncAt ? formatInstant(state.lastSyncAt) : 'Jeszcze nie'}</Info>
@@ -709,9 +709,18 @@ function SyncStatus({ state }: { state: SyncState }) {
           </p>
         </>
       )}
-      <button type="button" className="btn btn-block" onClick={() => setSignOutOpen(true)}>
-        Wyloguj
-      </button>
+      {/* Urządzenie technika jest na stałe przypisane do regionu: po każdym uruchomieniu wchodzi od razu do niego.
+          Wylogowanie zostaje adminowi, a technikowi tylko wtedy, gdy urządzenie nie ma klucza (np. usunięty z firmy). */}
+      {state.role === 'owner' || hasKey === false ? (
+        <button type="button" className="btn btn-block" onClick={() => setSignOutOpen(true)}>
+          Wyloguj
+        </button>
+      ) : (
+        <p className="field-hint">
+          To urządzenie jest na stałe zalogowane do regionu {state.branchName || 'konta'}. Przy każdym uruchomieniu aplikacja
+          wchodzi od razu do tego regionu, bez logowania. Przenieść konto do innego regionu albo odłączyć je może admin.
+        </p>
+      )}
 
       <Sheet open={signOutOpen} title="Wylogowanie" onClose={() => setSignOutOpen(false)}>
         <p className="sheet-text">
@@ -778,7 +787,7 @@ export function BranchesPage() {
   if (state === undefined || !local) return <Loading />;
   if (!state) {
     return (
-      <Page title="Oddziały" back="/wiecej">
+      <Page title="Regiony i technicy" back="/admin">
         <Empty icon="building" title="Oddziały działają po zalogowaniu do konta firmy">
           <a className="btn btn-primary" href="#/konto">
             Konto i synchronizacja
@@ -802,7 +811,7 @@ export function BranchesPage() {
     ].join('\n');
 
   return (
-    <Page title="Oddziały" back="/wiecej">
+    <Page title="Regiony i technicy" back="/admin">
       {!view ? (
         <Loading />
       ) : (

@@ -60,13 +60,15 @@ export const supabaseServer: SyncServer = {
   async pull(orgId: string, sinceRev: number, limit: number): Promise<RemoteRecord[]> {
     const { data, error } = await supabase()
       .from('records')
-      .select('tbl, id, data, rev, purged')
+      .select('tbl, id, data, rev, purged, branch_id')
       .eq('org_id', orgId)
       .gt('rev', sinceRev)
       .order('rev')
       .limit(limit);
     if (error) fail(error);
-    return (data ?? []).map((row) => ({ ...row, rev: Number(row.rev) }) as RemoteRecord);
+    return (data ?? []).map(
+      ({ branch_id, ...row }) => ({ ...row, rev: Number(row.rev), branchId: (branch_id as string | null) ?? null }) as RemoteRecord,
+    );
   },
 
   async reserveNumbers(orgId: string, series: string, minNext: number, count: number) {

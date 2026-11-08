@@ -3,6 +3,7 @@ import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-do
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { watchForUpdates } from './lib/updates';
 import { AccountPage, BranchesPage } from './features/account';
+import { AdminPage, AdminScoped } from './features/admin';
 import { CostsPage } from './features/costs';
 import { DashboardPage } from './features/dashboard';
 import { OrderEditPage, OrderNewPage } from './features/order-form';
@@ -113,6 +114,12 @@ export function App() {
                   <Route path="/kosz" element={<TrashPage />} />
                   <Route path="/konto" element={<AccountPage />} />
                   <Route path="/oddzialy" element={<BranchesPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
+                  <Route path="/admin/zlecenia" element={<AdminScoped><OrdersPage /></AdminScoped>} />
+                  <Route path="/admin/kalendarz" element={<AdminScoped><CalendarPage /></AdminScoped>} />
+                  <Route path="/admin/raporty" element={<AdminScoped><ReportsPage /></AdminScoped>} />
+                  <Route path="/admin/kilometry" element={<AdminScoped><TripsPage /></AdminScoped>} />
+                  <Route path="/admin/koszty" element={<AdminScoped><CostsPage /></AdminScoped>} />
                   <Route path="*" element={<DashboardPage />} />
                 </Routes>
               </Suspense>

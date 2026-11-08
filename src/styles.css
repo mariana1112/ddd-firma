@@ -2036,3 +2036,59 @@ legend + * {
   font-weight: 600;
   color: var(--muted);
 }
+
+/* ---------- Panel admina ---------- */
+
+.scope-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin: 0 0 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.rank {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-weight: 750;
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.rank-1 { color: #4a3600; background: #f2c94c; }
+.rank-2 { color: #2c2f33; background: #c9ced6; }
+.rank-3 { color: #3d2510; background: #d9a066; }
+
+.region-edit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.region-edit-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.region-edit input {
+  width: 90px;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  text-transform: uppercase;
+}
