@@ -1,3 +1,4 @@
+import { visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -110,7 +111,7 @@ export function ReportsPage() {
           <Row
             key={visit.id}
             to={`/zabieg/${visit.id}`}
-            title={order ? `#${order.number} ${order.clientName}` : 'Zabieg'}
+            title={order ? `${visitCode(order, visit.seq)} ${order.clientName}` : 'Zabieg'}
             sub={order ? `${formatDate(visit.doneOn)} · ${orderAddress(order)} · ${pestName(order)}` : formatDate(visit.doneOn)}
             trailing={
               <span className="row-end">

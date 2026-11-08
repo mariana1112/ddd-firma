@@ -3,7 +3,7 @@ import { db } from './db';
 import { createOrder, finishVisit, orderVisits, startVisit, type OrderDraft } from './orders';
 import { buildReport, formatPln, periodOf, reportText, shiftPeriod } from './reports';
 import { expenses, orders, trips, visits } from './repo';
-import { DEFAULT_APP, getProfile, nextOrderNumber, ownedBy, saveProfile, setOrderCounter, setSyncState } from './settings';
+import { DEFAULT_APP, getProfile, nextOrderNumber, ownedBy, saveProfile, saveRegion, setOrderCounter, setSyncState } from './settings';
 import { centralExport, finishSms, interviewLines, mapsUrl, orderAddress, priceRange, reminderSms, smsUrl, workSummary } from './texts';
 import { EMPTY_INTERVIEW, normalizeInterview } from './orders';
 import type { Visit } from './types';
@@ -145,6 +145,8 @@ describe('teksty', () => {
   });
 
   it('przypomnienie i eksport dla centrali zawierają kluczowe dane', async () => {
+    await setOrderCounter(41);
+    await saveRegion({ prefix: 'LDZ' });
     const { order, visits: [first] } = await createOrder(draft({ pink: true, pinkNote: 'agresywny pies' }), { start: '2026-11-10T10:00', durationMin: 60 }, null);
     expect(reminderSms(order, first, DEFAULT_APP)).toContain('10.11.2026 o 10:00, adres: ul. Świętojańska 12/5, Gdynia');
     const done: Visit = {
@@ -160,7 +162,8 @@ describe('teksty', () => {
       interview: { ...EMPTY_INTERVIEW, situation: 'Karaluchy w kuchni od miesiąca', seen: 'tak', seenCount: 'ok. 20', bites: 'nie' },
     };
     const text = centralExport(order, done, [done]);
-    expect(text).toContain(`Zlecenie #${order.number}, zabieg 1 z 1`);
+    expect(order.prefix).toBe('LDZ');
+    expect(text).toContain('Zlecenie LDZ-0042/I, zabieg I z 1');
     expect(text).toContain('blok, klatka B, piętro 3');
     expect(text).toContain('Co zastałem: Duża kolonia za lodówką');
     expect(text).toContain('Problemy: Sąsiad też ma karaluchy');

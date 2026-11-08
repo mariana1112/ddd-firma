@@ -45,3 +45,23 @@ describe('lista zleceń według daty', () => {
     expect(dateTile('2026-11-08')).toEqual({ weekday: 'nd', day: '8', month: 'lis' });
   });
 });
+
+describe('kody zleceń i zabiegów', () => {
+  it('prefiks regionu, cztery cyfry i numer zabiegu rzymski', async () => {
+    const { normalizePrefix, orderCode, roman, visitCode } = await import('./codes');
+    expect(orderCode({ number: 42, prefix: 'LDZ' })).toBe('LDZ-0042');
+    expect(orderCode({ number: 42 })).toBe('0042');
+    expect(orderCode({ number: 12345, prefix: 'WAW' })).toBe('WAW-12345');
+    expect(visitCode({ number: 42, prefix: 'LDZ' }, 2)).toBe('LDZ-0042/II');
+    expect([1, 2, 3, 4, 5, 9].map(roman)).toEqual(['I', 'II', 'III', 'IV', 'V', 'IX']);
+    expect(normalizePrefix(' łdz-1 ')).toBe('ŁDZ');
+    expect(normalizePrefix('abcdefg')).toBe('ABCDE');
+  });
+
+  it('wyszukiwanie po kodzie', async () => {
+    const { matchesCode } = await import('./codes');
+    const order = { number: 42, prefix: 'LDZ' };
+    for (const q of ['42', '0042', '#42', '4', 'LDZ-0042', 'ldz42', 'LDZ-0042/II', 'ldz-0042/ii']) expect(matchesCode(order, q), q).toBe(true);
+    for (const q of ['43', 'WAW-0042', '0043', 'LDZ-0042x']) expect(matchesCode(order, q), q).toBe(false);
+  });
+});

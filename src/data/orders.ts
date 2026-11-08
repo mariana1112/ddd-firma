@@ -5,14 +5,14 @@ import { db, writeTransaction } from './db';
 import { DomainError } from './domain';
 import { normalizePlate, tripKm } from './mileage';
 import { attachments, orders, visits, trips, type NewRecord } from './repo';
-import { getAppSettings, getProfile, nextOrderNumber, ownedBy } from './settings';
+import { getAppSettings, getProfile, getRegion, nextOrderNumber, ownedBy } from './settings';
 import { EMPTY_INTERVIEW } from './interview';
 import type { Order, PayMethod, Visit } from './types';
 
 export { orders, visits, trips };
 export { EMPTY_INTERVIEW, normalizeInterview } from './interview';
 
-export type OrderDraft = Omit<NewRecord<Order>, 'number' | 'ownerId' | 'ownerName' | 'closed'>;
+export type OrderDraft = Omit<NewRecord<Order>, 'number' | 'prefix' | 'ownerId' | 'ownerName' | 'closed'>;
 
 export interface PlannedVisit {
   start: string | null;
@@ -55,10 +55,12 @@ export async function createOrder(
 ): Promise<{ order: Order; visits: Visit[] }> {
   const profile = await getProfile();
   const technician = { id: profile.userId, name: profile.name };
+  const { prefix } = await getRegion();
   return writeTransaction([db.orders, db.visits, db.meta], async () => {
     const order = await orders.create({
       ...draft,
       number: await nextOrderNumber(),
+      prefix,
       ownerId: technician.id,
       ownerName: technician.name,
       closed: false,

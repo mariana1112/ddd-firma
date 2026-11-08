@@ -128,6 +128,10 @@ UI ──> Repository ──> IndexedDB (rekord) + changes (pushed = 0)
 - **Numery zleceń** są wspólne dla firmy. Urządzenie rezerwuje na serwerze (`reserve_numbers`) pulę 20 numerów, gdy zostało
   mu mniej niż 5. Nowe zlecenie bierze numer z puli, więc działa bez internetu. Gdy pula skończy się offline, numeracja
   ciągnie się dalej od ostatniego numeru; serwer przy następnej rezerwacji przeskakuje nad nadanymi numerami.
+- **Kod zlecenia** (`data/codes.ts`) to prefiks regionu z ustawień urządzenia (meta `region`), zapisany w zleceniu
+  przy przyjęciu (`order.prefix`), i numer dopełniony do czterech cyfr: `LDZ-0210`. Kod zabiegu dopisuje numer rzymski:
+  `LDZ-0210/II`. Numer jest unikalny w firmie, więc kod też, niezależnie od prefiksu. Zlecenia sprzed prefiksu mają sam
+  numer (`0210`), a przy zapisie prefiksu ustawienia proponują nadanie go własnym starszym zleceniom.
 - `app_config.min_schema` blokuje wysyłanie ze starszych wersji aplikacji, które dalej działają offline.
 
 ### Szyfrowanie end-to-end

@@ -1,3 +1,4 @@
+import { orderCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -272,7 +273,7 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
             {formatDateLong(s.date)}, {s.start.slice(11)}
           </strong>
           <span>
-            {Math.round(s.distanceKm)} km od #{s.near.order.number} ({s.near.order.city}), dojazd ok. {s.travelMin} min
+            {Math.round(s.distanceKm)} km od {orderCode(s.near.order)} ({s.near.order.city}), dojazd ok. {s.travelMin} min
           </span>
         </button>
       ))}
@@ -292,7 +293,7 @@ function ReturningClient(props: { phone: string; onFill: (order: Order) => void;
     <div className="notice notice-info">
       <Icon name="users" />
       <span>
-        Ten numer był już w zleceniu <strong>#{last.number}</strong> ({last.clientName}, {orderAddress(last)}).
+        Ten numer był już w zleceniu <strong>{orderCode(last)}</strong> ({last.clientName}, {orderAddress(last)}).
         <span className="notice-actions">
           <button type="button" className="link" onClick={() => props.onFill(last)}>
             Uzupełnij dane klienta
@@ -562,7 +563,7 @@ export function OrderNewPage() {
         state.second === 'umowiony' ? { start: `${state.secondDate}T${state.secondTime}`, durationMin: duration } : null,
       );
       saveDraft(null);
-      toast(`Zapisano zlecenie #${order.number}`);
+      toast(`Zapisano zlecenie ${orderCode(order)}`);
       navigate(`/zlecenia/${order.id}`, { replace: true });
     });
 
@@ -647,7 +648,7 @@ export function OrderEditPage() {
   };
 
   return (
-    <Page title={`Edycja #${loaded.order.number}`} back={`/zlecenia/${id}`}>
+    <Page title={`Edycja ${orderCode(loaded.order)}`} back={`/zlecenia/${id}`}>
       {sections.map((step) => (
         <section key={step} className="edit-section">
           <h2 className="wizard-title">{STEP_TITLES[step]}</h2>

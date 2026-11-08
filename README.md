@@ -13,7 +13,9 @@ zaszyfrowane.
   - termin z czasem zabiegu i propozycjami blisko innych zleceń z szacowanym dojazdem, drugi zabieg umówiony od razu albo przez technika,
   - widełki cenowe (przy fakturze VAT netto i brutto),
   - klient wpisywany przy zleceniu, bez bazy klientów: telefony z dopiskiem, e-mail i NIP.
-  Niedokończony kreator zostaje zapamiętany. Numery `#210` są wspólne dla całej firmy.
+  Niedokończony kreator zostaje zapamiętany. Każde zlecenie ma kod z prefiksem regionu i czterocyfrowym numerem, np. `LDZ-0210`;
+  zabiegi mają ten sam kod z numerem rzymskim: `LDZ-0210/I`, `LDZ-0210/II`. Prefiks ustawia się w Ustawieniach
+  (osobno na każdym urządzeniu), a numery nie powtarzają się w całej firmie.
 - **Zabieg u klienta**:
   - przycisk rozpoczęcia, płatność z kolorami (gotówka, BLIK, przelew), zmiana faktury,
   - wywiad zapisywany na bieżąco, który nie znika po zamknięciu aplikacji: opis sytuacji, ugryzienia, widziane owady

@@ -1,5 +1,6 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
+import { roman, visitCode } from './codes';
 import { normalizeInterview } from './interview';
 import type { AppSettings } from './settings';
 import type { BuildingType, InvoiceType, Order, PayMethod, PestCategory, Visit } from './types';
@@ -95,7 +96,7 @@ export function reminderSms(order: Order, visit: Visit, settings: AppSettings): 
     data: formatDate(visit.start),
     godzina: visit.start ? formatTime(visit.start) : '',
     adres: orderAddress(order),
-    numer: `#${order.number}`,
+    numer: visitCode(order, visit.seq),
   });
 }
 
@@ -141,7 +142,7 @@ export function centralExport(order: Order, visit: Visit, all: Visit[]): string 
   const total = Math.max(all.length, visit.seq);
   const access = accessDetails(order);
   const lines = [
-    `Zlecenie #${order.number}, zabieg ${visit.seq} z ${total}`,
+    `Zlecenie ${visitCode(order, visit.seq)}, zabieg ${roman(visit.seq)} z ${total}`,
     `Data: ${formatDate(visit.doneOn ?? visit.start)}${visit.startedAt ? `, ${new Date(visit.startedAt).toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' })}` : ''}${visit.finishedAt ? `–${new Date(visit.finishedAt).toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' })}` : ''}`,
     visit.technicianName && `Technik: ${visit.technicianName}`,
     `Adres: ${orderAddress(order)}${order.postalCode ? ` (${order.postalCode})` : ''}, ${BUILDINGS[order.building].toLowerCase()}${access ? `, ${access}` : ''}`,

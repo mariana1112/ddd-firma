@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { matchesCode, orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, orderTerm, sortOrderRows, type OrderSort } from '../data/order-list';
 import { deleteOrder, orderVisits } from '../data/orders';
@@ -24,9 +25,9 @@ const defaultSort = (status: StatusFilter): OrderSort => (status === 'aktywne' ?
 function matches(order: Order, query: string): boolean {
   const q = normalizeForSearch(query.trim().replace(/^#/, ''));
   if (!q) return true;
-  if (/^\d+$/.test(q) && String(order.number).startsWith(q)) return true;
+  if (matchesCode(order, query)) return true;
   const hay = normalizeForSearch(
-    [order.clientName, orderAddress(order), order.postalCode, pestName(order), ...order.phones.map((p) => p.number.replace(/\s/g, ''))].join(' '),
+    [orderCode(order), order.clientName, orderAddress(order), order.postalCode, pestName(order), ...order.phones.map((p) => p.number.replace(/\s/g, ''))].join(' '),
   );
   return q.split(/\s+/).every((word) => hay.includes(word));
 }
@@ -72,7 +73,7 @@ export function OrdersPage() {
         </Empty>
       ) : (
         <>
-          <Search value={query} onChange={setQuery} placeholder="Szukaj: #210, nazwisko, adres, telefon" />
+          <Search value={query} onChange={setQuery} placeholder="Szukaj: kod (np. 0210), nazwisko, adres, telefon" />
           <Chips
             value={status}
             onChange={changeStatus}
@@ -168,7 +169,7 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
       }
       title={
         <>
-          <span className="order-number">#{order.number}</span> {order.clientName}
+          <span className="order-number">{orderCode(order)}</span> {order.clientName}
         </>
       }
       sub={`${orderAddress(order)} · ${pestName(order)}`}
@@ -176,7 +177,7 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
         current ? (
           <>
             {term.date ? <strong className="row-when">{formatDate(term.date)}{term.time ? `, godz. ${term.time}` : ''}</strong> : visitWhen(current)}
-            {` · zabieg ${current.seq}`}
+            {` · zabieg ${roman(current.seq)}`}
           </>
         ) : undefined
       }
@@ -222,7 +223,7 @@ export function OrderDetailPage() {
 
   const remove = async () => {
     const ok = await confirm({
-      title: `Usunąć zlecenie #${order.number}?`,
+      title: `Usunąć zlecenie ${orderCode(order)}?`,
       message: 'Zlecenie z zabiegami i zdjęciami trafi do kosza.',
       confirmLabel: 'Usuń',
       danger: true,
@@ -240,7 +241,7 @@ export function OrderDetailPage() {
 
   return (
     <Page
-      title={`#${order.number}`}
+      title={orderCode(order)}
       back="/zlecenia"
       actions={
         <Link className="icon-btn" to={`/zlecenia/${id}/edycja`} aria-label="Edytuj zlecenie">
@@ -272,7 +273,7 @@ export function OrderDetailPage() {
           <Row
             key={v.id}
             to={`/zabieg/${v.id}`}
-            title={`Zabieg ${v.seq}`}
+            title={`Zabieg ${roman(v.seq)} · ${visitCode(order, v.seq)}`}
             sub={visitWhen(v)}
             meta={v.technicianName || undefined}
             trailing={
@@ -326,7 +327,7 @@ export function OrderDetailPage() {
       {data.others.length > 0 && (
         <Group title="Wcześniejsze zlecenia tego klienta">
           {data.others.map((o) => (
-            <Row key={o.id} to={`/zlecenia/${o.id}`} title={`#${o.number} ${o.clientName}`} sub={`${orderAddress(o)} · ${pestName(o)}`} />
+            <Row key={o.id} to={`/zlecenia/${o.id}`} title={`${orderCode(o)} ${o.clientName}`} sub={`${orderAddress(o)} · ${pestName(o)}`} />
           ))}
         </Group>
       )}

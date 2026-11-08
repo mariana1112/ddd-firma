@@ -1,3 +1,4 @@
+import { roman, visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -150,9 +151,9 @@ function icsFile(order: Order, visit: Visit): Blob {
     `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
     `DTSTART;TZID=Europe/Warsaw:${stamp(visit.start!)}`,
     `DTEND;TZID=Europe/Warsaw:${stamp(end)}`,
-    `SUMMARY:${escape(`#${order.number} ${pestName(order)}, ${order.clientName}`)}`,
+    `SUMMARY:${escape(`${visitCode(order, visit.seq)} ${pestName(order)}, ${order.clientName}`)}`,
     `LOCATION:${escape(orderAddress(order))}`,
-    `DESCRIPTION:${escape(`Zabieg ${visit.seq}. Tel. ${order.phones[0]?.number ?? ''}`)}`,
+    `DESCRIPTION:${escape(`Zabieg ${roman(visit.seq)}. Tel. ${order.phones[0]?.number ?? ''}`)}`,
     'BEGIN:VALARM',
     'TRIGGER:-PT1H',
     'ACTION:DISPLAY',
@@ -172,7 +173,7 @@ function History({ list, current }: { list: Visit[]; current: Visit }) {
       {earlier.map((v) => (
         <div key={v.id} className="history">
           <strong>
-            Zabieg {v.seq}, {formatDate(v.doneOn)}
+            Zabieg {roman(v.seq)}, {formatDate(v.doneOn)}
             {v.technicianName ? `, ${v.technicianName}` : ''}
           </strong>
           {workSummary(v) && <span>Wykonano: {workSummary(v)}</span>}
@@ -211,7 +212,7 @@ function FinishSheet(props: {
   const ready = mode !== 'umowiony' || Boolean(date && time);
 
   return (
-    <Sheet open={props.open} title={`Zakończenie zabiegu ${visit.seq}`} onClose={props.onClose}>
+    <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
       <div className="form">
         <div className="field">
           <span className="field-label">Zalecenia dla klienta</span>
@@ -342,7 +343,7 @@ export function VisitPage() {
   };
 
   return (
-    <Page title={`#${order.number} · zabieg ${visit.seq}`} back={`/zlecenia/${order.id}`}>
+    <Page title={visitCode(order, visit.seq)} back={`/zlecenia/${order.id}`}>
       <div className="job-hero">
         <div className="hero-badges">
           <VisitBadge visit={visit} />
@@ -387,7 +388,7 @@ export function VisitPage() {
               <Icon name="calendar" /> {visit.start ? 'Zmień termin' : 'Umów termin'}
             </button>
             {visit.start && (
-              <button type="button" className="btn" onClick={() => deliverFile(icsFile(order, visit), `zabieg-${order.number}-${visit.seq}.ics`)}>
+              <button type="button" className="btn" onClick={() => deliverFile(icsFile(order, visit), `zabieg-${visitCode(order, visit.seq).replace('/', '-')}.ics`)}>
                 <Icon name="calendar" /> Dodaj do kalendarza iPhone'a
               </button>
             )}
@@ -493,11 +494,11 @@ export function VisitPage() {
               {visit.bonus > 0 && <Badge tone="ok">Premia {moneyToInput(visit.bonus)} zł</Badge>}
               {later && (
                 <p className="field-hint">
-                  Zabieg {later.seq}: {later.start ? formatTerm(later.start) : 'klient umówi się później'}
+                  Zabieg {roman(later.seq)}: {later.start ? formatTerm(later.start) : 'klient umówi się później'}
                 </p>
               )}
               <div className="btn-stack">
-                <button type="button" className="btn btn-primary" onClick={() => void share(centralExport(order, visit, list), `Zlecenie #${order.number}`)}>
+                <button type="button" className="btn btn-primary" onClick={() => void share(centralExport(order, visit, list), `Zlecenie ${visitCode(order, visit.seq)}`)}>
                   <Icon name="share" /> Wyślij dane do centrali
                 </button>
                 <button type="button" className="btn" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>

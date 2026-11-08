@@ -1,3 +1,4 @@
+import { orderCode } from '../data/codes';
 // Elementy wspólne ekranów zleceń: etykiety, akcje kontaktu z klientem i udostępnianie tekstu.
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
 import { formatTerm } from '../lib/dates';
@@ -26,7 +27,7 @@ export function visitWhen(visit: Visit): string {
 }
 
 export function orderLabel(order: Order): string {
-  return `#${order.number}`;
+  return orderCode(order);
 }
 
 async function copyText(text: string): Promise<boolean> {

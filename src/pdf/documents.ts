@@ -1,3 +1,4 @@
+import { roman, visitCode } from '../data/codes';
 // Dokumenty PDF jako czyste funkcje: dane wchodzą, definicja pdfmake wychodzi.
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { FIRST_PAGE_ROWS, NEXT_PAGE_ROWS, paginate, romanMonth, type DriverSummary, type MileageEntry } from '../data/mileage';
@@ -95,13 +96,13 @@ export function reportDocument(report: Report, names: { technician: string; boss
           layout: tableLayout,
           table: {
             headerRows: 1,
-            widths: [52, 34, '*', 70, 52, 56],
+            widths: [52, 62, '*', 64, 46, 56],
             body: [
               ['Data', 'Nr', 'Adres i szkodnik', 'Klient', 'Forma', 'Kwota'].map((t, i) => (i === 5 ? right(t, { style: 'th' }) : { text: t, style: 'th' })),
               ...report.visits.map(({ visit, order }) => [
                 formatDate(visit.doneOn),
-                order ? `#${order.number}` : '—',
-                order ? `${orderAddress(order)}\n${pestName(order)}, zabieg ${visit.seq}` : '—',
+                order ? visitCode(order, visit.seq) : '—',
+                order ? `${orderAddress(order)}\n${pestName(order)}, zabieg ${roman(visit.seq)}` : '—',
                 order?.clientName ?? '—',
                 visit.payMethod ? PAY_NAMES[visit.payMethod] : '—',
                 right(visit.amount ? formatPln(visit.amount) : '—'),

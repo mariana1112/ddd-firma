@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
+import { normalizePrefix, orderCode, PREFIX_MAX, roman, visitCode } from '../data/codes';
 import {
   exportBackup,
   listSnapshots,
@@ -19,10 +20,13 @@ import {
   saveCompany,
   getLastBackupAt,
   getProfile,
+  getRegion,
   getSyncState,
+  ownedBy,
   localOrderCounter,
   saveAppSettings,
   saveProfile,
+  saveRegion,
   setOrderCounter,
   type AppSettings,
 } from '../data/settings';
@@ -120,8 +124,10 @@ function SettingsForm(props: {
   synced: boolean;
   readOnly: boolean;
   counter: number;
+  prefix: string;
 }) {
-  const { run, toast } = useFeedback();
+  const { confirm, run, toast } = useFeedback();
+  const [prefix, setPrefix] = useState(props.prefix);
   const [s, setS] = useState(props.settings);
   const [company, setCompany] = useState(props.company);
   const setC = (patch: Partial<CompanySettings>) => setCompany((prev) => ({ ...prev, ...patch }));
@@ -136,6 +142,12 @@ function SettingsForm(props: {
 
   const save = () =>
     run(async () => {
+      await saveRegion({ prefix });
+      if (prefix) await offerPrefixForOldOrders(prefix);
+      if (props.readOnly) {
+        toast('Zapisano prefiks regionu');
+        return;
+      }
       if (!props.synced) await saveProfile({ ...(await getProfile()), name: name.trim() });
       await saveAppSettings({ ...s, bossName: s.bossName.trim(), thirdVisitBonus: bonusValue! });
       await saveCompany({
@@ -150,6 +162,20 @@ function SettingsForm(props: {
       toast('Zapisano ustawienia');
     });
 
+  /** Zlecenia przyjęte przed ustawieniem prefiksu dostają go za zgodą, tylko własne. */
+  const offerPrefixForOldOrders = async (value: string) => {
+    const userId = (await getProfile()).userId;
+    const old = (await orders.all()).filter((o) => !o.prefix && ownedBy(o.ownerId, userId, true));
+    if (old.length === 0) return;
+    const ok = await confirm({
+      title: `Nadać prefiks ${value} wcześniejszym zleceniom?`,
+      message: `${old.length} ${old.length === 1 ? 'zlecenie nie ma' : 'zleceń nie ma'} prefiksu, np. ${orderCode(old[0])}. Po zmianie: ${orderCode({ ...old[0], prefix: value })}. Numery zostają te same.`,
+      confirmLabel: 'Nadaj prefiks',
+    });
+    if (!ok) return;
+    for (const o of old) await orders.update(o.id, { prefix: value });
+  };
+
   return (
     <form
       className="form"
@@ -158,7 +184,17 @@ function SettingsForm(props: {
         if (valid) void save();
       }}
     >
-      {props.readOnly && <p className="notice notice-info">Ustawienia firmy zmienia szef. Zmiany docierają tu przy synchronizacji.</p>}
+      <fieldset>
+        <legend>Region i kody zleceń</legend>
+        <Field
+          label="Prefiks regionu"
+          hint={`Litery, do ${PREFIX_MAX} znaków, np. LDZ. Nowe zlecenia dostaną kod ${orderCode({ number: props.counter + 1, prefix })}, a ich zabiegi ${visitCode({ number: props.counter + 1, prefix }, 1)}, ${visitCode({ number: props.counter + 1, prefix }, 2)} itd. Ustawienie tego urządzenia.`}
+        >
+          <input value={prefix} maxLength={PREFIX_MAX} autoCapitalize="characters" placeholder="Np. LDZ" onChange={(e) => setPrefix(normalizePrefix(e.target.value))} />
+        </Field>
+      </fieldset>
+
+      {props.readOnly && <p className="notice notice-info">Pozostałe ustawienia firmy zmienia szef. Zmiany docierają tu przy synchronizacji.</p>}
       <fieldset disabled={props.readOnly}>
         <legend>Rozliczenie</legend>
         <Field label="Twoje imię" hint={props.synced ? 'Przy synchronizacji imię pochodzi z konta.' : 'Pojawia się w raportach i danych dla centrali.'}>
@@ -175,7 +211,7 @@ function SettingsForm(props: {
             <input inputMode="numeric" value={String(s.vatRate)} onChange={(e) => set({ vatRate: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
           </Field>
         </div>
-        <Field label="Następny numer zlecenia" hint={`Ostatni nadany: #${props.counter}. Numer można tylko podnieść.`}>
+        <Field label="Następny numer zlecenia" hint={`Ostatni nadany: ${orderCode({ number: props.counter, prefix })}. Numer można tylko podnieść; numery nie powtarzają się w całej firmie.`}>
           <input inputMode="numeric" value={next} onChange={(e) => setNext(e.target.value.replace(/\D/g, ''))} />
         </Field>
       </fieldset>
@@ -219,11 +255,9 @@ function SettingsForm(props: {
         </Field>
       </fieldset>
 
-      {!props.readOnly && (
-        <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>
-          Zapisz ustawienia
-        </button>
-      )}
+      <button type="submit" className="btn btn-primary btn-block" disabled={!props.readOnly && !valid}>
+        {props.readOnly ? 'Zapisz prefiks' : 'Zapisz ustawienia'}
+      </button>
     </form>
   );
 }
@@ -236,6 +270,7 @@ export function SettingsPage() {
     synced: boolean;
     readOnly: boolean;
     counter: number;
+    prefix: string;
   }>();
   // Formularz startuje z jednego odczytu, żeby synchronizacja nie resetowała pól w trakcie edycji.
   useEffect(() => {
@@ -249,6 +284,7 @@ export function SettingsPage() {
         // Ustawienia firmy na serwerze zmienia tylko szef, więc technik ich nie edytuje.
         readOnly: Boolean(sync && sync.role && sync.role !== 'owner'),
         counter: await localOrderCounter(),
+        prefix: (await getRegion()).prefix,
       });
     })();
   }, []);
@@ -359,10 +395,12 @@ export function BackupPage() {
         .sort((x, y) => (x.doneOn ?? x.start ?? '').localeCompare(y.doneOn ?? y.start ?? ''));
       deliverFile(
         csvBlob(
-          ['Numer', 'Zabieg', 'Termin', 'Wykonano', 'Technik', 'Klient', 'Telefon', 'Adres', 'Budynek', 'Szkodnik', 'Faktura', 'Forma płatności', 'Kwota PLN', 'Premia PLN', 'Kod pink'],
+          ['Kod zlecenia', 'Kod zabiegu', 'Numer', 'Zabieg', 'Termin', 'Wykonano', 'Technik', 'Klient', 'Telefon', 'Adres', 'Budynek', 'Szkodnik', 'Faktura', 'Forma płatności', 'Kwota PLN', 'Premia PLN', 'Kod pink'],
           rows.map((v) => {
             const o = orderById.get(v.orderId)!;
             return [
+              orderCode(o),
+              visitCode(o, v.seq),
               o.number,
               v.seq,
               v.start ? formatDate(v.start) : '',
@@ -522,9 +560,9 @@ function trashTitle(table: RecordTableName, row: BaseRecord): string {
     case 'expenses':
       return `${r.category}, ${(Number(r.amount) / 100).toFixed(2).replace('.', ',')} zł`;
     case 'orders':
-      return `#${r.number} ${r.clientName}`;
+      return `${orderCode(r as unknown as { number: number; prefix?: string })} ${r.clientName}`;
     case 'visits':
-      return `Zabieg ${r.seq}${r.doneOn ? `, ${formatDate(r.doneOn as string)}` : ''}`;
+      return `Zabieg ${roman(Number(r.seq))}${r.doneOn ? `, ${formatDate(r.doneOn as string)}` : ''}`;
     case 'trips':
       return `${r.from} → ${r.to}, ${formatDate(r.date as string)}`;
     case 'stockMovements':

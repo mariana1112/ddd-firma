@@ -186,8 +186,10 @@ export interface Phone {
 
 /** Zlecenie: klient, adres i problem. Kolejne zabiegi (wizyty) są osobnymi rekordami Visit. */
 export interface Order extends BaseRecord {
-  /** Numer do wyszukiwania, wyświetlany jako #210. */
+  /** Numer zlecenia, niepowtarzalny w całej firmie; w kodzie jako cztery cyfry, np. LDZ-0210. */
   number: number;
+  /** Prefiks regionu nadany przy przyjęciu zlecenia, np. „LDZ”. Brak w zleceniach sprzed prefiksów. */
+  prefix?: string;
   ownerId: string | null;
   ownerName: string;
   building: BuildingType;

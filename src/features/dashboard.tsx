@@ -1,3 +1,4 @@
+import { roman, visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import { buildReport, formatPln, periodOf } from '../data/reports';
@@ -23,10 +24,10 @@ function VisitRow({ visit, order, timeOnly }: { visit: Visit; order: Order; time
       title={
         <>
           {visit.start && <span className="row-time">{timeOnly ? formatTime(visit.start) : `${formatDate(visit.start)} ${formatTime(visit.start)}`}</span>}
-          <span className="order-number">#{order.number}</span> {order.clientName}
+          <span className="order-number">{visitCode(order, visit.seq)}</span> {order.clientName}
         </>
       }
-      sub={`${orderAddress(order)} · ${pestName(order)}, zabieg ${visit.seq}`}
+      sub={`${orderAddress(order)} · ${pestName(order)}, zabieg ${roman(visit.seq)}`}
       trailing={
         <span className="row-end">
           {order.pink && <PinkBadge />}
