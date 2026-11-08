@@ -3,6 +3,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // Wersja widoczna w aplikacji: commit z GitHuba (przy publikacji) i czas zbudowania.
+  define: {
+    __APP_VERSION__: JSON.stringify((process.env.GITHUB_SHA ?? 'dev').slice(0, 7)),
+    __APP_BUILT__: JSON.stringify(new Date().toISOString()),
+  },
   // Ścieżki względne: aplikację można hostować pod dowolnym adresem statycznym.
   base: './',
   plugins: [

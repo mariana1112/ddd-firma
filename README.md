@@ -25,6 +25,8 @@ zaszyfrowane.
 - **Zakończenie zabiegu**:
   - zalecenia z szablonów i SMS do klienta z podsumowaniem „Oprysk ciśnieniowy (listwy, kratka, łóżka)”,
   - drugi albo trzeci zabieg, a za trzeci umówiony przez technika premia 50 zł,
+  - przy każdym zabiegu: co pryskamy (całe mieszkanie, pokój, inne) i ustalona cena, z podpowiedzią z poprzedniego
+    zabiegu; przed zabiegiem można to zmienić („Zmień” na ekranie zabiegu), a kolejny zabieg umawia się też ze zlecenia,
   - przycisk „Zapisz i wyjdź” po zabiegu; wszystkie pola zapisują się na bieżąco, przycisk wraca do zlecenia.
 - **Kontakt z klientem**:
   - nawigacja w Google Maps, telefon,
@@ -155,7 +157,10 @@ Każdy push na `main` uruchamia `.github/workflows/deploy.yml`: testy, build i p
 publikacja się nie wykona. GitHub Pages dostaje wyłącznie kod aplikacji, a dane trafiają do projektu Supabase.
 
 Po publikacji nowej wersji aplikacja na telefonie pokaże pasek „Jest nowa wersja aplikacji”. Zmiana wchodzi dopiero po
-dotknięciu „Odśwież”, więc aktualizacja nie przerwie wypełniania formularza.
+dotknięciu „Odśwież”, więc aktualizacja nie przerwie wypełniania formularza. Zainstalowana aplikacja (ikona na
+telefonie lub komputerze) sprawdza nowe wersje przy uruchomieniu, co 15 minut i po powrocie do aplikacji; nie trzeba jej
+instalować od nowa, a dane zostają na urządzeniu. W „Więcej → Aktualizacje” jest numer wersji (commit) i przycisk
+„Sprawdź aktualizacje”.
 
 1. Otwórz adres aplikacji w Safari.
 2. Wybierz **Udostępnij → Do ekranu początkowego**.

@@ -38,6 +38,7 @@ import type { BaseRecord } from '../data/types';
 import { csvBlob, csvMoney } from '../lib/csv';
 import { formatDate, formatInstant } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
+import { APP_BUILT, APP_VERSION, checkForUpdates } from '../lib/updates';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Field, Group, Info, Loading, Page, Row, Sheet } from '../ui/kit';
@@ -73,12 +74,52 @@ export function MorePage() {
         />
         <Row to="/kosz" icon="trash" title="Kosz" />
       </Group>
+      <UpdatesGroup />
       <p className="about">
         {sync
           ? 'Dane są na tym urządzeniu i w zaszyfrowanej kopii na serwerze firmy. Aplikacja działa bez internetu.'
           : 'Wszystkie dane są zapisane wyłącznie na tym urządzeniu. Aplikacja działa bez internetu.'}
       </p>
     </Page>
+  );
+}
+
+/** Wersja aplikacji, ręczne sprawdzenie aktualizacji i jak zainstalować aplikację na telefonie lub komputerze. */
+function UpdatesGroup() {
+  const { toast } = useFeedback();
+  const [checking, setChecking] = useState(false);
+  const built = APP_BUILT ? formatInstant(APP_BUILT) : '';
+  const check = async () => {
+    setChecking(true);
+    const result = await checkForUpdates();
+    setChecking(false);
+    toast(
+      result === 'nowa'
+        ? 'Pobrano nową wersję. Dotknij „Odśwież” na dole ekranu.'
+        : result === 'aktualna'
+          ? 'Masz najnowszą wersję.'
+          : result === 'offline'
+            ? 'Brak internetu. Sprawdzę, gdy wróci połączenie.'
+            : 'Ta przeglądarka nie obsługuje aktualizacji w tle. Zainstaluj aplikację.',
+    );
+  };
+  return (
+    <Group title="Aktualizacje">
+      <Info label="Wersja">{built ? `${APP_VERSION}, z ${built}` : APP_VERSION}</Info>
+      <div className="group-pad">
+        <p className="field-hint">
+          Zainstalowana aplikacja sama pobiera nowe wersje z GitHuba, bez ponownej instalacji i bez utraty danych. Sprawdza je przy
+          uruchomieniu, co 15 minut i po powrocie do aplikacji. Gdy nowa wersja jest gotowa, na dole ekranu pojawia się „Odśwież”.
+        </p>
+        <p className="field-hint">
+          Instalacja: na iPhonie w Safari „Udostępnij” → „Do ekranu początkowego”; na Androidzie w Chrome menu ⋮ → „Zainstaluj aplikację”;
+          na komputerze w Chrome lub Edge ikona instalacji na końcu paska adresu.
+        </p>
+        <button type="button" className="btn btn-block" disabled={checking} onClick={() => void check()}>
+          <Icon name="refresh" /> {checking ? 'Sprawdzam…' : 'Sprawdź aktualizacje'}
+        </button>
+      </div>
+    </Group>
   );
 }
 

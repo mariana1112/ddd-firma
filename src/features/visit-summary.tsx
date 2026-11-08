@@ -1,6 +1,7 @@
 import { roman } from '../data/codes';
 import { normalizeInterview } from '../data/interview';
-import { INVOICES, PAY_NAMES, workSummary } from '../data/texts';
+import { INVOICES, PAY_NAMES, priceRange, workSummary } from '../data/texts';
+import { scopeText, visitPrice } from '../data/visit-terms';
 import type { Order, Visit } from '../data/types';
 import { formatDate, formatTerm } from '../lib/dates';
 import { moneyToInput } from '../lib/money';
@@ -25,16 +26,19 @@ function nextLabel(next: Visit): string {
  * Podsumowanie wykonanego zabiegu, tylko do odczytu. Puste pola są pomijane, więc widać krótko, co zostało zrobione.
  * `short` to wersja do podglądu poprzedniego zabiegu: bez zaleceń w punktach i bez zdjęć.
  */
-export function VisitSummary(props: { order: Order; visit: Visit; later?: Visit; short?: boolean; photos?: React.ReactNode }) {
+export function VisitSummary(props: { order: Order; visit: Visit; vatRate: number; later?: Visit; short?: boolean; photos?: React.ReactNode }) {
   const { order, visit, later } = props;
   const i = normalizeInterview(visit.interview);
   const yes = (v: string) => (v === 'tak' ? 'Tak' : v === 'nie' ? 'Nie' : '');
+  const agreed = priceRange({ ...visitPrice(visit, order), invoice: order.invoice }, props.vatRate);
   const pay = visit.amount !== null ? `${moneyToInput(visit.amount)} zł${visit.payMethod ? `, ${PAY_NAMES[visit.payMethod]}` : ''}` : 'Nie zapisano';
 
   return (
     <>
       <Group title={props.short ? undefined : 'Podsumowanie'}>
         <Info label="Wykonano">{whenDone(visit)}</Info>
+        <Info label="Co pryskano">{scopeText(visit.scope)}</Info>
+        {agreed && <Info label="Ustalona cena">{agreed.net}</Info>}
         <Info label="Płatność">{pay}</Info>
         {order.invoice !== 'brak' && <Info label="Faktura">{INVOICES[order.invoice]}</Info>}
         {visit.bonus > 0 && <Info label="Premia">{`${moneyToInput(visit.bonus)} zł`}</Info>}

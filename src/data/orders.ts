@@ -1,5 +1,6 @@
 // Zlecenia i zabiegi Pogromców Insektów. Operacje wielotabelowe działają w transakcjach.
 import { todayWarsaw } from '../lib/dates';
+import type { VisitTerms } from './visit-terms';
 import { newId } from '../lib/ids';
 import { db, writeTransaction } from './db';
 import { DomainError } from './domain';
@@ -17,6 +18,8 @@ export type OrderDraft = Omit<NewRecord<Order>, 'number' | 'prefix' | 'ownerId' 
 export interface PlannedVisit {
   start: string | null;
   durationMin: number;
+  /** Co pryskamy i za ile. Brak: zabieg bez własnych ustaleń (widełki zlecenia, całe mieszkanie). */
+  terms?: VisitTerms;
 }
 
 function newVisit(orderId: string, seq: number, plan: PlannedVisit, technician: { id: string | null; name: string }): NewRecord<Visit> {
@@ -41,7 +44,13 @@ function newVisit(orderId: string, seq: number, plan: PlannedVisit, technician: 
     recommendations: [],
     bonus: 0,
     notes: '',
+    ...(plan.terms ? { scope: { ...plan.terms.scope }, priceMin: plan.terms.priceMin, priceMax: plan.terms.priceMax } : {}),
   };
+}
+
+/** Pola zabiegu z ustaleń, do zapisu przy zmianie terminu. */
+function termsPatch(terms: VisitTerms | undefined): Partial<Visit> {
+  return terms ? { scope: { ...terms.scope }, priceMin: terms.priceMin, priceMax: terms.priceMax } : {};
 }
 
 /**
@@ -88,8 +97,8 @@ export async function startVisit(id: string): Promise<void> {
 
 export type NextVisit =
   | { mode: 'brak' }
-  | { mode: 'technik' }
-  | { mode: 'umowiony'; start: string; durationMin: number };
+  | { mode: 'technik'; terms?: VisitTerms }
+  | { mode: 'umowiony'; start: string; durationMin: number; terms?: VisitTerms };
 
 export interface FinishInput {
   payMethod: PayMethod | null;
@@ -119,17 +128,19 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
     let bonus = 0;
     if (input.next.mode === 'umowiony') {
       if (later) {
-        await visits.update(later.id, { start: input.next.start, durationMin: input.next.durationMin });
-        next = { ...later, start: input.next.start };
+        await visits.update(later.id, { start: input.next.start, durationMin: input.next.durationMin, ...termsPatch(input.next.terms) });
+        next = { ...later, start: input.next.start, ...termsPatch(input.next.terms) };
       } else {
         next = await visits.create(
           newVisit(visit.orderId, visit.seq + 1, input.next, { id: profile.userId, name: profile.name }),
         );
       }
       if (visit.seq + 1 === 3) bonus = settings.thirdVisitBonus;
+    } else if (input.next.mode === 'technik' && later && input.next.terms) {
+      await visits.update(later.id, termsPatch(input.next.terms));
     } else if (input.next.mode === 'technik' && !later) {
       next = await visits.create(
-        newVisit(visit.orderId, visit.seq + 1, { start: null, durationMin: visit.durationMin }, { id: profile.userId, name: profile.name }),
+        newVisit(visit.orderId, visit.seq + 1, { start: null, durationMin: visit.durationMin, terms: input.next.terms }, { id: profile.userId, name: profile.name }),
       );
     }
 
@@ -165,13 +176,13 @@ export async function scheduleNextVisit(orderId: string, plan: PlannedVisit): Pr
     const all = (await orderVisits(orderId)).filter((v) => v.status !== 'odwolany');
     const waiting = all.find((v) => v.status === 'zaplanowany' && !v.start);
     if (waiting) {
-      await visits.update(waiting.id, { start: plan.start, durationMin: plan.durationMin });
-      return { ...waiting, start: plan.start, durationMin: plan.durationMin };
+      await visits.update(waiting.id, { start: plan.start, durationMin: plan.durationMin, ...termsPatch(plan.terms) });
+      return { ...waiting, start: plan.start, durationMin: plan.durationMin, ...termsPatch(plan.terms) };
     }
     const seq = Math.max(0, ...(await orderVisits(orderId)).map((v) => v.seq)) + 1;
     const last = all[all.length - 1];
     const created = await visits.create(
-      newVisit(orderId, seq, { start: plan.start, durationMin: plan.durationMin || last?.durationMin || 60 }, { id: profile.userId, name: profile.name }),
+      newVisit(orderId, seq, { ...plan, durationMin: plan.durationMin || last?.durationMin || 60 }, { id: profile.userId, name: profile.name }),
     );
     if (order.closed) await orders.update(orderId, { closed: false });
     return created;

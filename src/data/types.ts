@@ -267,6 +267,23 @@ export interface Visit extends BaseRecord {
   /** Premia technika za ten zabieg, np. za samodzielne umówienie trzeciej wizyty. */
   bonus: number;
   notes: string;
+  /** Co pryskamy przy tym zabiegu. Brak w zabiegach sprzed tej opcji: całe mieszkanie. */
+  scope?: VisitScope;
+  /**
+   * Cena ustalona na ten zabieg, w groszach (netto przy fakturze VAT), od–do albo jedna kwota.
+   * Brak (undefined) w zabiegach sprzed tej opcji: obowiązują widełki zlecenia.
+   */
+  priceMin?: number | null;
+  priceMax?: number | null;
+}
+
+export type ScopeKind = 'calosc' | 'pokoj' | 'inne';
+
+/** Zakres zabiegu: całe mieszkanie, pokój (który) albo inne (opis). */
+export interface VisitScope {
+  kind: ScopeKind;
+  /** Który pokój albo co dokładnie, np. „sypialnia”, „piwnica i garaż”. */
+  note: string;
 }
 
 export type TripKind = 'sluzbowy' | 'prywatny';

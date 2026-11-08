@@ -109,8 +109,8 @@ describe('zlecenia', () => {
     expect((await orders.get(order.id))?.closed).toBe(true);
 
     // Umówienie kolejnego zabiegu ze zlecenia: nowy zabieg II i zlecenie znów otwarte.
-    const second = await scheduleNextVisit(order.id, { start: '2026-11-24T15:30', durationMin: 60 });
-    expect(second).toMatchObject({ seq: 2, start: '2026-11-24T15:30', status: 'zaplanowany', bonus: 0 });
+    const second = await scheduleNextVisit(order.id, { start: '2026-11-24T15:30', durationMin: 60, terms: { scope: { kind: 'pokoj', note: 'sypialnia' }, priceMin: 25000, priceMax: 25000 } });
+    expect(second).toMatchObject({ seq: 2, start: '2026-11-24T15:30', status: 'zaplanowany', bonus: 0, scope: { kind: 'pokoj', note: 'sypialnia' }, priceMin: 25000 });
     expect((await orders.get(order.id))?.closed).toBe(false);
   });
 

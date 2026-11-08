@@ -14,6 +14,9 @@ import { normalizeForSearch } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Page, Row, Search, Sheet } from '../ui/kit';
+import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
+import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
+import type { InvoiceType } from '../data/types';
 import { ContactBar, NextVisitPill, PayBadge, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
 
 type StatusFilter = 'aktywne' | 'wykonane' | 'wszystkie';
@@ -198,19 +201,26 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
   );
 }
 
-/** Termin kolejnego zabiegu: data, godzina i czas trwania. */
-function ScheduleNext(props: { durationMin: number; onSave: (start: string, durationMin: number) => void }) {
+/** Kolejny zabieg: termin, czas trwania, co pryskamy i cena (propozycja z poprzedniego zabiegu). */
+function ScheduleNext(props: {
+  durationMin: number;
+  initial: VisitTerms;
+  invoice: InvoiceType;
+  onSave: (start: string, durationMin: number, terms: VisitTerms) => void;
+}) {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('10:00');
   const [duration, setDuration] = useState(String(props.durationMin));
+  const [terms, setTerms] = useState(() => termsDraft(props.initial));
   const minutes = Number(duration);
-  const valid = Boolean(date && time) && Number.isInteger(minutes) && minutes > 0;
+  const parsed = termsFromDraft(terms);
+  const valid = Boolean(date && time) && Number.isInteger(minutes) && minutes > 0 && parsed !== null;
   return (
     <form
       className="form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (valid) props.onSave(`${date}T${time}`, minutes);
+        if (valid) props.onSave(`${date}T${time}`, minutes, parsed!);
       }}
     >
       <div className="form-row">
@@ -224,6 +234,7 @@ function ScheduleNext(props: { durationMin: number; onSave: (start: string, dura
       <Field label="Czas trwania (min)">
         <input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/D/g, ''))} />
       </Field>
+      <TermsFields value={terms} onChange={setTerms} invoice={props.invoice} proposedFrom="Podpowiedź: zakres i cena z poprzedniego zabiegu. Zmień, jeśli klient chce inaczej." />
       <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>
         Umów zabieg
       </button>
@@ -323,7 +334,7 @@ export function OrderDetailPage() {
                 {`Zabieg ${roman(v.seq)} · ${visitCode(order, v.seq)}`}
               </>
             }
-            sub={v.status === 'wykonany' ? `Wykonany ${formatDate(v.doneOn ?? v.start)}` : visitWhen(v)}
+            sub={`${v.status === 'wykonany' ? `Wykonany ${formatDate(v.doneOn ?? v.start)}` : visitWhen(v)} · ${termsText({ scope: v.scope ?? { kind: 'calosc', note: '' }, ...visitPrice(v, order) }, order.invoice, settings.vatRate)}`}
             meta={v.technicianName || undefined}
             trailing={
               <span className="row-end">
@@ -341,18 +352,18 @@ export function OrderDetailPage() {
           />
         )}
       </Group>
-      {next.kind !== 'umowiony' && (
-        <button type="button" className="btn btn-block" onClick={() => setScheduling(true)}>
-          <Icon name="calendar" /> Umów zabieg {roman(nextSeq)}
-        </button>
-      )}
-      <Sheet open={scheduling} title={`Umów zabieg ${roman(nextSeq)} · ${visitCode(order, nextSeq)}`} onClose={() => setScheduling(false)}>
+      <button type="button" className="btn btn-block" onClick={() => setScheduling(true)}>
+        <Icon name="calendar" /> Umów kolejny zabieg
+      </button>
+      <Sheet open={scheduling} title={`Umów kolejny zabieg · ${visitCode(order, nextSeq)}`} onClose={() => setScheduling(false)}>
         {scheduling && (
           <ScheduleNext
             durationMin={current?.durationMin ?? 60}
-            onSave={(start, durationMin) =>
+            initial={proposeTerms(data.visits, order)}
+            invoice={order.invoice}
+            onSave={(start, durationMin, terms) =>
               run(async () => {
-                await scheduleNextVisit(order.id, { start, durationMin });
+                await scheduleNextVisit(order.id, { start, durationMin, terms });
                 setScheduling(false);
                 toast(`Zabieg ${roman(nextSeq)} umówiony: ${formatTerm(start)}`);
               })

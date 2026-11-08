@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { watchForUpdates } from './lib/updates';
 import { AccountPage, BranchesPage } from './features/account';
 import { CostsPage } from './features/costs';
 import { DashboardPage } from './features/dashboard';
@@ -51,11 +52,11 @@ function UpdatePrompt() {
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
-  } = useRegisterSW();
+  } = useRegisterSW({ onRegisteredSW: (_url, reg) => watchForUpdates(reg) });
   if (!needRefresh) return null;
   return (
     <div className="update-bar" role="status">
-      <span>Jest nowa wersja aplikacji.</span>
+      <span>Jest nowa wersja aplikacji. Dane zostają na urządzeniu.</span>
       <button type="button" onClick={() => updateServiceWorker(true)}>
         Odśwież
       </button>

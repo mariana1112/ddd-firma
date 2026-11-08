@@ -2003,3 +2003,36 @@ legend + * {
     background: color-mix(in srgb, var(--primary-soft) 80%, var(--surface-2));
   }
 }
+
+/* Grupa z odstępami wewnątrz karty, np. aktualizacje */
+.group-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+/* Co pryskamy i cena na ekranie zabiegu */
+.terms-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: inset 4px 0 0 var(--primary);
+}
+
+.terms-bar > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 600;
+}
+
+.terms-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}

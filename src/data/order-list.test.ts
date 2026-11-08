@@ -79,3 +79,26 @@ describe('kolejny zabieg', () => {
     expect(nextVisitState([v(1, 'wykonany', '2026-11-02T12:00'), v(2, 'odwolany', '2026-11-16T12:00')])).toEqual({ kind: 'brak' });
   });
 });
+
+describe('zakres i cena zabiegu', () => {
+  it('opis zakresu i propozycja z poprzedniego zabiegu', async () => {
+    const { proposeTerms, scopeText, visitPrice } = await import('./visit-terms');
+    expect(scopeText(undefined)).toBe('Całe mieszkanie');
+    expect(scopeText({ kind: 'pokoj', note: 'sypialnia' })).toBe('Pokój: sypialnia');
+    expect(scopeText({ kind: 'inne', note: '' })).toBe('Inne');
+    const order = { priceMin: 30000, priceMax: 40000 };
+    // Zabieg sprzed opcji: widełki zlecenia, całe mieszkanie.
+    expect(proposeTerms([visit({ seq: 1 })], order)).toEqual({ scope: { kind: 'calosc', note: '' }, priceMin: 30000, priceMax: 40000 });
+    const v2 = visit({ seq: 2, scope: { kind: 'pokoj', note: 'salon' }, priceMin: 25000, priceMax: 25000 });
+    expect(proposeTerms([visit({ seq: 1 }), v2, visit({ seq: 3, status: 'odwolany' })], order)).toEqual({ scope: { kind: 'pokoj', note: 'salon' }, priceMin: 25000, priceMax: 25000 });
+    expect(visitPrice({ priceMin: null, priceMax: null }, order)).toEqual({ priceMin: null, priceMax: null });
+  });
+
+  it('pola ustaleń: jedna kwota to cena stała, zła kwota blokuje zapis', async () => {
+    const { termsFromDraft } = await import('../features/terms');
+    expect(termsFromDraft({ kind: 'pokoj', note: ' sypialnia ', min: '300', max: '' })).toEqual({ scope: { kind: 'pokoj', note: 'sypialnia' }, priceMin: 30000, priceMax: 30000 });
+    expect(termsFromDraft({ kind: 'calosc', note: 'x', min: '300', max: '400' })).toEqual({ scope: { kind: 'calosc', note: '' }, priceMin: 30000, priceMax: 40000 });
+    expect(termsFromDraft({ kind: 'calosc', note: '', min: 'abc', max: '' })).toBeNull();
+    expect(termsFromDraft({ kind: 'calosc', note: '', min: '500', max: '400' })).toBeNull();
+  });
+});

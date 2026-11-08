@@ -7,7 +7,8 @@ import { createOrder, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
-import type { BuildingType, InvoiceType, Order, PestCategory } from '../data/types';
+import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind } from '../data/types';
+import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { isValidNip } from '../lib/validators';
@@ -33,6 +34,9 @@ interface FormState {
   time: string;
   duration: string;
   second: 'technik' | 'umowiony' | 'brak';
+  /** Co pryskamy przy pierwszym zabiegu; drugi dostaje to samo, do zmiany przed zabiegiem. */
+  scopeKind: ScopeKind;
+  scopeNote: string;
   secondDate: string;
   secondTime: string;
   priceMin: string;
@@ -67,6 +71,8 @@ const EMPTY: FormState = {
   time: '10:00',
   duration: '60',
   second: 'technik',
+  scopeKind: 'calosc',
+  scopeNote: '',
   secondDate: '',
   secondTime: '10:00',
   priceMin: '',
@@ -304,6 +310,15 @@ function ReturningClient(props: { phone: string; onFill: (order: Order) => void;
   );
 }
 
+/** Ustalenia pierwszego zabiegu z formularza: zakres i widełki z kroku „Cena”. */
+function formTerms(s: FormState): VisitTerms {
+  return {
+    scope: { kind: s.scopeKind, note: s.scopeKind === 'calosc' ? '' : s.scopeNote.trim() },
+    priceMin: s.priceMin.trim() ? parseMoney(s.priceMin) : null,
+    priceMax: s.priceMax.trim() ? parseMoney(s.priceMax) : null,
+  };
+}
+
 function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => void; step: StepId; errors: Errors; vatRate: number; editId?: string }) {
   const { state: s, set, errors } = props;
   const price = priceRange(
@@ -411,6 +426,17 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               ))}
             </select>
           </Field>
+          <Choice label="Co pryskamy" value={s.scopeKind} options={SCOPE_KINDS} onChange={(scopeKind) => set({ scopeKind })} />
+          {s.scopeKind !== 'calosc' && (
+            <Field label={s.scopeKind === 'pokoj' ? 'Który pokój?' : 'Co dokładnie?'}>
+              <input
+                value={s.scopeNote}
+                placeholder={s.scopeKind === 'pokoj' ? 'Np. sypialnia' : 'Np. kuchnia i łazienka, piwnica'}
+                onChange={(e) => set({ scopeNote: e.target.value })}
+                autoComplete="off"
+              />
+            </Field>
+          )}
           <Choice
             label="Drugi zabieg"
             value={s.second}
@@ -504,6 +530,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           <Info label="Adres">{`${orderAddress(draft)}${draft.postalCode ? `, ${draft.postalCode}` : ''} (${BUILDINGS[draft.building].toLowerCase()})`}</Info>
           <Info label="Szkodnik">{draft.pest === 'inne' ? draft.pestOther : PESTS[draft.pest]}</Info>
           <Info label="Termin">{s.date ? formatTerm(`${s.date}T${s.time}`) : 'Do umówienia'}</Info>
+          <Info label="Co pryskamy">{scopeText(formTerms(s).scope)}</Info>
           <Info label="Drugi zabieg">
             {s.second === 'umowiony' ? formatTerm(`${s.secondDate}T${s.secondTime}`) : s.second === 'technik' ? 'Technik umówi z klientem' : 'Bez drugiego'}
           </Info>
@@ -559,8 +586,8 @@ export function OrderNewPage() {
       const duration = Number(state.duration) || 60;
       const { order } = await createOrder(
         toDraft(state),
-        { start: state.date ? `${state.date}T${state.time}` : null, durationMin: duration },
-        state.second === 'umowiony' ? { start: `${state.secondDate}T${state.secondTime}`, durationMin: duration } : null,
+        { start: state.date ? `${state.date}T${state.time}` : null, durationMin: duration, terms: formTerms(state) },
+        state.second === 'umowiony' ? { start: `${state.secondDate}T${state.secondTime}`, durationMin: duration, terms: formTerms(state) } : null,
       );
       saveDraft(null);
       toast(`Zapisano zlecenie ${orderCode(order)}`);
@@ -641,7 +668,16 @@ export function OrderEditPage() {
       return;
     }
     void run(async () => {
-      await orders.update(id, toDraft(state));
+      const draft = toDraft(state);
+      const before = loaded.order;
+      await orders.update(id, draft);
+      // Zmiana widełek zlecenia przechodzi na zabiegi do zrobienia, które miały dotychczasowe widełki.
+      if (draft.priceMin !== before.priceMin || draft.priceMax !== before.priceMax) {
+        for (const v of await visits.where('orderId', id)) {
+          const same = (v.priceMin ?? null) === before.priceMin && (v.priceMax ?? null) === before.priceMax;
+          if (v.status === 'zaplanowany' && same) await visits.update(v.id, { priceMin: draft.priceMin, priceMax: draft.priceMax });
+        }
+      }
       toast('Zapisano zmiany');
       navigate(`/zlecenia/${id}`, { replace: true });
     });

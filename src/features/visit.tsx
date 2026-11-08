@@ -27,6 +27,8 @@ import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui
 import { ContactBar, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
 import { Photos } from './photos';
 import { VisitSummary } from './visit-summary';
+import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
+import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 
 /** Kolejka zapisów wywiadu, wspólna dla ekranu zabiegu. */
 let interviewQueue: Promise<unknown> = Promise.resolve();
@@ -165,7 +167,7 @@ function icsFile(order: Order, visit: Visit): Blob {
   return new Blob([lines.join('\r\n')], { type: 'text/calendar' });
 }
 
-function History({ list, current, order }: { list: Visit[]; current: Visit; order: Order }) {
+function History({ list, current, order, vatRate }: { list: Visit[]; current: Visit; order: Order; vatRate: number }) {
   const navigate = useNavigate();
   const [preview, setPreview] = useState<Visit | null>(null);
   const earlier = list.filter((v) => v.seq < current.seq && v.status === 'wykonany');
@@ -197,7 +199,7 @@ function History({ list, current, order }: { list: Visit[]; current: Visit; orde
     <Sheet open={Boolean(preview)} title={preview ? `Zabieg ${roman(preview.seq)} · ${visitCode(order, preview.seq)}` : ''} onClose={() => setPreview(null)}>
       {preview && (
         <div className="form">
-          <VisitSummary order={order} visit={preview} short />
+          <VisitSummary order={order} visit={preview} vatRate={vatRate} short />
           <button type="button" className="btn btn-block" onClick={() => navigate(`/zabieg/${preview.id}?edycja=1`)}>
             <Icon name="edit" /> Edytuj poprzedni zabieg
           </button>
@@ -214,16 +216,21 @@ function FinishSheet(props: {
   visit: Visit;
   later: Visit | undefined;
   settings: AppSettings;
+  /** Propozycja zakresu i ceny kolejnego zabiegu. */
+  initialTerms: VisitTerms;
+  invoice: Order['invoice'];
   onFinish: (input: { recommendations: string[]; next: NextVisit }) => Promise<void>;
 }) {
   const { visit, later, settings } = props;
+  const [terms, setTerms] = useState(() => termsDraft(props.initialTerms));
+  const parsedTerms = termsFromDraft(terms);
   const [recommendations, setRecommendations] = useState<string[]>(visit.recommendations);
   const [mode, setMode] = useState<NextVisit['mode']>(later ? (later.start ? 'umowiony' : 'technik') : visit.seq === 1 ? 'technik' : 'brak');
   const [date, setDate] = useState(later?.start?.slice(0, 10) ?? '');
   const [time, setTime] = useState(later?.start?.slice(11, 16) ?? visit.start?.slice(11, 16) ?? '10:00');
   const [busy, setBusy] = useState(false);
   const nextSeq = visit.seq + 1;
-  const ready = mode !== 'umowiony' || Boolean(date && time);
+  const ready = (mode !== 'umowiony' || Boolean(date && time)) && (mode === 'brak' || parsedTerms !== null);
 
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
@@ -269,14 +276,18 @@ function FinishSheet(props: {
             </Field>
           </div>
         )}
+        {mode !== 'brak' && (
+          <TermsFields value={terms} onChange={setTerms} invoice={props.invoice} proposedFrom={`Podpowiedź z zabiegu ${roman(visit.seq)}. Zmień, jeśli klient chce inaczej.`} />
+        )}
         <button
           type="button"
           className="btn btn-primary btn-block"
           disabled={!ready || busy}
           onClick={async () => {
             setBusy(true);
+            const t = parsedTerms ?? undefined;
             const next: NextVisit =
-              mode === 'umowiony' ? { mode, start: `${date}T${time}`, durationMin: visit.durationMin } : { mode };
+              mode === 'umowiony' ? { mode, start: `${date}T${time}`, durationMin: visit.durationMin, terms: t } : mode === 'technik' ? { mode, terms: t } : { mode };
             await props.onFinish({ recommendations, next });
             setBusy(false);
           }}
@@ -295,6 +306,7 @@ export function VisitPage() {
   const navigate = useNavigate();
   const [finishing, setFinishing] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
+  const [editingTerms, setEditingTerms] = useState(false);
   // Pole opisu kodu pink dostaje kursor tylko zaraz po zaznaczeniu, a nie przy każdym wejściu na ekran.
   const [pinkJustOn, setPinkJustOn] = useState(false);
   // Wykonany zabieg pokazuje podsumowanie; formularz otwiera „Edytuj zabieg” albo link z ?edycja=1.
@@ -316,7 +328,9 @@ export function VisitPage() {
   const { visit, order, list, settings } = data;
   const later = list.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany');
   const phone = order.phones[0];
-  const price = priceRange(order, settings.vatRate);
+  // Cena i zakres tego zabiegu; zabiegi sprzed tej opcji mają widełki zlecenia i całe mieszkanie.
+  const terms: VisitTerms = { scope: visit.scope ?? { kind: 'calosc', note: '' }, ...visitPrice(visit, order) };
+  const price = priceRange({ ...terms, invoice: order.invoice }, settings.vatRate);
   const save = (patch: Partial<Visit>) => void run(() => visits.update(visit.id, patch));
   // Świeży odczyt z bazy: dwa pola zapisane tuż po sobie nie mogą nadpisać się nawzajem.
   // Zapisy wywiadu idą po kolei: tekst zapisany przy wyjściu z pola i dotknięte zaraz potem Tak/Nie
@@ -401,6 +415,18 @@ export function VisitPage() {
         </div>
       )}
 
+      {!summary && (
+        <div className="terms-bar">
+          <span>
+            <span className="terms-label">Co pryskamy i cena</span>
+            {termsText(terms, order.invoice, settings.vatRate)}
+          </span>
+          <button type="button" className="btn btn-sm" onClick={() => setEditingTerms(true)}>
+            <Icon name="edit" /> Zmień
+          </button>
+        </div>
+      )}
+
       {visit.status === 'zaplanowany' && (
         <>
           <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void run(() => startVisit(visit.id))}>
@@ -419,7 +445,7 @@ export function VisitPage() {
           <Group title="Zlecenie">
             {order.description && <Info label="Opis">{order.description}</Info>}
             {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
-            {price && <Info label="Widełki">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
+            {price && <Info label="Cena">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
             <Info label="Faktura">{INVOICES[order.invoice]}</Info>
           </Group>
         </>
@@ -427,7 +453,7 @@ export function VisitPage() {
 
       {summary && (
         <>
-          <VisitSummary order={order} visit={visit} later={later} photos={<Photos visitId={visit.id} readOnly />} />
+          <VisitSummary order={order} visit={visit} vatRate={settings.vatRate} later={later} photos={<Photos visitId={visit.id} readOnly />} />
           <div className="btn-stack">
             <button type="button" className="btn btn-primary" onClick={() => setEditingId(visit.id)}>
               <Icon name="edit" /> Edytuj zabieg
@@ -458,7 +484,7 @@ export function VisitPage() {
                 </button>
               ))}
             </div>
-            <AmountField value={visit.amount} hint={price ? (price.gross ? `Widełki: ${price.net}, ${price.gross}` : `Widełki: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
+            <AmountField value={visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
             <div className="choice">
               {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([value, label]) => (
                 <button
@@ -553,13 +579,59 @@ export function VisitPage() {
         </>
       )}
 
-      <History list={list} current={visit} order={order} />
+      <History list={list} current={visit} order={order} vatRate={settings.vatRate} />
 
-      <FinishSheet open={finishing} onClose={() => setFinishing(false)} visit={visit} later={later} settings={settings} onFinish={finish} />
+      {finishing && (
+        <FinishSheet
+          open={finishing}
+          onClose={() => setFinishing(false)}
+          visit={visit}
+          later={later}
+          settings={settings}
+          initialTerms={later && (later.scope || later.priceMin !== undefined) ? { scope: later.scope ?? { kind: 'calosc', note: '' }, ...visitPrice(later, order) } : proposeTerms(list.filter((v) => v.seq <= visit.seq), order)}
+          invoice={order.invoice}
+          onFinish={finish}
+        />
+      )}
+      <Sheet open={editingTerms} title={`Co pryskamy i cena · ${visitCode(order, visit.seq)}`} onClose={() => setEditingTerms(false)}>
+        {editingTerms && (
+          <EditTerms
+            initial={terms}
+            invoice={order.invoice}
+            onSave={(t) =>
+              run(async () => {
+                await visits.update(visit.id, { scope: t.scope, priceMin: t.priceMin, priceMax: t.priceMax });
+                setEditingTerms(false);
+                toast('Zapisano ustalenia');
+              })
+            }
+          />
+        )}
+      </Sheet>
       <Sheet open={rescheduling} title="Termin zabiegu" onClose={() => setRescheduling(false)}>
         {rescheduling && <Reschedule visit={visit} onDone={() => setRescheduling(false)} />}
       </Sheet>
     </Page>
+  );
+}
+
+/** Zmiana zakresu i ceny zabiegu, np. klient chce tylko jeden pokój. */
+function EditTerms(props: { initial: VisitTerms; invoice: Order['invoice']; onSave: (terms: VisitTerms) => void }) {
+  const [draft, setDraft] = useState(() => termsDraft(props.initial));
+  const parsed = termsFromDraft(draft);
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (parsed) props.onSave(parsed);
+      }}
+    >
+      <TermsFields value={draft} onChange={setDraft} invoice={props.invoice} />
+      <button type="submit" className="btn btn-primary btn-block" disabled={!parsed}>
+        Zapisz
+      </button>
+    </form>
   );
 }
 
