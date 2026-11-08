@@ -22,6 +22,8 @@ interface ConfirmOptions {
   title: string;
   message: string;
   confirmLabel: string;
+  /** Napis drugiego przycisku; domyślnie „Anuluj”. */
+  cancelLabel?: string;
   danger?: boolean;
 }
 
@@ -150,7 +152,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
             {confirmState?.confirmLabel}
           </button>
           <button type="button" className="btn" onClick={() => closeConfirm(false)}>
-            Anuluj
+            {confirmState?.cancelLabel ?? 'Anuluj'}
           </button>
         </div>
       </Sheet>

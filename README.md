@@ -13,6 +13,9 @@ zaszyfrowane.
   - termin z czasem zabiegu i propozycjami blisko innych zleceń z szacowanym dojazdem, drugi zabieg umówiony od razu albo przez technika,
   - widełki cenowe (przy fakturze VAT netto i brutto),
   - klient wpisywany przy zleceniu, bez bazy klientów: telefony z dopiskiem, e-mail i NIP.
+  Żadne pole nie jest obowiązkowe: przy pustym adresie, telefonie czy nazwisku aplikacja pyta, czy na pewno ich nie
+  uzupełnić; błędnie wpisane wartości (np. kod 00-00) trzeba poprawić. Z każdego kroku można zapisać od razu.
+- **Szybkie zlecenie**: telefon, nazwisko, adres, szkodnik, termin, zakres i cena na jednej stronie; reszta w edycji.
   Niedokończony kreator zostaje zapamiętany. Każde zlecenie ma kod z prefiksem regionu i czterocyfrowym numerem, np. `LDZ-0210`;
   zabiegi mają ten sam kod z numerem rzymskim: `LDZ-0210/I`, `LDZ-0210/II`. Prefiks ustawia się w Ustawieniach
   (osobno na każdym urządzeniu), a numery nie powtarzają się w całej firmie.

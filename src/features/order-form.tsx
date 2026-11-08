@@ -141,7 +141,7 @@ function fromOrder(order: Order): FormState {
 }
 
 function toDraft(s: FormState): OrderDraft {
-  const phones = [{ number: s.phone1.trim(), label: '' }];
+  const phones = s.phone1.trim() ? [{ number: s.phone1.trim(), label: '' }] : [];
   if (s.phone2.trim()) phones.push({ number: s.phone2.trim(), label: s.phone2Label.trim() });
   return {
     building: s.building,
@@ -183,24 +183,43 @@ const STEP_TITLES: Record<StepId, string> = {
 
 type Errors = Partial<Record<keyof FormState, string>>;
 
+/**
+ * Puste pola, o które warto zapytać. Nie blokują zapisu: aplikacja pyta, czy na pewno ich nie uzupełnić,
+ * bo czasem klient poda adres albo nazwisko dopiero później.
+ */
+function missing(step: StepId, s: FormState): Array<[keyof FormState, string]> {
+  const m: Array<[keyof FormState, string]> = [];
+  if (step === 'adres') {
+    if (!s.street.trim()) m.push(['street', 'ulica']);
+    if (!s.houseNo.trim()) m.push(['houseNo', 'numer domu']);
+    if (s.building === 'blok' && !s.flatNo.trim()) m.push(['flatNo', 'numer lokalu']);
+    if (!s.city.trim()) m.push(['city', 'miejscowość']);
+  }
+  if (step === 'problem' && s.pest === 'inne' && !s.pestOther.trim()) m.push(['pestOther', 'jaki szkodnik']);
+  if (step === 'termin' && s.second === 'umowiony' && !s.secondDate) m.push(['secondDate', 'data drugiego zabiegu']);
+  if (step === 'klient') {
+    if (!s.phone1.trim()) m.push(['phone1', 'telefon']);
+    if (!s.clientName.trim()) m.push(['clientName', 'imię lub firma']);
+  }
+  return m;
+}
+
+const ALL_STEPS: StepId[] = ['adres', 'problem', 'termin', 'cena', 'klient'];
+
+/** Błędnie wpisane wartości. Te blokują zapis, bo trafiłyby do zlecenia z błędem (np. kod 00-00). */
 function validate(step: StepId, s: FormState): Errors {
   const e: Errors = {};
   if (step === 'adres') {
-    if (!s.street.trim()) e.street = 'Podaj ulicę';
-    if (!s.houseNo.trim()) e.houseNo = 'Podaj numer';
-    if (!s.city.trim()) e.city = 'Podaj miejscowość';
-    if (s.building === 'blok' && !s.flatNo.trim()) e.flatNo = 'W bloku podaj numer lokalu';
     if (s.postalCode.trim() && !/^\d{2}-\d{3}$/.test(s.postalCode.trim())) e.postalCode = 'Kod w formacie 00-000';
   }
   if (step === 'problem') {
-    if (s.pest === 'inne' && !s.pestOther.trim()) e.pestOther = 'Napisz, jaki to szkodnik';
     if (s.area.trim() && !/^\d+([.,]\d+)?$/.test(s.area.trim())) e.area = 'Podaj liczbę, np. 48';
   }
   if (step === 'termin') {
     if (s.date && !isValidDate(s.date)) e.date = 'Podaj poprawną datę';
     if (s.date && !/^\d{2}:\d{2}$/.test(s.time)) e.time = 'Podaj godzinę';
-    if (s.second === 'umowiony') {
-      if (!isValidDate(s.secondDate)) e.secondDate = 'Podaj datę drugiego zabiegu';
+    if (s.second === 'umowiony' && s.secondDate) {
+      if (!isValidDate(s.secondDate)) e.secondDate = 'Podaj poprawną datę';
       else if (s.date && s.secondDate <= s.date) e.secondDate = 'Drugi zabieg musi być po pierwszym';
     }
   }
@@ -211,8 +230,7 @@ function validate(step: StepId, s: FormState): Errors {
     if (min !== null && max !== null && max < min) e.priceMax = 'Górna granica jest niższa niż dolna';
   }
   if (step === 'klient') {
-    if (!s.clientName.trim()) e.clientName = 'Podaj imię i nazwisko albo nazwę firmy';
-    if (s.phone1.replace(/\D/g, '').length < 9) e.phone1 = 'Podaj numer telefonu';
+    if (s.phone1.trim() && s.phone1.replace(/\D/g, '').length < 9) e.phone1 = 'Numer ma za mało cyfr';
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
     if (s.invoice !== 'brak' && s.nip.trim() && !isValidNip(s.nip)) e.nip = 'NIP jest niepoprawny';
   }
@@ -544,10 +562,99 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
   }
 }
 
+const QUICK_KEY = 'ddd:zlecenie-szybkie';
+
+function readQuick(): boolean {
+  try {
+    return localStorage.getItem(QUICK_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeQuick(quick: boolean) {
+  try {
+    localStorage.setItem(QUICK_KEY, quick ? '1' : '0');
+  } catch {
+    // Bez pamięci przeglądarki wybór trybu po prostu nie zostanie zapamiętany.
+  }
+}
+
+/** Szybkie zlecenie: najważniejsze pola na jednej stronie, reszta domyślna i do uzupełnienia w edycji. */
+function QuickForm(props: { state: FormState; set: (patch: Partial<FormState>) => void; errors: Errors }) {
+  const { state: s, set, errors } = props;
+  return (
+    <div className="form">
+      <div className="form-row">
+        <Field label="Telefon" error={errors.phone1}>
+          <input type="tel" inputMode="tel" value={s.phone1} onChange={(e) => set({ phone1: e.target.value })} autoComplete="off" />
+        </Field>
+        <Field label="Imię / firma" error={errors.clientName}>
+          <input value={s.clientName} onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
+        </Field>
+      </div>
+      <Choice label="Budynek" value={s.building} options={Object.entries(BUILDINGS) as Array<[BuildingType, string]>} onChange={(building) => set({ building })} />
+      <div className="form-row">
+        <Field label="Ulica" error={errors.street}>
+          <input value={s.street} onChange={(e) => set({ street: e.target.value })} autoComplete="off" />
+        </Field>
+        <Field label="Nr domu" error={errors.houseNo}>
+          <input className="input-short" value={s.houseNo} onChange={(e) => set({ houseNo: e.target.value })} autoComplete="off" />
+        </Field>
+      </div>
+      <div className="form-row">
+        {s.building === 'blok' && (
+          <Field label="Nr lokalu" error={errors.flatNo}>
+            <input className="input-short" value={s.flatNo} onChange={(e) => set({ flatNo: e.target.value })} inputMode="numeric" autoComplete="off" />
+          </Field>
+        )}
+        <Field label="Miejscowość" error={errors.city}>
+          <input value={s.city} onChange={(e) => set({ city: e.target.value })} autoComplete="off" />
+        </Field>
+      </div>
+      <Choice label="Szkodnik" value={s.pest} options={Object.entries(PESTS) as Array<[PestCategory, string]>} onChange={(pest) => set({ pest })} />
+      {s.pest === 'inne' && (
+        <Field label="Jaki szkodnik" error={errors.pestOther}>
+          <input value={s.pestOther} onChange={(e) => set({ pestOther: e.target.value })} autoComplete="off" />
+        </Field>
+      )}
+      <div className="form-row">
+        <Field label="Data" error={errors.date} hint="Puste: termin do umówienia.">
+          <input type="date" value={s.date} onChange={(e) => set({ date: e.target.value })} />
+        </Field>
+        <Field label="Godzina" error={errors.time}>
+          <input type="time" step={900} value={s.time} onChange={(e) => set({ time: e.target.value })} />
+        </Field>
+      </div>
+      <Choice label="Co pryskamy" value={s.scopeKind} options={SCOPE_KINDS} onChange={(scopeKind) => set({ scopeKind })} />
+      {s.scopeKind !== 'calosc' && (
+        <Field label={s.scopeKind === 'pokoj' ? 'Który pokój?' : 'Co dokładnie?'}>
+          <input value={s.scopeNote} placeholder={s.scopeKind === 'pokoj' ? 'Np. sypialnia' : 'Np. kuchnia i łazienka'} onChange={(e) => set({ scopeNote: e.target.value })} autoComplete="off" />
+        </Field>
+      )}
+      <div className="form-row">
+        <Field label="Cena od (zł)" error={errors.priceMin}>
+          <input value={s.priceMin} onChange={(e) => set({ priceMin: e.target.value })} inputMode="decimal" autoComplete="off" />
+        </Field>
+        <Field label="do (zł)" error={errors.priceMax}>
+          <input value={s.priceMax} onChange={(e) => set({ priceMax: e.target.value })} inputMode="decimal" autoComplete="off" />
+        </Field>
+      </div>
+      <p className="field-hint">Pozostałe dane (opis, metraż, faktura, drugi zabieg, kod pink) uzupełnisz później w edycji zlecenia.</p>
+    </div>
+  );
+}
+
 export function OrderNewPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const { run, toast } = useFeedback();
+  const { confirm, run, toast } = useFeedback();
+  const [quick, setQuickState] = useState(readQuick);
+  const setQuick = (value: boolean) => {
+    setQuickState(value);
+    writeQuick(value);
+    setErrors({});
+  };
   const settings = useLiveQuery(() => getAppSettings());
   // Kliknięcie w kalendarzu przekazuje dzień i godzinę nowego zlecenia.
   const [state, setState] = useState<FormState>(() => {
@@ -572,13 +679,41 @@ export function OrderNewPage() {
     window.scrollTo(0, 0);
   }, [stepIndex]);
 
-  const go = (delta: number) => {
+  /** Pyta o puste pola. true: przejść dalej bez nich; false: zostać i uzupełnić (pola zostają zaznaczone). */
+  const askMissing = async (list: Array<[keyof FormState, string]>, goLabel: string): Promise<boolean> => {
+    if (list.length === 0) return true;
+    const ok = await confirm({
+      title: 'Na pewno nie chcesz uzupełnić?',
+      message: `Puste: ${list.map(([, label]) => label).join(', ')}. Możesz to dodać później w edycji zlecenia.`,
+      confirmLabel: goLabel,
+      cancelLabel: 'Uzupełnię',
+    });
+    if (!ok) setErrors(Object.fromEntries(list.map(([key, label]) => [key, `Uzupełnij: ${label}`])) as Errors);
+    return ok;
+  };
+
+  const go = async (delta: number) => {
     if (delta > 0) {
       const found = validate(step, state);
       setErrors(found);
       if (Object.keys(found).length) return;
+      if (!(await askMissing(missing(step, state), 'Dalej bez tego'))) return;
+      setErrors({});
     }
     setStepIndex((i) => Math.min(steps.length - 1, Math.max(0, i + delta)));
+  };
+
+  /** Zapis od razu, z pominięciem pozostałych kroków: błędy blokują, o puste pola tylko pyta. */
+  const saveNow = async () => {
+    const found = Object.assign({}, ...ALL_STEPS.map((st) => validate(st, state))) as Errors;
+    setErrors(found);
+    if (Object.keys(found).length) {
+      toast('Popraw zaznaczone pola', { tone: 'error' });
+      if (!quick) setStepIndex(Math.max(0, ALL_STEPS.findIndex((st) => Object.keys(validate(st, state)).length > 0)));
+      return;
+    }
+    if (!(await askMissing(ALL_STEPS.flatMap((st) => missing(st, state)), 'Zapisz bez tego'))) return;
+    await save();
   };
 
   const save = () =>
@@ -587,7 +722,10 @@ export function OrderNewPage() {
       const { order } = await createOrder(
         toDraft(state),
         { start: state.date ? `${state.date}T${state.time}` : null, durationMin: duration, terms: formTerms(state) },
-        state.second === 'umowiony' ? { start: `${state.secondDate}T${state.secondTime}`, durationMin: duration, terms: formTerms(state) } : null,
+        // Drugi zabieg „umówiony” bez daty zapisuje się jako do umówienia.
+        state.second === 'umowiony'
+          ? { start: state.secondDate ? `${state.secondDate}T${state.secondTime}` : null, durationMin: duration, terms: formTerms(state) }
+          : null,
       );
       saveDraft(null);
       toast(`Zapisano zlecenie ${orderCode(order)}`);
@@ -598,6 +736,23 @@ export function OrderNewPage() {
 
   return (
     <Page title="Nowe zlecenie" back="/zlecenia">
+      <div className="chips" role="group" aria-label="Rodzaj formularza">
+        <button type="button" className={quick ? 'chip' : 'chip active'} aria-pressed={!quick} onClick={() => setQuick(false)}>
+          Krok po kroku
+        </button>
+        <button type="button" className={quick ? 'chip active' : 'chip'} aria-pressed={quick} onClick={() => setQuick(true)}>
+          Szybkie zlecenie
+        </button>
+      </div>
+      {quick ? (
+        <>
+          <QuickForm state={state} set={set} errors={errors} />
+          <button type="button" className="btn btn-primary btn-block" onClick={() => void saveNow()}>
+            <Icon name="check" /> Zapisz zlecenie
+          </button>
+        </>
+      ) : (
+      <>
       <div className="wizard-progress" aria-label={`Krok ${stepIndex + 1} z ${steps.length}`}>
         {steps.map((s, i) => (
           <span key={s} className={i <= stepIndex ? 'done' : ''} />
@@ -609,7 +764,7 @@ export function OrderNewPage() {
       <Steps state={state} set={set} step={step} errors={errors} vatRate={settings.vatRate} />
       <div className="wizard-nav">
         {stepIndex > 0 && (
-          <button type="button" className="btn" onClick={() => go(-1)}>
+          <button type="button" className="btn" onClick={() => void go(-1)}>
             Wstecz
           </button>
         )}
@@ -618,11 +773,18 @@ export function OrderNewPage() {
             <Icon name="check" /> Zapisz zlecenie
           </button>
         ) : (
-          <button type="button" className="btn btn-primary" onClick={() => go(1)}>
+          <button type="button" className="btn btn-primary" onClick={() => void go(1)}>
             Dalej
           </button>
         )}
       </div>
+      {step !== 'podsumowanie' && (
+        <button type="button" className="link" onClick={() => void saveNow()}>
+          Zapisz od razu, pomiń pozostałe kroki
+        </button>
+      )}
+      </>
+      )}
       {hasDraft && stepIndex === 0 && (
         <button
           type="button"
@@ -642,7 +804,7 @@ export function OrderNewPage() {
 export function OrderEditPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const { run, toast } = useFeedback();
+  const { confirm, run, toast } = useFeedback();
   const loaded = useLiveQuery(async () => {
     const order = await orders.get(id);
     return order && !order.deletedAt ? { order, settings: await getAppSettings() } : null;
@@ -660,12 +822,25 @@ export function OrderEditPage() {
   const set = (patch: Partial<FormState>) => setState((prev) => ({ ...prev!, ...patch }));
   const sections: StepId[] = ['adres', 'problem', 'cena', 'klient'];
 
-  const save = () => {
+  const save = async () => {
     const found = Object.assign({}, ...sections.map((step) => validate(step, state))) as Errors;
     setErrors(found);
     if (Object.keys(found).length) {
       toast('Popraw zaznaczone pola', { tone: 'error' });
       return;
+    }
+    const empty = sections.flatMap((step) => missing(step, state));
+    if (empty.length) {
+      const ok = await confirm({
+        title: 'Na pewno nie chcesz uzupełnić?',
+        message: `Puste: ${empty.map(([, label]) => label).join(', ')}.`,
+        confirmLabel: 'Zapisz bez tego',
+        cancelLabel: 'Uzupełnię',
+      });
+      if (!ok) {
+        setErrors(Object.fromEntries(empty.map(([key, label]) => [key, `Uzupełnij: ${label}`])) as Errors);
+        return;
+      }
     }
     void run(async () => {
       const draft = toDraft(state);
@@ -691,7 +866,7 @@ export function OrderEditPage() {
           <Steps state={state} set={set} step={step} errors={errors} vatRate={loaded.settings.vatRate} editId={id} />
         </section>
       ))}
-      <button type="button" className="btn btn-primary btn-block" onClick={save}>
+      <button type="button" className="btn btn-primary btn-block" onClick={() => void save()}>
         Zapisz zmiany
       </button>
     </Page>
