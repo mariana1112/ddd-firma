@@ -52,6 +52,8 @@ export function Row(props: {
   to?: string;
   onClick?: () => void;
   icon?: IconName;
+  /** Własny element na początku wiersza, np. kafelek z datą. */
+  lead?: ReactNode;
   title: ReactNode;
   sub?: ReactNode;
   meta?: ReactNode;
@@ -65,6 +67,7 @@ export function Row(props: {
           <Icon name={props.icon} />
         </span>
       )}
+      {props.lead}
       <span className="row-main">
         <span className="row-title">{props.title}</span>
         {props.sub && <span className="row-sub">{props.sub}</span>}

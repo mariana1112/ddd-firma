@@ -2,12 +2,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { restoreRecord } from '../data/domain';
+import { currentVisit, dateTile, dayHeading, groupByDay, orderTerm, sortOrderRows, type OrderSort } from '../data/order-list';
 import { deleteOrder, orderVisits } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
 import { accessDetails, BUILDINGS, INVOICES, mapsUrl, orderAddress, pestName, priceRange, reminderSms } from '../data/texts';
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
-import { formatDate } from '../lib/dates';
+import { formatDate, todayWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
@@ -17,11 +18,8 @@ import { ContactBar, PayBadge, PinkBadge, useContactActions, VisitBadge, visitWh
 type StatusFilter = 'aktywne' | 'wykonane' | 'wszystkie';
 type PayFilter = 'wszystkie' | PayMethod;
 
-/** Następny zabieg do zrobienia albo ostatni wykonany, do wyświetlenia na liście. */
-function currentVisit(list: Visit[]): Visit | undefined {
-  const open = list.filter((v) => v.status === 'zaplanowany' || v.status === 'w_trakcie');
-  return open.sort((a, b) => (a.start ?? '9999').localeCompare(b.start ?? '9999'))[0] ?? list[list.length - 1];
-}
+/** Domyślna kolejność: do zrobienia od najbliższego terminu, zakończone od ostatniego. */
+const defaultSort = (status: StatusFilter): OrderSort => (status === 'aktywne' ? 'najwczesniej' : 'najpozniej');
 
 function matches(order: Order, query: string): boolean {
   const q = normalizeForSearch(query.trim().replace(/^#/, ''));
@@ -39,12 +37,18 @@ export function OrdersPage() {
   const [status, setStatus] = useState<StatusFilter>('aktywne');
   const [pay, setPay] = useState<PayFilter>('wszystkie');
   const [invoicesOnly, setInvoicesOnly] = useState(false);
+  const [sort, setSort] = useState<OrderSort>('najwczesniej');
+  const today = todayWarsaw();
+  const changeStatus = (next: StatusFilter) => {
+    setStatus(next);
+    setSort(defaultSort(next));
+  };
 
   const rows = useMemo(() => {
     if (!data) return [];
     const byOrder = new Map<string, Visit[]>();
     for (const v of data.visits) byOrder.set(v.orderId, [...(byOrder.get(v.orderId) ?? []), v].sort((a, b) => a.seq - b.seq));
-    return data.orders
+    const filtered = data.orders
       .map((order) => ({ order, visits: byOrder.get(order.id) ?? [] }))
       .filter(({ order, visits: list }) => {
         if (!matches(order, query)) return false;
@@ -54,9 +58,9 @@ export function OrdersPage() {
         if (status === 'aktywne') return active;
         if (status === 'wykonane') return !active;
         return true;
-      })
-      .sort((a, b) => b.order.number - a.order.number);
-  }, [data, query, status, pay, invoicesOnly]);
+      });
+    return sortOrderRows(filtered, sort);
+  }, [data, query, status, pay, invoicesOnly, sort]);
 
   return (
     <Page title="Zlecenia" actions={<AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
@@ -71,7 +75,7 @@ export function OrdersPage() {
           <Search value={query} onChange={setQuery} placeholder="Szukaj: #210, nazwisko, adres, telefon" />
           <Chips
             value={status}
-            onChange={setStatus}
+            onChange={changeStatus}
             options={[
               { value: 'aktywne', label: 'Do zrobienia' },
               { value: 'wykonane', label: 'Zakończone' },
@@ -94,31 +98,88 @@ export function OrdersPage() {
               Tylko faktury
             </button>
           </div>
-          <Group>
-            {rows.length === 0 && <Empty title="Brak zleceń w tym widoku" />}
-            {rows.map(({ order, visits: list }) => (
-              <OrderRow key={order.id} order={order} visits={list} />
+          <div className="chips sort-chips" role="group" aria-label="Sortowanie">
+            <span className="chips-label">Sortuj:</span>
+            {(
+              [
+                ['najwczesniej', 'Data: najwcześniejsze'],
+                ['najpozniej', 'Data: najpóźniejsze'],
+                ['numer', 'Numer zlecenia'],
+              ] as Array<[OrderSort, string]>
+            ).map(([value, label]) => (
+              <button key={value} type="button" className={sort === value ? 'chip active' : 'chip'} aria-pressed={sort === value} onClick={() => setSort(value)}>
+                {label}
+              </button>
             ))}
-          </Group>
+          </div>
+          {rows.length === 0 ? (
+            <Group>
+              <Empty title="Brak zleceń w tym widoku" />
+            </Group>
+          ) : sort === 'numer' ? (
+            <Group>
+              {rows.map(({ order, visits: list }) => (
+                <OrderRow key={order.id} order={order} visits={list} today={today} />
+              ))}
+            </Group>
+          ) : (
+            groupByDay(rows).map((day) => (
+              <section key={day.date ?? 'bez-terminu'} className="group day-group">
+                <h2 className={`day-head${day.date === today ? ' day-head-today' : ''}`}>
+                  <span>{dayHeading(day.date, today)}</span>
+                  <span className="day-head-count">{day.rows.length}</span>
+                </h2>
+                <div className="group-body">
+                  {day.rows.map(({ order, visits: list }) => (
+                    <OrderRow key={order.id} order={order} visits={list} today={today} />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
         </>
       )}
     </Page>
   );
 }
 
-export function OrderRow({ order, visits: list }: { order: Order; visits: Visit[] }) {
+export function OrderRow({ order, visits: list, today }: { order: Order; visits: Visit[]; today: string }) {
   const current = currentVisit(list);
+  const term = orderTerm(list);
+  const open = current?.status === 'zaplanowany' || current?.status === 'w_trakcie';
+  const tile = term.date ? dateTile(term.date) : null;
+  const tone = !term.date ? ' date-tile-none' : term.date === today ? ' date-tile-today' : open && term.date < today ? ' date-tile-late' : !open ? ' date-tile-done' : '';
   const paid = [...new Set(list.map((v) => v.payMethod).filter((m): m is PayMethod => m !== null))];
   return (
     <Row
       to={`/zlecenia/${order.id}`}
+      lead={
+        <span className={`date-tile${tone}`} aria-hidden="true">
+          {tile ? (
+            <>
+              <span className="date-tile-weekday">{tile.weekday}</span>
+              <span className="date-tile-day">{tile.day}</span>
+              <span className="date-tile-month">{tile.month}</span>
+            </>
+          ) : (
+            <span className="date-tile-weekday">bez<br />terminu</span>
+          )}
+        </span>
+      }
       title={
         <>
           <span className="order-number">#{order.number}</span> {order.clientName}
         </>
       }
       sub={`${orderAddress(order)} · ${pestName(order)}`}
-      meta={current ? `Zabieg ${current.seq}: ${visitWhen(current)}` : undefined}
+      meta={
+        current ? (
+          <>
+            {term.date ? <strong className="row-when">{formatDate(term.date)}{term.time ? `, godz. ${term.time}` : ''}</strong> : visitWhen(current)}
+            {` · zabieg ${current.seq}`}
+          </>
+        ) : undefined
+      }
       trailing={
         <span className="row-end">
           {order.pink && <PinkBadge />}

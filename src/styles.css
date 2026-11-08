@@ -1794,3 +1794,102 @@ legend + * {
   background: var(--primary);
   color: var(--on-primary);
 }
+
+/* ---------- Lista zleceń: daty i sortowanie ---------- */
+
+.chips-label {
+  flex: none;
+  align-self: center;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.day-group {
+  gap: 6px;
+}
+
+.day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 0 4px;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.day-head > span:first-child::first-letter {
+  text-transform: uppercase;
+}
+
+.day-head-today {
+  color: var(--primary);
+}
+
+.day-head-count {
+  flex: none;
+  min-width: 24px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface-2);
+}
+
+.date-tile {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  min-height: 54px;
+  padding: 3px 0;
+  border-radius: 10px;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.date-tile-weekday,
+.date-tile-month {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.8;
+}
+
+.date-tile-day {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.date-tile-today {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.date-tile-late {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.date-tile-done {
+  color: var(--muted);
+}
+
+.date-tile-none {
+  color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.row-when {
+  font-weight: 650;
+  color: var(--text);
+}
