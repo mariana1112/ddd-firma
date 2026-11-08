@@ -14,6 +14,13 @@ function whenDone(visit: Visit): string {
   return [formatDate(visit.doneOn ?? visit.start), hours.join('–'), visit.technicianName].filter(Boolean).join(', ');
 }
 
+/** Stan kolejnego zabiegu: wykonany, umówiony albo do umówienia. */
+function nextLabel(next: Visit): string {
+  if (next.status === 'wykonany') return `Wykonany ${formatDate(next.doneOn ?? next.start)}`;
+  if (next.status === 'w_trakcie') return 'W trakcie';
+  return next.start ? `Umówiony: ${formatTerm(next.start)}` : 'Do umówienia';
+}
+
 /**
  * Podsumowanie wykonanego zabiegu, tylko do odczytu. Puste pola są pomijane, więc widać krótko, co zostało zrobione.
  * `short` to wersja do podglądu poprzedniego zabiegu: bez zaleceń w punktach i bez zdjęć.
@@ -42,7 +49,7 @@ export function VisitSummary(props: { order: Order; visit: Visit; later?: Visit;
         {visit.recommendations.length > 0 && (
           <Info label="Zalecenia">{props.short ? `${visit.recommendations.length} dla klienta` : visit.recommendations.map((r) => `• ${r}`).join('\n')}</Info>
         )}
-        {later && <Info label={`Zabieg ${roman(later.seq)}`}>{later.start ? formatTerm(later.start) : 'Do umówienia'}</Info>}
+        {later && <Info label={`Zabieg ${roman(later.seq)}`}>{nextLabel(later)}</Info>}
         {order.pink && <Info label="Kod pink">{order.pinkNote || 'Tak'}</Info>}
       </Group>
       {!props.short && props.photos && (

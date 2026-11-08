@@ -365,7 +365,8 @@ export function VisitPage() {
   };
 
   return (
-    <Page title={visitCode(order, visit.seq)} back={`/zlecenia/${order.id}`}>
+    // Klucz: przejście do innego zabiegu tworzy pola od nowa, żeby nie zostały w nich wartości poprzedniego.
+    <Page key={visit.id} title={visitCode(order, visit.seq)} back={`/zlecenia/${order.id}`}>
       <div className="job-hero">
         <div className="hero-badges">
           <VisitBadge visit={visit} />
