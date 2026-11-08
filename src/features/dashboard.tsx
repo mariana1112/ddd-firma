@@ -172,7 +172,7 @@ export function DashboardPage() {
           <div className="stats">
             <Stat label="Obrót" value={formatPln(week.turnover)} />
             <Stat label="Gotówka do oddania" value={formatPln(week.cashForBoss)} />
-            <Stat label="Koszty" value={formatPln(week.refunds + week.otherCosts)} />
+            <Stat label="Koszty" value={formatPln(week.costs + week.bonus)} />
             <Stat label="Premia" value={formatPln(week.bonus)} tone={week.bonus > 0 ? 'ok' : undefined} />
           </div>
           {week.unpaid > 0 && <Badge tone="warn">Zabiegi bez zapisanej płatności: {week.unpaid}</Badge>}

@@ -63,9 +63,8 @@ export function reportDocument(report: Report, names: { technician: string; boss
   const summary: Array<[string, number, boolean?]> = [
     ['Obrót', report.turnover, true],
     ...PAY_METHODS.map((m): [string, number] => [PAY_NAMES[m], report.byMethod[m]]),
-    [`Parkingi oraz autostrady (zwrot ${names.technician})`, report.refunds],
-    [`Premia ${names.technician}`, report.bonus],
-    ['Inne koszty', report.otherCosts],
+    ['Premia', report.bonus],
+    ...report.costLines.map((c): [string, number] => [c.name, c.amount]),
     [`Wynik gotówka dla ${names.bossGenitive}`, report.cashForBoss, true],
   ];
 

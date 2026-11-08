@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { deleteExpense, restoreRecord } from '../data/domain';
-import { COST_CATEGORIES, formatPln, periodOf, shiftPeriod, type Period } from '../data/reports';
+import { COST_SUGGESTIONS, costName, formatPln, periodOf, shiftPeriod, type Period } from '../data/reports';
 import { expenses } from '../data/repo';
 import { getProfile, ownedBy } from '../data/settings';
 import { formatDate, formatDateLong, todayWarsaw } from '../lib/dates';
@@ -14,7 +14,8 @@ export function CostsPage() {
   const { run, toast } = useFeedback();
   const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
   const [date, setDate] = useState(todayWarsaw());
-  const [category, setCategory] = useState(COST_CATEGORIES[0]);
+  // Jedna kategoria „inne koszty”: nazwę kosztu wpisuje technik, a przyciski tylko ją podpowiadają.
+  const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const list = useLiveQuery(async () => {
@@ -27,14 +28,16 @@ export function CostsPage() {
   const byDay = new Map<string, typeof inPeriod>();
   for (const e of inPeriod.sort((a, b) => b.date.localeCompare(a.date))) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]);
   const total = inPeriod.reduce((s, e) => s + e.amount, 0);
-  const valid = parseMoney(amount) !== null && (parseMoney(amount) ?? 0) > 0;
+  const valid = parseMoney(amount) !== null && (parseMoney(amount) ?? 0) > 0 && category.trim().length > 0;
+  const used = [...new Set(list.map((e) => costName(e)))].filter((n) => !COST_SUGGESTIONS.some((s) => s.toLowerCase() === n.toLowerCase()));
+  const suggestions = [...COST_SUGGESTIONS, ...used.slice(0, 6)];
 
   const add = () =>
     run(async () => {
       const profile = await getProfile();
       await expenses.create({
         date,
-        category,
+        category: category.trim(),
         amount: parseMoney(amount)!,
         description: description.trim(),
         docNo: '',
@@ -43,7 +46,8 @@ export function CostsPage() {
       });
       setAmount('');
       setDescription('');
-      toast(`Dodano: ${category} ${formatPln(parseMoney(amount)!)}`);
+      setCategory('');
+      toast(`Dodano: ${category.trim()} ${formatPln(parseMoney(amount)!)}`);
     });
 
   return (
@@ -55,9 +59,17 @@ export function CostsPage() {
           if (valid) void add();
         }}
       >
-        <div className="choice">
-          {COST_CATEGORIES.map((c) => (
-            <button key={c} type="button" className={c === category ? 'choice-item active' : 'choice-item'} onClick={() => setCategory(c)}>
+        <Field label="Koszt" hint="Wpisz, co to za koszt, albo wybierz poniżej. Każdy koszt pomniejsza gotówkę dla szefa.">
+          <input value={category} placeholder="Np. Paliwo, Zaliczka, Myjnia" onChange={(e) => setCategory(e.target.value)} />
+        </Field>
+        <div className="chips" role="group" aria-label="Podpowiedzi kosztów">
+          {suggestions.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={c.toLowerCase() === category.trim().toLowerCase() ? 'chip active' : 'chip'}
+              onClick={() => setCategory(c)}
+            >
               {c}
             </button>
           ))}
@@ -70,8 +82,8 @@ export function CostsPage() {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
         </div>
-        <Field label="Opis (opcjonalnie)">
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Np. A1 Gdańsk–Toruń" />
+        <Field label="Notatka (opcjonalnie)">
+          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Np. A1 Stryków, faktura" />
         </Field>
         <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>
           <Icon name="plus" /> Dodaj koszt
@@ -100,8 +112,8 @@ export function CostsPage() {
           {items.map((e) => (
             <div className="row" key={e.id}>
               <span className="row-main">
-                <span className="row-title">{e.category}</span>
-                {e.description && <span className="row-sub">{e.description}</span>}
+                <span className="row-title">{costName(e)}</span>
+                {e.description && costName(e) !== e.description.trim() && <span className="row-sub">{e.description}</span>}
               </span>
               <span className="num">{formatPln(e.amount)}</span>
               <button

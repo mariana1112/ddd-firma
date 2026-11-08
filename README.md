@@ -39,9 +39,13 @@ zaszyfrowane.
     stronie i 23 na kolejnych, z podsumowaniem strony, przeniesieniem i stanami licznika,
   - przejazdy prywatne na osobnych kartkach, tylko do wglądu pracodawcy, z zestawieniem kilometrów kierowców,
   - szef wybiera kierowcę albo wszystkich kierowców naraz.
-- **Koszty z dnia**: autostrada, parking, paliwo, inne.
-- **Raporty dzienne, tygodniowe i miesięczne**: obrót, gotówka, BLIK, przelew, zwroty za parkingi i autostrady, premia,
-  inne koszty i wynik gotówki dla szefa, w formacie rozliczenia wysyłanego szefowi, do skopiowania, wysłania albo PDF.
+- **Koszty z dnia**: jedna kategoria „inne koszty” z nazwą wpisywaną przy każdym koszcie (podpowiedzi: paliwo,
+  parking, autostrada, zaliczka, utrzymanie auta).
+- **Raporty dzienne, tygodniowe i miesięczne** w formacie rozliczenia wysyłanego szefowi, do skopiowania, wysłania
+  albo PDF. Koszty i premie zawsze pomniejszają gotówkę dla szefa.
+  - dzień: kwoty według formy płatności i każdy zabieg z adresem, koszty odjęte przy gotówce,
+  - tydzień: kwoty według dni tygodnia, koszty z premią i wynik gotówki,
+  - miesiąc: kwoty według tygodni miesiąca, koszty z premiami i wynik gotówki.
 - **Oddziały**: technik widzi dane swojego oddziału, a szef wszystkie oddziały, raporty techników i kody zaproszeń.
 - **Bezpieczeństwo danych**: kopie zapasowe, scalanie, migawki przed przywróceniem, kosz, cofanie usunięć.
 

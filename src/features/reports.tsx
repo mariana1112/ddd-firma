@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { buildReport, formatPln, PAY_METHODS, periodOf, periodTitle, reportText, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
+import { buildReport, costName, formatPln, PAY_METHODS, periodOf, periodTitle, reportText, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getAppSettings, getProfile, ownedBy } from '../data/settings';
 import { orderAddress, PAY_NAMES, pestName } from '../data/texts';
@@ -82,9 +82,8 @@ export function ReportsPage() {
         {PAY_METHODS.map((m) => (
           <Stat key={m} label={PAY_NAMES[m]} value={formatPln(report.byMethod[m])} />
         ))}
-        <Stat label="Parkingi i autostrady" value={formatPln(report.refunds)} />
+        <Stat label="Koszty" value={formatPln(report.costs)} />
         <Stat label="Premia" value={formatPln(report.bonus)} />
-        <Stat label="Inne koszty" value={formatPln(report.otherCosts)} />
         <Stat label="Km służbowo" value={`${report.km.sluzbowy} km`} />
         <Stat label="Km prywatnie" value={`${report.km.prywatny} km`} />
       </div>
@@ -127,7 +126,7 @@ export function ReportsPage() {
       <Group title={`Koszty (${report.expenses.length})`}>
         {report.expenses.length === 0 && <Empty title="Brak kosztów w tym okresie" />}
         {report.expenses.map((e) => (
-          <Row key={e.id} title={e.category} sub={[formatDate(e.date), e.description].filter(Boolean).join(' · ')} trailing={<span className="num">{formatPln(e.amount)}</span>} />
+          <Row key={e.id} title={costName(e)} sub={[formatDate(e.date), costName(e) === e.description.trim() ? '' : e.description].filter(Boolean).join(' · ')} trailing={<span className="num">{formatPln(e.amount)}</span>} />
         ))}
       </Group>
     </Page>

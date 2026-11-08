@@ -29,7 +29,7 @@ Zlecenia        /zlecenia         szukanie po #numerze, nazwisku, telefonie, adr
                                   zdjęcia, kod pink, zakończenie, SMS, dane dla centrali, zmiana terminu, .ics
 Raporty         /raporty          dzień, tydzień, miesiąc; rozliczenie tekstowe, PDF; ?technik= dla szefa
 Więcej          /wiecej
-  Koszty        /koszty           autostrada, parking, paliwo, inne
+  Koszty        /koszty           inne koszty z własną nazwą, np. paliwo, zaliczka
   Kilometry     /kilometry        auto i kierowca, przejazdy, ewidencja VAT i prywatne (PDF)
   Oddziały      /oddzialy         oddziały, technicy, kody zaproszeń, zgody, przenoszenie (szef)
   Ustawienia    /ustawienia       imię szefa w rozliczeniu, premia, VAT, zalecenia, czynności, miejsca, SMS
@@ -162,8 +162,10 @@ odległość × 1,3 przy 45 km/h. Bez internetu kreator działa bez propozycji.
 
 ## 7. Raporty
 
-`data/reports.ts` liczy z rekordów: obrót, płatności według formy, zwroty (autostrada, parking), inne koszty, premię,
-kilometry i wynik gotówki dla szefa = gotówka − zwroty − premia − inne koszty. Tekst rozliczenia ma format wysyłany
+`data/reports.ts` liczy z rekordów: obrót, płatności według formy, koszty zsumowane według nazwy (dawne koszty „Inne”
+mają nazwę w opisie), premię, kilometry i wynik gotówki dla szefa = gotówka − koszty − premie. Dzień rozpisuje zabiegi
+z adresem według formy płatności, tydzień kwoty według dni, miesiąc kwoty według tygodni (od poniedziałku, przycięte
+do miesiąca, z zakresem dni, w których była praca). Tekst rozliczenia ma format wysyłany
 szefowi i jest sprawdzany testem. PDF raportu i kilometrówki powstaje w `pdf/documents.ts` (pdfmake ładowany przy
 pierwszym użyciu, działa offline).
 
