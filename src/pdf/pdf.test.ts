@@ -158,13 +158,18 @@ describe('dokumenty PDF', () => {
     expect(entries.slice(0, 17).reduce((s, e) => s + e.km, 0)).toBe(3217);
     expect(entries.slice(17).reduce((s, e) => s + e.km, 0)).toBe(2331);
 
-    const taxpayer = 'Pogromcy Insektów, ul. Piotrkowska 1, 90-001 Łódź, NIP 7251234567';
-    expect(isPdf(await render(mileageDocument({ kind: 'sluzbowy', month: '2026-10', taxpayer, sheets }), 'kilometrowka-vat.pdf'))).toBe(true);
+    const taxpayer = 'P.H.U. TEST Jan Kowalski, ul. Piotrkowska 1, 90-001 Łódź, NIP 7251234567';
+    const vat = mileageDocument({ kind: 'sluzbowy', month: '2026-10', taxpayer, sheets });
+    // Kolumna kierowcy w ewidencji VAT zostaje pusta do własnoręcznego wpisu.
+    expect(JSON.stringify(vat.content)).not.toContain('Teodorczyk');
+    expect(JSON.stringify(vat.content)).toContain('P.H.U. TEST Jan Kowalski');
+    expect(isPdf(await render(vat, 'kilometrowka-vat.pdf'))).toBe(true);
     const privateSheets = mileageSheets(list, 'prywatny', '2026-10', name);
     expect(privateSheets.map((s) => s.vehicle)).toEqual(['GD12345', 'WE1KR10']);
     const summary = driverSummary(list, name);
     expect(summary.find((r) => r.driver === 'Teodorczyk')).toMatchObject({ sluzbowy: 5548, prywatny: 0 });
     expect(summary.find((r) => r.driver === 'Jan Nowak')).toMatchObject({ sluzbowy: 0, prywatny: 40 });
+    expect(JSON.stringify(mileageDocument({ kind: 'prywatny', month: '2026-10', taxpayer, sheets: privateSheets }).content)).toContain('Teodorczyk');
     expect(
       isPdf(await render(mileageDocument({ kind: 'prywatny', month: '2026-10', taxpayer, sheets: privateSheets, summary }), 'kilometrowka-prywatne.pdf')),
     ).toBe(true);

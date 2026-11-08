@@ -140,6 +140,7 @@ function SettingsForm(props: {
       await saveAppSettings({ ...s, bossName: s.bossName.trim(), thirdVisitBonus: bonusValue! });
       await saveCompany({
         ...company,
+        taxpayerName: (company.taxpayerName ?? '').trim(),
         nip: company.nip.trim(),
         street: company.street.trim(),
         postalCode: company.postalCode.trim(),
@@ -182,6 +183,9 @@ function SettingsForm(props: {
       <fieldset disabled={props.readOnly}>
         <legend>Dane firmy do kilometrówki</legend>
         <p className="field-hint">Nagłówek „Dane podatnika” w ewidencji przebiegu pojazdu dla celów VAT.</p>
+        <Field label="Nazwa podatnika" hint="Np. P.H.U. Nazwa Imię Nazwisko. Gdy puste, na wydruku jest Pogromcy Insektów.">
+          <input value={company.taxpayerName ?? ''} autoComplete="organization" onChange={(e) => setC({ taxpayerName: e.target.value })} />
+        </Field>
         <Field label="Adres (ulica i numer)">
           <input value={company.street} autoComplete="street-address" onChange={(e) => setC({ street: e.target.value })} />
         </Field>

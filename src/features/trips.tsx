@@ -24,7 +24,8 @@ export function kmSummary(list: Trip[], from: string, to: string): Record<TripKi
 /** Dane podatnika do nagłówka ewidencji: nazwa, adres i NIP firmy. */
 export function taxpayerLine(company: CompanySettings): string {
   const city = [company.postalCode, company.city].filter(Boolean).join(' ');
-  return [COMPANY_NAME, company.street, city, company.nip ? `NIP ${company.nip}` : ''].filter(Boolean).join(', ');
+  const name = company.taxpayerName?.trim() || COMPANY_NAME;
+  return [name, company.street, city, company.nip ? `NIP ${company.nip}` : ''].filter(Boolean).join(', ');
 }
 
 function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileName: string; onClose: () => void }) {

@@ -283,7 +283,8 @@ function formTable(vat: boolean, entries: Array<MileageEntry | null>, firstNo: n
       bigCell(e ? e.route : '', { width: FORM_WIDTHS[2], size: 7.5, align: 'left' }),
       bigCell(e ? purpose : '', { width: FORM_WIDTHS[3], size: 10, bold: true }),
       bigCell(e ? String(e.km) : '', { width: FORM_WIDTHS[4], size: 10, bold: true }),
-      bigCell(e ? e.driver : '', { width: FORM_WIDTHS[5], size: 7.5 }),
+      // W ewidencji VAT kolumna zostaje pusta do własnoręcznego wpisu; prywatne pokazują kierowcę.
+      bigCell(e && !vat ? e.driver : '', { width: FORM_WIDTHS[5], size: 7.5 }),
       odo(e?.odometerStart),
     ]);
     body.push(['', '', '', '', '', '', odo(e?.odometerEnd)]);

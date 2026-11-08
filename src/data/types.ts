@@ -372,6 +372,8 @@ export interface CompanySettings {
   defaultVatRate: number;
   offerValidityDays: number;
   protocolFooter: string;
+  /** Podatnik w nagłówku kilometrówki, np. „P.H.U. … Imię Nazwisko”. Puste: nazwa firmy. */
+  taxpayerName?: string;
 }
 
 export interface MetaRow {
