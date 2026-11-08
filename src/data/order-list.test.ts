@@ -65,3 +65,17 @@ describe('kody zleceń i zabiegów', () => {
     for (const q of ['43', 'WAW-0042', '0043', 'LDZ-0042x']) expect(matchesCode(order, q), q).toBe(false);
   });
 });
+
+describe('kolejny zabieg', () => {
+  it('rozróżnia umówiony, do umówienia, nieumówiony i brak', async () => {
+    const { nextVisitState } = await import('./order-list');
+    const v = (seq: number, status: Visit['status'], start: string | null) => visit({ seq, status, start });
+    expect(nextVisitState([v(1, 'zaplanowany', '2026-11-10T15:30')])).toEqual({ kind: 'nieumowiony', seq: 2, afterSeq: 1 });
+    expect(nextVisitState([v(1, 'zaplanowany', '2026-11-10T15:30'), v(2, 'zaplanowany', '2026-11-24T15:30')])).toEqual({ kind: 'umowiony', seq: 2, start: '2026-11-24T15:30' });
+    expect(nextVisitState([v(1, 'wykonany', '2026-11-02T12:00'), v(2, 'zaplanowany', '2026-11-16T12:00')])).toEqual({ kind: 'umowiony', seq: 2, start: '2026-11-16T12:00' });
+    expect(nextVisitState([v(1, 'wykonany', '2026-11-02T12:00'), v(2, 'zaplanowany', null)])).toEqual({ kind: 'do_umowienia', seq: 2 });
+    expect(nextVisitState([v(1, 'wykonany', '2026-11-02T12:00'), v(2, 'w_trakcie', '2026-11-16T12:00')])).toEqual({ kind: 'nieumowiony', seq: 3, afterSeq: 2 });
+    expect(nextVisitState([v(1, 'wykonany', '2026-11-02T12:00')])).toEqual({ kind: 'brak' });
+    expect(nextVisitState([v(1, 'wykonany', '2026-11-02T12:00'), v(2, 'odwolany', '2026-11-16T12:00')])).toEqual({ kind: 'brak' });
+  });
+});

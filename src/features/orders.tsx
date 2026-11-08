@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { matchesCode, orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
-import { currentVisit, dateTile, dayHeading, groupByDay, orderTerm, sortOrderRows, type OrderSort } from '../data/order-list';
+import { currentVisit, dateTile, dayHeading, groupByDay, nextVisitState, orderTerm, sortOrderRows, type OrderSort } from '../data/order-list';
 import { deleteOrder, orderVisits } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
@@ -14,7 +14,7 @@ import { normalizeForSearch } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { AddLink, Badge, Chips, Empty, Group, Info, Loading, NotFound, Page, Row, Search } from '../ui/kit';
-import { ContactBar, PayBadge, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
+import { ContactBar, NextVisitPill, PayBadge, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
 
 type StatusFilter = 'aktywne' | 'wykonane' | 'wszystkie';
 type PayFilter = 'wszystkie' | PayMethod;
@@ -178,6 +178,9 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
           <>
             {term.date ? <strong className="row-when">{formatDate(term.date)}{term.time ? `, godz. ${term.time}` : ''}</strong> : visitWhen(current)}
             {` · zabieg ${roman(current.seq)}`}
+            <span className="row-next">
+              <NextVisitPill state={nextVisitState(list)} />
+            </span>
           </>
         ) : undefined
       }
@@ -220,6 +223,7 @@ export function OrderDetailPage() {
   const { order, settings } = data;
   const price = priceRange(order, settings.vatRate);
   const nextPlanned = data.visits.find((v) => v.status === 'zaplanowany' && v.start);
+  const next = nextVisitState(data.visits);
 
   const remove = async () => {
     const ok = await confirm({
@@ -268,7 +272,7 @@ export function OrderDetailPage() {
         </div>
       )}
 
-      <Group title="Zabiegi">
+      <Group title="Zabiegi" action={<NextVisitPill state={next} />}>
         {data.visits.map((v) => (
           <Row
             key={v.id}
@@ -284,6 +288,13 @@ export function OrderDetailPage() {
             }
           />
         ))}
+        {next.kind === 'nieumowiony' && (
+          <Row
+            title={`Zabieg ${roman(next.seq)} · ${visitCode(order, next.seq)}`}
+            sub={`Jeszcze nie umówiony. Termin ustalisz przy zakończeniu zabiegu ${roman(next.afterSeq)}.`}
+            trailing={<Badge tone="warn">Nieumówiony</Badge>}
+          />
+        )}
       </Group>
 
       <Group title="Adres">

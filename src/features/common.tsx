@@ -1,7 +1,8 @@
-import { orderCode } from '../data/codes';
+import { orderCode, roman } from '../data/codes';
+import type { NextVisitState } from '../data/order-list';
 // Elementy wspólne ekranów zleceń: etykiety, akcje kontaktu z klientem i udostępnianie tekstu.
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
-import { formatTerm } from '../lib/dates';
+import { formatTerm, formatDate } from '../lib/dates';
 import { PAY_NAMES, smsUrl, telUrl } from '../data/texts';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
@@ -19,7 +20,26 @@ export function VisitBadge({ visit }: { visit: Visit }) {
   if (visit.status === 'wykonany') return <Badge tone="ok">Wykonany</Badge>;
   if (visit.status === 'w_trakcie') return <Badge tone="warn">W trakcie</Badge>;
   if (visit.status === 'odwolany') return <Badge tone="muted">Odwołany</Badge>;
-  return visit.start ? <Badge tone="primary">Zaplanowany</Badge> : <Badge tone="info">Do umówienia</Badge>;
+  return visit.start ? <Badge tone="primary">Umówiony</Badge> : <Badge tone="warn">Do umówienia</Badge>;
+}
+
+/** Krótko o kolejnym zabiegu: czy jest już umówiony. */
+export function NextVisitPill({ state }: { state: NextVisitState }) {
+  const tone = state.kind === 'umowiony' ? 'ok' : state.kind === 'brak' ? 'muted' : 'warn';
+  return <span className={`next-pill next-pill-${tone}`}>{nextVisitText(state)}</span>;
+}
+
+export function nextVisitText(state: NextVisitState): string {
+  switch (state.kind) {
+    case 'umowiony':
+      return `Zabieg ${roman(state.seq)} umówiony: ${formatDate(state.start).slice(0, 5)}, ${state.start.slice(11, 16)}`;
+    case 'do_umowienia':
+      return `Zabieg ${roman(state.seq)} do umówienia`;
+    case 'nieumowiony':
+      return `Zabieg ${roman(state.seq)} nieumówiony`;
+    case 'brak':
+      return 'Bez kolejnego zabiegu';
+  }
 }
 
 export function visitWhen(visit: Visit): string {

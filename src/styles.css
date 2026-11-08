@@ -1899,3 +1899,22 @@ legend + * {
   font-weight: 700;
   line-height: 1.1;
 }
+
+/* Kolejny zabieg: umówiony / do umówienia / nieumówiony / brak */
+.row-next {
+  display: block;
+  margin-top: 3px;
+}
+
+.next-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.next-pill-ok { color: var(--ok); background: var(--ok-soft); }
+.next-pill-warn { color: var(--warn); background: var(--warn-soft); }
+.next-pill-muted { color: var(--muted); background: var(--muted-soft); }

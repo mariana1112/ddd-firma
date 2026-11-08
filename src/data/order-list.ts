@@ -81,3 +81,29 @@ export function dateTile(date: string): { weekday: string; day: string; month: s
   const [y, m, d] = date.split('-').map(Number);
   return { weekday: WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()], day: String(d), month: MONTHS[m - 1] };
 }
+
+/**
+ * Kolejny zabieg zlecenia, liczony od bieżącego: zabiegu w trakcie, ostatniego wykonanego albo, gdy nic nie
+ * jest jeszcze zrobione, pierwszego zaplanowanego.
+ * - umowiony: kolejny zabieg ma termin,
+ * - do_umowienia: kolejny zabieg jest założony, ale bez terminu,
+ * - nieumowiony: kolejnego zabiegu jeszcze nie ma; termin ustala się przy zakończeniu bieżącego,
+ * - brak: wszystko zrobione i nic więcej nie jest zaplanowane.
+ */
+export type NextVisitState =
+  | { kind: 'umowiony'; seq: number; start: string }
+  | { kind: 'do_umowienia'; seq: number }
+  | { kind: 'nieumowiony'; seq: number; afterSeq: number }
+  | { kind: 'brak' };
+
+export function nextVisitState(list: Visit[]): NextVisitState {
+  const active = list.filter((v) => v.status !== 'odwolany').sort((a, b) => a.seq - b.seq);
+  const isOpen = (v: Visit) => v.status === 'zaplanowany' || v.status === 'w_trakcie';
+  const done = active.filter((v) => v.status === 'wykonany');
+  const present = active.find((v) => v.status === 'w_trakcie') ?? (done.length ? done[done.length - 1] : active.find(isOpen));
+  if (!present) return { kind: 'brak' };
+  const future = active.find((v) => v.seq > present.seq && isOpen(v));
+  if (future) return future.start ? { kind: 'umowiony', seq: future.seq, start: future.start } : { kind: 'do_umowienia', seq: future.seq };
+  if (isOpen(present)) return { kind: 'nieumowiony', seq: present.seq + 1, afterSeq: present.seq };
+  return { kind: 'brak' };
+}
