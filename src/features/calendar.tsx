@@ -76,7 +76,7 @@ export default function CalendarPage() {
           color: STATUS_COLOR[v.status],
           textColor: 'var(--surface)',
           editable: v.status === 'zaplanowany',
-          extendedProps: { number: order.number, pink: order.pink },
+          extendedProps: { number: order.number, pink: order.pink, label: `${pestName(order)}, ${order.city}` },
         };
       });
   }, [rows]);
@@ -107,17 +107,20 @@ export default function CalendarPage() {
           scrollTime="07:00:00"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           dayMaxEvents={3}
-          // Na telefonie dzień miesiąca ma ok. 50 px: zabiegi jak w tygodniu, kolorowe bloczki z godziną
-          // i numerem zlecenia, wszystkie bez „+więcej”.
-          eventDisplay={narrow ? 'block' : 'auto'}
-          views={{ dayGridMonth: narrow ? { dayMaxEvents: false } : {} }}
+          // Miesiąc wygląda jak tydzień: kolorowe bloczki z godziną i numerem zlecenia, wszystkie bez „+więcej”.
+          // Na komputerze bloczek ma też szkodnika i miejscowość, na telefonie (dzień ok. 50 px) tylko numer.
+          eventDisplay="block"
+          views={{ dayGridMonth: { dayMaxEvents: false } }}
           eventContent={(arg) => {
-            if (!narrow || arg.view.type !== 'dayGridMonth') return true;
-            const { number, pink } = arg.event.extendedProps as { number: number; pink: boolean };
+            if (arg.view.type !== 'dayGridMonth') return true;
+            const { number, pink, label } = arg.event.extendedProps as { number: number; pink: boolean; label: string };
             return (
               <span className={pink ? 'cal-block cal-block-pink' : 'cal-block'} title={arg.event.title}>
                 <span className="cal-block-time">{arg.event.start ? stripZone(arg.event.start).slice(11, 16) : ''}</span>
-                <span className="cal-block-number">#{number}</span>
+                <span className="cal-block-number">
+                  #{number}
+                  {!narrow && <span className="cal-block-label"> {label}</span>}
+                </span>
               </span>
             );
           }}
