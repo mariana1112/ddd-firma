@@ -1,7 +1,7 @@
 import { roman, visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { finishVisit, normalizeInterview, orderVisits, startVisit, type NextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, type AppSettings } from '../data/settings';
@@ -26,6 +26,7 @@ import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
 import { ContactBar, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
 import { Photos } from './photos';
+import { VisitSummary } from './visit-summary';
 
 /** Kolejka zapisów wywiadu, wspólna dla ekranu zabiegu. */
 let interviewQueue: Promise<unknown> = Promise.resolve();
@@ -164,10 +165,13 @@ function icsFile(order: Order, visit: Visit): Blob {
   return new Blob([lines.join('\r\n')], { type: 'text/calendar' });
 }
 
-function History({ list, current }: { list: Visit[]; current: Visit }) {
+function History({ list, current, order }: { list: Visit[]; current: Visit; order: Order }) {
+  const navigate = useNavigate();
+  const [preview, setPreview] = useState<Visit | null>(null);
   const earlier = list.filter((v) => v.seq < current.seq && v.status === 'wykonany');
   if (earlier.length === 0) return null;
   return (
+    <>
     <Group title="Poprzednie zabiegi">
       {earlier.map((v) => (
         <div key={v.id} className="history">
@@ -184,12 +188,23 @@ function History({ list, current }: { list: Visit[]; current: Visit }) {
               Płatność: {moneyToInput(v.amount)} zł, {PAY_NAMES[v.payMethod]}
             </span>
           )}
-          <Link className="link" to={`/zabieg/${v.id}`}>
+          <button type="button" className="link" onClick={() => setPreview(v)}>
             Szczegóły
-          </Link>
+          </button>
         </div>
       ))}
     </Group>
+    <Sheet open={Boolean(preview)} title={preview ? `Zabieg ${roman(preview.seq)} · ${visitCode(order, preview.seq)}` : ''} onClose={() => setPreview(null)}>
+      {preview && (
+        <div className="form">
+          <VisitSummary order={order} visit={preview} short />
+          <button type="button" className="btn btn-block" onClick={() => navigate(`/zabieg/${preview.id}?edycja=1`)}>
+            <Icon name="edit" /> Edytuj poprzedni zabieg
+          </button>
+        </div>
+      )}
+    </Sheet>
+    </>
   );
 }
 
@@ -282,6 +297,11 @@ export function VisitPage() {
   const [rescheduling, setRescheduling] = useState(false);
   // Pole opisu kodu pink dostaje kursor tylko zaraz po zaznaczeniu, a nie przy każdym wejściu na ekran.
   const [pinkJustOn, setPinkJustOn] = useState(false);
+  // Wykonany zabieg pokazuje podsumowanie; formularz otwiera „Edytuj zabieg” albo link z ?edycja=1.
+  const [params] = useSearchParams();
+  const [editingId, setEditingId] = useState<string | null>(params.has('edycja') ? id : null);
+  useEffect(() => setEditingId(params.has('edycja') ? id : null), [id, params]);
+  const editing = editingId === id;
 
   const data = useLiveQuery(async () => {
     const visit = await visits.get(id);
@@ -310,7 +330,8 @@ export function VisitPage() {
     );
   };
   const interview = normalizeInterview(visit.interview);
-  const active = visit.status === 'w_trakcie' || visit.status === 'wykonany';
+  const summary = visit.status === 'wykonany' && !editing;
+  const active = visit.status === 'w_trakcie' || (visit.status === 'wykonany' && editing);
 
   const sendFinishSms = async (done: Visit, next: Visit | null) => {
     if (phone) await sms(phone, finishSms(done, next, settings));
@@ -337,6 +358,7 @@ export function VisitPage() {
         next: input.next,
       });
       setFinishing(false);
+      setEditingId(null);
       toast('Zabieg zakończony');
       await sendFinishSms({ ...visit, recommendations: input.recommendations }, next);
     });
@@ -399,6 +421,23 @@ export function VisitPage() {
             {price && <Info label="Widełki">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
             <Info label="Faktura">{INVOICES[order.invoice]}</Info>
           </Group>
+        </>
+      )}
+
+      {summary && (
+        <>
+          <VisitSummary order={order} visit={visit} later={later} photos={<Photos visitId={visit.id} readOnly />} />
+          <div className="btn-stack">
+            <button type="button" className="btn btn-primary" onClick={() => setEditingId(visit.id)}>
+              <Icon name="edit" /> Edytuj zabieg
+            </button>
+            <button type="button" className="btn" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>
+              <Icon name="message" /> SMS do klienta z zaleceniami
+            </button>
+            <button type="button" className="btn" onClick={() => navigate(`/zlecenia/${order.id}`)}>
+              Wróć do zlecenia
+            </button>
+          </div>
         </>
       )}
 
@@ -498,7 +537,7 @@ export function VisitPage() {
                 </p>
               )}
               <div className="btn-stack">
-                <button type="button" className="btn btn-primary" onClick={() => navigate(`/zlecenia/${order.id}`)}>
+                <button type="button" className="btn btn-primary" onClick={() => { setEditingId(null); if (params.has('edycja')) navigate(`/zabieg/${visit.id}`, { replace: true }); }}>
                   <Icon name="check" /> Zapisz i wyjdź
                 </button>
                 <button type="button" className="btn" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>
@@ -513,7 +552,7 @@ export function VisitPage() {
         </>
       )}
 
-      <History list={list} current={visit} />
+      <History list={list} current={visit} order={order} />
 
       <FinishSheet open={finishing} onClose={() => setFinishing(false)} visit={visit} later={later} settings={settings} onFinish={finish} />
       <Sheet open={rescheduling} title="Termin zabiegu" onClose={() => setRescheduling(false)}>

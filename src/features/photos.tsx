@@ -54,20 +54,22 @@ function PhotoThumb({ photo, onOpen }: { photo: Attachment; onOpen: () => void }
   );
 }
 
-function PhotoView({ photo, onDelete }: { photo: Attachment; onDelete: () => void }) {
+function PhotoView({ photo, onDelete }: { photo: Attachment; onDelete?: () => void }) {
   const { url } = usePhotoUrl(photo);
   return (
     <>
       {url && <img className="photo-large" src={url} alt={photo.name} />}
-      <button type="button" className="btn btn-danger-quiet btn-block" onClick={onDelete}>
-        <Icon name="trash" /> Usuń zdjęcie
-      </button>
+      {onDelete && (
+        <button type="button" className="btn btn-danger-quiet btn-block" onClick={onDelete}>
+          <Icon name="trash" /> Usuń zdjęcie
+        </button>
+      )}
     </>
   );
 }
 
 /** Zdjęcia zabiegu: dodawanie z aparatu lub galerii, podgląd i usuwanie z cofnięciem. */
-export function Photos({ visitId }: { visitId: string }) {
+export function Photos({ visitId, readOnly = false }: { visitId: string; readOnly?: boolean }) {
   const { run, toast } = useFeedback();
   const photos = useLiveQuery(() => attachments.where('jobId', visitId), [visitId]) ?? [];
   const [busy, setBusy] = useState(false);
@@ -93,12 +95,15 @@ export function Photos({ visitId }: { visitId: string }) {
     });
   };
 
+  if (readOnly && photos.length === 0) return <p className="field-hint">Brak zdjęć</p>;
+
   return (
     <>
       <div className="photos">
         {photos.map((p) => (
           <PhotoThumb key={p.id} photo={p} onOpen={() => setOpen(p)} />
         ))}
+        {!readOnly && (
         <label className="photo photo-add">
           <Icon name="camera" />
           <span>{busy ? 'Zapisuję…' : 'Dodaj'}</span>
@@ -115,9 +120,10 @@ export function Photos({ visitId }: { visitId: string }) {
             }}
           />
         </label>
+        )}
       </div>
       <Sheet open={Boolean(open)} title="Zdjęcie" onClose={() => setOpen(null)}>
-        {open && <PhotoView photo={open} onDelete={() => remove(open)} />}
+        {open && <PhotoView photo={open} onDelete={readOnly ? undefined : () => remove(open)} />}
       </Sheet>
     </>
   );

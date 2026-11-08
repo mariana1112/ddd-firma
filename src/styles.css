@@ -1930,3 +1930,56 @@ legend + * {
 .next-pill-ok { color: var(--ok); background: var(--ok-soft); }
 .next-pill-warn { color: var(--warn); background: var(--warn-soft); }
 .next-pill-muted { color: var(--muted); background: var(--muted-soft); }
+
+/* ---------- Podświetlenie pod kursorem (komputer, mysz) ---------- */
+
+@media (hover: hover) and (pointer: fine) {
+  a.row:hover,
+  button.row:hover {
+    background: var(--surface-2);
+  }
+
+  .calendar .fc-event {
+    cursor: pointer;
+    transition: filter 0.12s, box-shadow 0.12s;
+  }
+
+  .calendar .fc-event:hover {
+    position: relative;
+    z-index: 5;
+    filter: brightness(1.15) saturate(1.1);
+    box-shadow: 0 0 0 2px var(--text), 0 4px 12px rgb(0 0 0 / 30%);
+  }
+
+  .calendar .fc-daygrid-day:hover,
+  .calendar .fc-timegrid-col:hover {
+    background: color-mix(in srgb, var(--surface-2) 45%, transparent);
+  }
+
+  .btn:not(:disabled):hover,
+  .icon-btn:hover,
+  .choice-item:hover,
+  .pay-option:hover,
+  .segmented button:hover,
+  .chip:hover {
+    filter: brightness(1.12);
+  }
+
+  .btn:not(.btn-primary):not(:disabled):hover,
+  .chip:not(.active):hover,
+  .choice-item:not(.active):hover {
+    box-shadow: inset 0 0 0 1px var(--muted);
+  }
+
+  .link:hover {
+    text-decoration: underline;
+  }
+
+  .photo:hover {
+    box-shadow: 0 0 0 2px var(--primary);
+  }
+
+  .check:hover {
+    color: var(--primary);
+  }
+}
