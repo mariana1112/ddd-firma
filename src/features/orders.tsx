@@ -4,16 +4,16 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { matchesCode, orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, nextVisitState, orderTerm, sortOrderRows, type OrderSort } from '../data/order-list';
-import { deleteOrder, orderVisits } from '../data/orders';
+import { deleteOrder, orderVisits, scheduleNextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
 import { accessDetails, BUILDINGS, INVOICES, mapsUrl, orderAddress, pestName, priceRange, reminderSms } from '../data/texts';
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
-import { formatDate, todayWarsaw } from '../lib/dates';
+import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { AddLink, Badge, Chips, Empty, Group, Info, Loading, NotFound, Page, Row, Search } from '../ui/kit';
+import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Page, Row, Search, Sheet } from '../ui/kit';
 import { ContactBar, NextVisitPill, PayBadge, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
 
 type StatusFilter = 'aktywne' | 'wykonane' | 'wszystkie';
@@ -198,8 +198,42 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
   );
 }
 
+/** Termin kolejnego zabiegu: data, godzina i czas trwania. */
+function ScheduleNext(props: { durationMin: number; onSave: (start: string, durationMin: number) => void }) {
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('10:00');
+  const [duration, setDuration] = useState(String(props.durationMin));
+  const minutes = Number(duration);
+  const valid = Boolean(date && time) && Number.isInteger(minutes) && minutes > 0;
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valid) props.onSave(`${date}T${time}`, minutes);
+      }}
+    >
+      <div className="form-row">
+        <Field label="Data">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        </Field>
+        <Field label="Godzina">
+          <input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} required />
+        </Field>
+      </div>
+      <Field label="Czas trwania (min)">
+        <input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/D/g, ''))} />
+      </Field>
+      <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>
+        Umów zabieg
+      </button>
+    </form>
+  );
+}
+
 export function OrderDetailPage() {
   const { id = '' } = useParams();
+  const [scheduling, setScheduling] = useState(false);
   const navigate = useNavigate();
   const { confirm, run, toast } = useFeedback();
   const { sms } = useContactActions();
@@ -224,6 +258,11 @@ export function OrderDetailPage() {
   const price = priceRange(order, settings.vatRate);
   const nextPlanned = data.visits.find((v) => v.status === 'zaplanowany' && v.start);
   const next = nextVisitState(data.visits);
+  // Aktualny: w trakcie albo najbliższy do zrobienia; gdy wszystko zrobione, ostatni wykonany.
+  const current = currentVisit(data.visits.filter((v) => v.status !== 'odwolany'));
+  const currentOpen = current?.status === 'zaplanowany' || current?.status === 'w_trakcie';
+  const waiting = data.visits.find((v) => v.status === 'zaplanowany' && !v.start);
+  const nextSeq = waiting?.seq ?? Math.max(0, ...data.visits.map((v) => v.seq)) + 1;
 
   const remove = async () => {
     const ok = await confirm({
@@ -277,8 +316,14 @@ export function OrderDetailPage() {
           <Row
             key={v.id}
             to={`/zabieg/${v.id}`}
-            title={`Zabieg ${roman(v.seq)} · ${visitCode(order, v.seq)}`}
-            sub={visitWhen(v)}
+            className={v.id === current?.id ? 'row-current' : undefined}
+            title={
+              <>
+                {v.id === current?.id && <span className="current-label">{currentOpen ? 'Aktualny zabieg' : 'Ostatni zabieg'}</span>}
+                {`Zabieg ${roman(v.seq)} · ${visitCode(order, v.seq)}`}
+              </>
+            }
+            sub={v.status === 'wykonany' ? `Wykonany ${formatDate(v.doneOn ?? v.start)}` : visitWhen(v)}
             meta={v.technicianName || undefined}
             trailing={
               <span className="row-end">
@@ -296,6 +341,25 @@ export function OrderDetailPage() {
           />
         )}
       </Group>
+      {next.kind !== 'umowiony' && (
+        <button type="button" className="btn btn-block" onClick={() => setScheduling(true)}>
+          <Icon name="calendar" /> Umów zabieg {roman(nextSeq)}
+        </button>
+      )}
+      <Sheet open={scheduling} title={`Umów zabieg ${roman(nextSeq)} · ${visitCode(order, nextSeq)}`} onClose={() => setScheduling(false)}>
+        {scheduling && (
+          <ScheduleNext
+            durationMin={current?.durationMin ?? 60}
+            onSave={(start, durationMin) =>
+              run(async () => {
+                await scheduleNextVisit(order.id, { start, durationMin });
+                setScheduling(false);
+                toast(`Zabieg ${roman(nextSeq)} umówiony: ${formatTerm(start)}`);
+              })
+            }
+          />
+        )}
+      </Sheet>
 
       <Group title="Adres">
         <Info label="Budynek">{BUILDINGS[order.building]}</Info>

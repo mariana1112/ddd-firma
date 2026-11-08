@@ -1981,3 +1981,25 @@ legend + * {
     color: var(--primary);
   }
 }
+
+/* Aktualny zabieg na stronie zlecenia */
+.row.row-current {
+  background: var(--primary-soft);
+  box-shadow: inset 4px 0 0 var(--primary);
+}
+
+.current-label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.row.row-current:hover {
+    background: color-mix(in srgb, var(--primary-soft) 80%, var(--surface-2));
+  }
+}

@@ -152,6 +152,32 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
   });
 }
 
+/**
+ * Umawia kolejny zabieg z poziomu zlecenia. Zabieg bez terminu, który już czeka, dostaje termin; w przeciwnym razie
+ * powstaje następny numer zabiegu. Zakończone zlecenie wraca do otwartych. Premia za trzeci zabieg nalicza się tylko
+ * przy zakończeniu zabiegu, więc tutaj jej nie ma.
+ */
+export async function scheduleNextVisit(orderId: string, plan: PlannedVisit): Promise<Visit> {
+  const profile = await getProfile();
+  return writeTransaction([db.orders, db.visits], async () => {
+    const order = await orders.get(orderId);
+    if (!order || order.deletedAt) throw new DomainError('Nie znaleziono zlecenia.');
+    const all = (await orderVisits(orderId)).filter((v) => v.status !== 'odwolany');
+    const waiting = all.find((v) => v.status === 'zaplanowany' && !v.start);
+    if (waiting) {
+      await visits.update(waiting.id, { start: plan.start, durationMin: plan.durationMin });
+      return { ...waiting, start: plan.start, durationMin: plan.durationMin };
+    }
+    const seq = Math.max(0, ...(await orderVisits(orderId)).map((v) => v.seq)) + 1;
+    const last = all[all.length - 1];
+    const created = await visits.create(
+      newVisit(orderId, seq, { start: plan.start, durationMin: plan.durationMin || last?.durationMin || 60 }, { id: profile.userId, name: profile.name }),
+    );
+    if (order.closed) await orders.update(orderId, { closed: false });
+    return created;
+  });
+}
+
 /** Usuwa zlecenie do kosza razem z zabiegami i zdjęciami. */
 export async function deleteOrder(id: string): Promise<void> {
   await writeTransaction([db.orders, db.visits, db.attachments], async () => {

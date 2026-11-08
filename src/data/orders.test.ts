@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from './db';
-import { createOrder, finishVisit, orderVisits, startVisit, type OrderDraft } from './orders';
+import { createOrder, finishVisit, orderVisits, scheduleNextVisit, startVisit, type OrderDraft } from './orders';
 import { buildReport, formatPln, periodOf, reportText, shiftPeriod } from './reports';
 import { expenses, orders, trips, visits } from './repo';
 import { DEFAULT_APP, getProfile, nextOrderNumber, ownedBy, saveProfile, saveRegion, setOrderCounter, setSyncState } from './settings';
@@ -107,6 +107,20 @@ describe('zlecenia', () => {
       next: { mode: 'brak' },
     });
     expect((await orders.get(order.id))?.closed).toBe(true);
+
+    // Umówienie kolejnego zabiegu ze zlecenia: nowy zabieg II i zlecenie znów otwarte.
+    const second = await scheduleNextVisit(order.id, { start: '2026-11-24T15:30', durationMin: 60 });
+    expect(second).toMatchObject({ seq: 2, start: '2026-11-24T15:30', status: 'zaplanowany', bonus: 0 });
+    expect((await orders.get(order.id))?.closed).toBe(false);
+  });
+
+  it('umówienie ze zlecenia nadaje termin zabiegowi, który czeka bez terminu', async () => {
+    const { order, visits: [first] } = await createOrder(draft(), { start: '2026-11-10T10:00', durationMin: 90 }, { start: null, durationMin: 90 });
+    const second = await scheduleNextVisit(order.id, { start: '2026-11-24T09:00', durationMin: 90 });
+    const list = await orderVisits(order.id);
+    expect(list.map((v) => [v.seq, v.start])).toEqual([[1, '2026-11-10T10:00'], [2, '2026-11-24T09:00']]);
+    expect(second.seq).toBe(2);
+    expect(first.seq).toBe(1);
   });
 });
 

@@ -54,12 +54,15 @@ export function Row(props: {
   icon?: IconName;
   /** Własny element na początku wiersza, np. kafelek z datą. */
   lead?: ReactNode;
+  /** Dodatkowa klasa wiersza, np. wyróżnienie. */
+  className?: string;
   title: ReactNode;
   sub?: ReactNode;
   meta?: ReactNode;
   trailing?: ReactNode;
 }) {
   const interactive = Boolean(props.to || props.onClick);
+  const rowClass = props.className ? `row ${props.className}` : 'row';
   const inner = (
     <>
       {props.icon && (
@@ -83,19 +86,19 @@ export function Row(props: {
   );
   if (props.to) {
     return (
-      <Link className="row" to={props.to}>
+      <Link className={rowClass} to={props.to}>
         {inner}
       </Link>
     );
   }
   if (props.onClick) {
     return (
-      <button type="button" className="row" onClick={props.onClick}>
+      <button type="button" className={rowClass} onClick={props.onClick}>
         {inner}
       </button>
     );
   }
-  return <div className="row">{inner}</div>;
+  return <div className={rowClass}>{inner}</div>;
 }
 
 export type Tone = 'primary' | 'ok' | 'info' | 'warn' | 'danger' | 'muted';
