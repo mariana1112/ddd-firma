@@ -705,9 +705,21 @@ legend + * {
   min-height: 40px;
 }
 
-.check input {
+/* Pola wyboru wewnątrz .field nie mogą dziedziczyć wyglądu pól tekstowych (appearance: none ukrywa ptaszka). */
+.check input,
+.field .check input[type='checkbox'],
+.field .check input[type='radio'] {
+  flex: none;
   width: 22px;
   height: 22px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  appearance: auto;
+  -webkit-appearance: auto;
   accent-color: var(--primary);
 }
 

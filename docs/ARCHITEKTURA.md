@@ -26,7 +26,7 @@ Zlecenia        /zlecenia         szukanie po #numerze, nazwisku, telefonie, adr
   Szczegóły     /zlecenia/:id     kontakt, zabiegi, dane zlecenia, historia klienta (ten sam telefon lub adres)
   Edycja        /zlecenia/:id/edycja
   Zabieg        /zabieg/:id       rozpoczęcie, płatność, faktura, wywiad, czynności, miejsca, ustalenia,
-                                  zdjęcia, kod pink, zakończenie, SMS, dane dla centrali, zmiana terminu, .ics
+                                  zdjęcia, kod pink, zakończenie, SMS, „Zapisz i wyjdź”, zmiana terminu, .ics
 Raporty         /raporty          dzień, tydzień, miesiąc; rozliczenie tekstowe, PDF; ?technik= dla szefa
 Więcej          /wiecej
   Koszty        /koszty           inne koszty z własną nazwą, np. paliwo, zaliczka

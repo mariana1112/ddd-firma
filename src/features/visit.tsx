@@ -1,13 +1,12 @@
 import { roman, visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { finishVisit, normalizeInterview, orderVisits, startVisit, type NextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, type AppSettings } from '../data/settings';
 import {
   accessDetails,
-  centralExport,
   finishSms,
   INVOICES,
   mapsUrl,
@@ -230,11 +229,11 @@ function FinishSheet(props: {
           </div>
         </div>
         <div className="field">
-          <span className="field-label">Zabieg {nextSeq}</span>
+          <span className="field-label">Zabieg {roman(nextSeq)}</span>
           <div className="choice">
             {(
               [
-                ['brak', `Bez zabiegu ${nextSeq}`],
+                ['brak', `Bez zabiegu ${roman(nextSeq)}`],
                 ['technik', 'Klient umówi się później'],
                 ['umowiony', nextSeq === 3 ? `Umawiam teraz (+${moneyToInput(settings.thirdVisitBonus)} zł premii)` : 'Umawiam teraz'],
               ] as Array<[NextVisit['mode'], string]>
@@ -277,7 +276,8 @@ function FinishSheet(props: {
 export function VisitPage() {
   const { id = '' } = useParams();
   const { confirm, deliverFile, run, toast } = useFeedback();
-  const { sms, share } = useContactActions();
+  const { sms } = useContactActions();
+  const navigate = useNavigate();
   const [finishing, setFinishing] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
   // Pole opisu kodu pink dostaje kursor tylko zaraz po zaznaczeniu, a nie przy każdym wejściu na ekran.
@@ -498,8 +498,8 @@ export function VisitPage() {
                 </p>
               )}
               <div className="btn-stack">
-                <button type="button" className="btn btn-primary" onClick={() => void share(centralExport(order, visit, list), `Zlecenie ${visitCode(order, visit.seq)}`)}>
-                  <Icon name="share" /> Wyślij dane do centrali
+                <button type="button" className="btn btn-primary" onClick={() => navigate(`/zlecenia/${order.id}`)}>
+                  <Icon name="check" /> Zapisz i wyjdź
                 </button>
                 <button type="button" className="btn" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>
                   <Icon name="message" /> SMS do klienta z zaleceniami

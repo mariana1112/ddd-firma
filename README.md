@@ -25,7 +25,7 @@ zaszyfrowane.
 - **Zakończenie zabiegu**:
   - zalecenia z szablonów i SMS do klienta z podsumowaniem „Oprysk ciśnieniowy (listwy, kratka, łóżka)”,
   - drugi albo trzeci zabieg, a za trzeci umówiony przez technika premia 50 zł,
-  - **dane dla centrali** jako tekst do wklejenia, bo protokół robi centrala.
+  - przycisk „Zapisz i wyjdź” po zabiegu; wszystkie pola zapisują się na bieżąco, przycisk wraca do zlecenia.
 - **Kontakt z klientem**:
   - nawigacja w Google Maps, telefon,
   - SMS z przypomnieniem i prośbą o potwierdzenie, z potwierdzeniem przed wysłaniem,
