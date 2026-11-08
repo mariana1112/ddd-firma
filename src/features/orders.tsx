@@ -102,9 +102,9 @@ export function OrdersPage() {
             <span className="chips-label">Sortuj:</span>
             {(
               [
-                ['najwczesniej', 'Data: najwcześniejsze'],
-                ['najpozniej', 'Data: najpóźniejsze'],
-                ['numer', 'Numer zlecenia'],
+                ['najwczesniej', 'Najwcześniejsze'],
+                ['najpozniej', 'Najpóźniejsze'],
+                ['numer', 'Numer'],
               ] as Array<[OrderSort, string]>
             ).map(([value, label]) => (
               <button key={value} type="button" className={sort === value ? 'chip active' : 'chip'} aria-pressed={sort === value} onClick={() => setSort(value)}>
