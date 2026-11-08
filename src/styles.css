@@ -1939,20 +1939,18 @@ legend + * {
     background: var(--surface-2);
   }
 
-  .calendar .fc-event {
+  .calendar .cal-event {
     cursor: pointer;
     transition: filter 0.12s, box-shadow 0.12s;
   }
 
-  .calendar .fc-event:hover {
-    position: relative;
+  .calendar .cal-event:hover {
     z-index: 5;
     filter: brightness(1.15) saturate(1.1);
     box-shadow: 0 0 0 2px var(--text), 0 4px 12px rgb(0 0 0 / 30%);
   }
 
-  .calendar .fc-daygrid-day:hover,
-  .calendar .fc-timegrid-col:hover {
+  .calendar .cal-day:hover {
     background: color-mix(in srgb, var(--surface-2) 45%, transparent);
   }
 

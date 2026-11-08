@@ -112,6 +112,8 @@ export default function CalendarPage() {
           // Na komputerze bloczek ma pełny kod, szkodnika i miejscowość. Na telefonie (dzień ok. 50 px) mieszczą się tylko
           // cztery cyfry, a numer kolejnego zabiegu (II, III) jest w osobnej, małej linii.
           eventDisplay="block"
+          eventClass="cal-event"
+          dayCellClass="cal-day"
           views={{ dayGridMonth: { dayMaxEvents: false } }}
           eventContent={(arg) => {
             if (arg.view.type !== 'dayGridMonth') return true;
