@@ -129,6 +129,21 @@ prawdziwym kodzie, usuniętym po teście.
   z zakresem regionu z adresu. `data/company.ts` liczy raport każdego regionu, ranking (obrót, potem wynik gotówki)
   i tekst podsumowania firmy.
 
+### Konta zakładane przez admina (migracja `20261111000000_konta_od_admina.sql`, funkcja `konta`)
+
+- Rejestracja w Supabase Auth jest wyłączona (od 9.11.2026). Konta tworzy funkcja serwera `supabase/functions/konta`
+  (`auth.admin.createUser`, klucz serwisowy tylko w środowisku funkcji) na prośbę zatwierdzonego admina firmy.
+- Login tymczasowy `gda-k7m2p4` to konto `gda-k7m2p4@konta.pogromcy.invalid` (domena .invalid nie odbiera poczty).
+  Hasło tymczasowe zna tylko admin i nowa osoba: serwer dostaje skrót PBKDF2 (`accountPassword`), a klucz firmy
+  w kodzie (`invites.account_key`) jest zawinięty samym hasłem tymczasowym (`rewrapDataKey` na urządzeniu admina,
+  po podaniu hasła firmy). E2E zostaje: serwer nie ma czym odwinąć klucza.
+- Kod z `for_user` widzi i wykorzystuje tylko to konto; członkostwo jest od razu zatwierdzone, z rolą z kodu
+  (drugi admin bez regionu). Ten sam rodzaj kodu dla istniejącej osoby przenosi klucz na nowe urządzenie.
+- Konto tymczasowe (`SyncState.temp`) przed pracą ustawia imię, własne hasło (`updateUser`) i e-mail (`claim`).
+- Test SQL (cofany): technik bez regionu odrzucony; obce konto nie widzi ani nie użyje kodu konta; konto z kodem
+  wchodzi od razu, zatwierdzone, z regionem; technik nie tworzy kont; drugi admin ma rolę admina bez regionu.
+  Funkcja: bez logowania 401, konto nietymczasowe przy `claim` dostaje NOT_TEMP; rejestracja z zewnątrz: signup_disabled.
+
 ### Kilka regionów na konto (migracja `20261110000000_regiony.sql`)
 
 - `member_branches`: regiony, do których konto ma dostęp; aktywny region to `memberships.branch_id`. `switch_branch`

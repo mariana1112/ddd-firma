@@ -1,6 +1,6 @@
 -- Konta zakładane przez admina: login, hasło tymczasowe i kod regionu.
 --
--- Admin tworzy konto przez funkcję serwera `konta` (Supabase Auth, klucz serwisowy tylko w Supabase) i kod
+-- Admin tworzy konto przez funkcję serwera „konta” (Supabase Auth, klucz serwisowy tylko w Supabase) i kod
 -- przypisany do tego konta. Kod niesie klucz firmy zawinięty hasłem tymczasowym (PBKDF2 na urządzeniu admina);
 -- serwer dostaje tylko skrót hasła, więc nadal nie może odczytać danych. Konto z kodem dla siebie wchodzi do firmy
 -- od razu (zgodę wyraził admin, tworząc konto), z rolą z kodu: technik albo admin (drugi admin).
