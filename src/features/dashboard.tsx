@@ -1,6 +1,7 @@
 import { roman, visitCode } from '../data/codes';
 import { scopeText } from '../data/visit-terms';
 import { mainPhone } from '../data/order-search';
+import { paymentMissing } from '../data/order-list';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -49,7 +50,7 @@ function QuickSearch() {
   );
 }
 
-function VisitRow({ visit, order, timeOnly }: { visit: Visit; order: Order; timeOnly?: boolean }) {
+function VisitRow({ visit, order, timeOnly, urgent }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean }) {
   return (
     <Row
       to={`/zabieg/${visit.id}`}
@@ -63,7 +64,7 @@ function VisitRow({ visit, order, timeOnly }: { visit: Visit; order: Order; time
       trailing={
         <span className="row-end">
           {order.pink && <PinkBadge />}
-          <VisitBadge visit={visit} />
+          {urgent ? <Badge tone="danger">Uzupełnij płatność</Badge> : <VisitBadge visit={visit} />}
         </span>
       }
     />
@@ -106,6 +107,10 @@ export function DashboardPage() {
   const overdue = planned.filter(({ visit }) => visit.start!.slice(0, 10) < today);
   const upcoming = planned.filter(({ visit }) => visit.start!.slice(0, 10) > today && visit.start!.slice(0, 10) <= addDays(today, 7));
   const toSchedule = withOrder.filter(({ visit }) => visit.status === 'zaplanowany' && !visit.start);
+  // Pilne: zabieg zakończony bez formy płatności albo kwoty, do uzupełnienia.
+  const urgent = withOrder
+    .filter(({ visit, order }) => paymentMissing(visit) && !order.archived)
+    .sort((a, b) => (b.visit.doneOn ?? '').localeCompare(a.visit.doneOn ?? ''));
 
   const month = monthOf(today);
   const km = kmSummary(mine(data.trips), `${month}-01`, `${month}-31`);
@@ -169,6 +174,14 @@ export function DashboardPage() {
             <strong>Zrób kopię zapasową.</strong> {data.lastBackup ? `Ostatnia: ${formatDate(data.lastBackup)}.` : ''}
           </span>
         </Link>
+      )}
+
+      {urgent.length > 0 && (
+        <Group title={`Pilne: brak płatności (${urgent.length})`}>
+          {urgent.map(({ visit, order }) => (
+            <VisitRow key={visit.id} visit={visit} order={order} urgent />
+          ))}
+        </Group>
       )}
 
       <Group title={`Dzisiaj${todayList.length ? ` (${todayList.length})` : ''}`}>

@@ -9,6 +9,7 @@ import { getAppSettings } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
 import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind } from '../data/types';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
+import { coordsFromLink, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { isValidNip } from '../lib/validators';
@@ -51,6 +52,8 @@ interface FormState {
   phone2Label: string;
   pink: boolean;
   pinkNote: string;
+  /** Link do miejsca z Google Maps (opcjonalny), żeby nawigacja trafiała dokładnie. */
+  mapsLink: string;
 }
 
 const EMPTY: FormState = {
@@ -87,6 +90,7 @@ const EMPTY: FormState = {
   phone2Label: '',
   pink: false,
   pinkNote: '',
+  mapsLink: '',
 };
 
 const DRAFT_KEY = 'ddd-szkic-zlecenia';
@@ -137,6 +141,7 @@ function fromOrder(order: Order): FormState {
     phone2Label: order.phones[1]?.label ?? '',
     pink: order.pink,
     pinkNote: order.pinkNote,
+    mapsLink: order.mapsLink ?? '',
   };
 }
 
@@ -167,6 +172,7 @@ function toDraft(s: FormState): OrderDraft {
     phones,
     pink: s.pink,
     pinkNote: s.pink ? s.pinkNote.trim() : '',
+    mapsLink: s.mapsLink.trim(),
   };
 }
 
@@ -211,6 +217,7 @@ function validate(step: StepId, s: FormState): Errors {
   const e: Errors = {};
   if (step === 'adres') {
     if (s.postalCode.trim() && !/^\d{2}-\d{3}$/.test(s.postalCode.trim())) e.postalCode = 'Kod w formacie 00-000';
+    if (s.mapsLink.trim() && !isMapsLink(s.mapsLink)) e.mapsLink = 'Wklej link z Google Maps (Udostępnij → Kopiuj link)';
   }
   if (step === 'problem') {
     if (s.area.trim() && !/^\d+([.,]\d+)?$/.test(s.area.trim())) e.area = 'Podaj liczbę, np. 48';
@@ -235,6 +242,55 @@ function validate(step: StepId, s: FormState): Errors {
     if (s.invoice !== 'brak' && s.nip.trim() && !isValidNip(s.nip)) e.nip = 'NIP jest niepoprawny';
   }
   return e;
+}
+
+/**
+ * Sprawdzenie adresu w Google Maps i wklejenie linku do miejsca. Formularz zapisuje się sam (szkic), więc można przejść
+ * do map i wrócić bez utraty danych. Zapisany link sprawia, że „Nawiguj” prowadzi dokładnie do tego miejsca.
+ */
+function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState>) => void; error?: string }) {
+  const query = mapsQuery(props.state);
+  const coords = coordsFromLink(props.state.mapsLink);
+  const paste = async () => {
+    try {
+      const text = (await navigator.clipboard.readText()).trim();
+      if (text) props.set({ mapsLink: text });
+    } catch {
+      // Bez zgody na schowek link wkleja się ręcznie w pole.
+    }
+  };
+  return (
+    <div className={props.error ? 'field field-error' : 'field'}>
+      <span className="field-label">Miejsce w Google Maps</span>
+      <div className="maps-row">
+        <a className={`btn btn-sm${query ? '' : ' disabled'}`} href={query ? mapsSearchUrl(query) : undefined} target="_blank" rel="noreferrer" aria-disabled={!query}>
+          <Icon name="search" /> Znajdź adres w Google Maps
+        </a>
+        <button type="button" className="btn btn-sm" onClick={() => void paste()}>
+          <Icon name="copy" /> Wklej link
+        </button>
+      </div>
+      <input
+        value={props.state.mapsLink}
+        placeholder="https://maps.app.goo.gl/…"
+        inputMode="url"
+        autoComplete="off"
+        onChange={(e) => props.set({ mapsLink: e.target.value })}
+        aria-label="Link do miejsca z Google Maps"
+      />
+      {props.error ? (
+        <span className="field-message">{props.error}</span>
+      ) : (
+        <span className="field-hint">
+          {props.state.mapsLink.trim()
+            ? coords
+              ? `Zapisane miejsce: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}. Nawigacja poprowadzi dokładnie tutaj.`
+              : 'Zapisany link do miejsca. Nawigacja Google otworzy dokładnie to miejsce.'
+            : 'Opcjonalnie: sprawdź adres w Google Maps, potem „Udostępnij” → „Kopiuj link” i wklej go tutaj. Dane formularza zostają zapisane.'}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function Choice<T extends string>(props: { value: T; options: Array<[T, string]>; onChange: (v: T) => void; label: string }) {
@@ -383,6 +439,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <input value={s.city} onChange={(e) => set({ city: e.target.value })} autoComplete="off" />
             </Field>
           </div>
+          <MapsLinkField state={s} set={set} error={errors.mapsLink} />
           <Field label="Jak dotrzeć" hint="Np. wejście od podwórka, domofon nie działa, kod do bramy.">
             <textarea rows={2} value={s.access} onChange={(e) => set({ access: e.target.value })} />
           </Field>
@@ -612,6 +669,7 @@ function QuickForm(props: { state: FormState; set: (patch: Partial<FormState>) =
           <input value={s.city} onChange={(e) => set({ city: e.target.value })} autoComplete="off" />
         </Field>
       </div>
+      <MapsLinkField state={s} set={set} error={errors.mapsLink} />
       <Choice label="Szkodnik" value={s.pest} options={Object.entries(PESTS) as Array<[PestCategory, string]>} onChange={(pest) => set({ pest })} />
       {s.pest === 'inne' && (
         <Field label="Jaki szkodnik" error={errors.pestOther}>
@@ -811,15 +869,36 @@ export function OrderEditPage() {
   }, [id]);
   const [state, setState] = useState<FormState | null>(null);
   const [errors, setErrors] = useState<Errors>({});
+  const editKey = `ddd-edycja-zlecenia-${id}`;
 
+  // Niezapisane zmiany są w pamięci przeglądarki: przejście do Google Maps albo zamknięcie aplikacji ich nie gubi.
   useEffect(() => {
-    if (loaded && !state) setState(fromOrder(loaded.order));
+    if (!loaded || state) return;
+    let restored: FormState | null = null;
+    try {
+      const raw = localStorage.getItem(editKey);
+      restored = raw ? { ...fromOrder(loaded.order), ...(JSON.parse(raw) as Partial<FormState>) } : null;
+    } catch {
+      restored = null;
+    }
+    setState(restored ?? fromOrder(loaded.order));
+    if (restored) toast('Przywrócono niezapisane zmiany');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, state]);
 
   if (loaded === undefined || (loaded && !state)) return <Loading />;
   if (loaded === null || !state) return <NotFound back="/zlecenia" />;
 
-  const set = (patch: Partial<FormState>) => setState((prev) => ({ ...prev!, ...patch }));
+  const set = (patch: Partial<FormState>) =>
+    setState((prev) => {
+      const next = { ...prev!, ...patch };
+      try {
+        localStorage.setItem(editKey, JSON.stringify(next));
+      } catch {
+        // Bez pamięci przeglądarki zmiany trzeba zapisać przed wyjściem.
+      }
+      return next;
+    });
   const sections: StepId[] = ['adres', 'problem', 'cena', 'klient'];
 
   const save = async () => {
@@ -852,6 +931,11 @@ export function OrderEditPage() {
           const same = (v.priceMin ?? null) === before.priceMin && (v.priceMax ?? null) === before.priceMax;
           if (v.status === 'zaplanowany' && same) await visits.update(v.id, { priceMin: draft.priceMin, priceMax: draft.priceMax });
         }
+      }
+      try {
+        localStorage.removeItem(editKey);
+      } catch {
+        // nic
       }
       toast('Zapisano zmiany');
       navigate(`/zlecenia/${id}`, { replace: true });

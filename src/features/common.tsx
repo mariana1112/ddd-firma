@@ -6,7 +6,10 @@ import { formatTerm, formatDate } from '../lib/dates';
 import { PAY_NAMES, smsUrl, telUrl } from '../data/texts';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge } from '../ui/kit';
+import { Badge, Sheet } from '../ui/kit';
+import { isIos, mapsQuery, mapsSearchUrl, navigationTargets } from '../data/maps';
+import { orderAddress } from '../data/texts';
+import { useState } from 'react';
 
 export function PayBadge({ method }: { method: PayMethod }) {
   return <span className={`pay-badge pay-${method}`}>{PAY_NAMES[method]}</span>;
@@ -103,15 +106,64 @@ export function useContactActions() {
   return { call, sms, share, copy };
 }
 
-export function ContactBar(props: { order: Order; onSms?: (phone: Phone) => void; mapsHref: string }) {
+/**
+ * Wybór mapy do nawigacji. Aplikacja z ekranu początkowego iPhone'a otwiera google.com w przeglądarce, która nie
+ * prowadzi trasy, dlatego na iPhonie są też aplikacja Google Maps, Apple Mapy i Waze.
+ */
+export function NavigateSheet(props: { order: Order; open: boolean; onClose: () => void }) {
+  const { copy } = useContactActions();
+  const targets = navigationTargets(props.order, isIos());
+  const query = mapsQuery(props.order);
+  return (
+    <Sheet open={props.open} title="Nawiguj" onClose={props.onClose}>
+      <p className="sheet-text">
+        {orderAddress(props.order) || 'Brak adresu'}
+        {props.order.postalCode ? `, ${props.order.postalCode}` : ''}
+        {props.order.mapsLink ? ' · zapisane miejsce z Google Maps' : ''}
+      </p>
+      {targets.length === 0 ? (
+        <p className="field-hint">Zlecenie nie ma adresu. Dodaj go w edycji zlecenia.</p>
+      ) : (
+        <div className="btn-stack">
+          {targets.map((t, i) => (
+            <a
+              key={t.id}
+              className={i === 0 ? 'btn btn-primary' : 'btn'}
+              href={t.url}
+              target={t.app ? undefined : '_blank'}
+              rel="noreferrer"
+              onClick={props.onClose}
+            >
+              <Icon name="nav" /> {t.label}
+            </a>
+          ))}
+          {query && (
+            <a className="btn" href={mapsSearchUrl(query)} target="_blank" rel="noreferrer">
+              <Icon name="search" /> Pokaż adres w Google Maps
+            </a>
+          )}
+          {query && (
+            <button type="button" className="btn" onClick={() => void copy(query)}>
+              <Icon name="copy" /> Kopiuj adres
+            </button>
+          )}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+export function ContactBar(props: { order: Order; onSms?: (phone: Phone) => void }) {
   const { call } = useContactActions();
-  const phone = props.order.phones[0];
+  const [navOpen, setNavOpen] = useState(false);
+  const phone = props.order.phones.find((p) => p.number.trim());
   return (
     <div className="contact-bar">
-      <a className="contact-btn" href={props.mapsHref} target="_blank" rel="noreferrer">
+      <button type="button" className="contact-btn" onClick={() => setNavOpen(true)}>
         <Icon name="nav" />
         <span>Nawiguj</span>
-      </a>
+      </button>
+      <NavigateSheet order={props.order} open={navOpen} onClose={() => setNavOpen(false)} />
       <button type="button" className="contact-btn" disabled={!phone} onClick={() => phone && void call(phone)}>
         <Icon name="phone" />
         <span>Zadzwoń</span>

@@ -15,6 +15,14 @@ zaszyfrowane.
   - klient wpisywany przy zleceniu, bez bazy klientów: telefony z dopiskiem, e-mail i NIP.
   Żadne pole nie jest obowiązkowe: przy pustym adresie, telefonie czy nazwisku aplikacja pyta, czy na pewno ich nie
   uzupełnić; błędnie wpisane wartości (np. kod 00-00) trzeba poprawić. Z każdego kroku można zapisać od razu.
+- **Płatność przy zabiegu jest wymagana**: przyciski formy płatności są szare, wybrany świeci na zielono. „Zakończ
+  zabieg” bez formy płatności albo kwoty podświetla płatność na czerwono i przewija do niej; „Później” kończy zabieg
+  i wrzuca go do **Pilnych** (Pulpit i filtr na liście zleceń), dopóki płatność nie zostanie uzupełniona.
+- **Odwołanie**: zabieg („Odwołaj zabieg”) albo całe zlecenie („Odwołaj zlecenie”) trafia do **archiwum** (filtr na
+  liście zleceń), skąd można je przywrócić; trwałe usunięcie idzie dalej przez kosz.
+- **Nawigacja**: „Nawiguj” daje wybór mapy (na iPhonie aplikacja Google Maps, Apple Mapy, Waze), z pełnym adresem,
+  kodem i krajem. Przy adresie można sprawdzić adres w Google Maps i wkleić link do miejsca; wtedy nawigacja prowadzi
+  dokładnie tam. Formularz (także edycja) zapamiętuje dane, więc wyjście do map ich nie gubi.
 - **Gdy dzwoni klient**: pole „Kto dzwoni?” na Pulpicie szuka we wszystkich zleceniach, także zakończonych, po numerze
   telefonu w dowolnym zapisie (+48, spacje, myślniki, fragment), nazwisku, adresie albo kodzie. Telefon klienta jest widoczny
   na liście zleceń, na Pulpicie i w kalendarzu.

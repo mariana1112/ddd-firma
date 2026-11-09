@@ -2128,3 +2128,67 @@ legend + * {
   text-overflow: ellipsis;
   opacity: 0.9;
 }
+
+/* ---------- Płatność przy zabiegu: szare, wybrana zielona, brak na czerwono ---------- */
+
+.pay-choice .pay-option {
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 2px solid transparent;
+  box-shadow: none;
+}
+
+.pay-choice .pay-option.active {
+  color: #fff;
+  background: #1f8a4c;
+  border-color: #1f8a4c;
+}
+
+.pay-choice .pay-option.missing {
+  border-color: var(--danger);
+}
+
+.pay-group {
+  border-radius: var(--radius);
+  scroll-margin-top: 80px;
+}
+
+.pay-alert {
+  padding: 8px;
+  margin: -8px;
+  box-shadow: 0 0 0 2px var(--danger);
+  background: var(--danger-soft);
+}
+
+.pay-alert-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-weight: 650;
+  color: var(--danger);
+}
+
+.notice-danger {
+  align-items: center;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.notice-danger .btn {
+  flex: none;
+  margin-left: auto;
+}
+
+/* Adres w Google Maps w formularzu zlecenia */
+.maps-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+a.btn.disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}

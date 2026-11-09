@@ -4,11 +4,11 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { mainPhone, orderMatches } from '../data/order-search';
 import { orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
-import { currentVisit, dateTile, dayHeading, groupByDay, nextVisitState, orderTerm, sortOrderRows, type OrderSort } from '../data/order-list';
-import { deleteOrder, orderVisits, scheduleNextVisit } from '../data/orders';
+import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, paymentMissing, sortOrderRows, type OrderSort } from '../data/order-list';
+import { archiveOrder, deleteOrder, orderVisits, restoreOrder, scheduleNextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
-import { accessDetails, BUILDINGS, INVOICES, mapsUrl, orderAddress, pestName, priceRange, reminderSms } from '../data/texts';
+import { accessDetails, BUILDINGS, INVOICES, orderAddress, pestName, priceRange, reminderSms } from '../data/texts';
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
@@ -20,7 +20,7 @@ import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
 import { ContactBar, NextVisitPill, PayBadge, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
 
-type StatusFilter = 'aktywne' | 'wykonane' | 'wszystkie';
+type StatusFilter = 'aktywne' | 'pilne' | 'wykonane' | 'archiwum' | 'wszystkie';
 type PayFilter = 'wszystkie' | PayMethod;
 
 /** Domyślna kolejność: do zrobienia od najbliższego terminu, zakończone od ostatniego. */
@@ -33,6 +33,12 @@ export function OrdersPage() {
   const [query, setQuery] = useState(() => params.get('q') ?? '');
   const [status, setStatus] = useState<StatusFilter>('aktywne');
   const searching = query.trim().length > 0;
+  // Pilne: wykonane zabiegi bez formy płatności albo kwoty (np. „uzupełnię później”), poza archiwum.
+  const urgentCount = useMemo(() => {
+    if (!data) return 0;
+    const archivedIds = new Set(data.orders.filter((o) => o.archived).map((o) => o.id));
+    return new Set(data.visits.filter((v) => paymentMissing(v) && !archivedIds.has(v.orderId)).map((v) => v.orderId)).size;
+  }, [data]);
   const [pay, setPay] = useState<PayFilter>('wszystkie');
   const [invoicesOnly, setInvoicesOnly] = useState(false);
   const [sort, setSort] = useState<OrderSort>('najwczesniej');
@@ -53,8 +59,12 @@ export function OrdersPage() {
         if (invoicesOnly && order.invoice === 'brak') return false;
         if (pay !== 'wszystkie' && !list.some((v) => v.payMethod === pay)) return false;
         const active = list.some((v) => v.status === 'zaplanowany' || v.status === 'w_trakcie');
-        // Szukanie obejmuje wszystkie zlecenia, także zakończone: dzwoniący klient może pytać o dawny zabieg.
+        const archived = isArchived(order, list);
+        // Szukanie obejmuje wszystkie zlecenia, także zakończone i z archiwum: klient może pytać o dawny zabieg.
         if (searching) return true;
+        if (status === 'archiwum') return archived;
+        if (archived) return false;
+        if (status === 'pilne') return list.some(paymentMissing);
         if (status === 'aktywne') return active;
         if (status === 'wykonane') return !active;
         return true;
@@ -79,7 +89,9 @@ export function OrdersPage() {
             onChange={changeStatus}
             options={[
               { value: 'aktywne', label: 'Do zrobienia' },
+              { value: 'pilne', label: 'Pilne', count: urgentCount },
               { value: 'wykonane', label: 'Zakończone' },
+              { value: 'archiwum', label: 'Archiwum' },
               { value: 'wszystkie', label: 'Wszystkie' },
             ]}
           />
@@ -188,6 +200,8 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
         <span className="row-end">
           {order.pink && <PinkBadge />}
           {current && <VisitBadge visit={current} />}
+          {list.some(paymentMissing) && <Badge tone="danger">Brak płatności</Badge>}
+          {isArchived(order, list) && <Badge tone="muted">Archiwum</Badge>}
           {order.invoice !== 'brak' && <Badge tone="info">{order.invoice === 'vat' ? 'FV VAT' : 'FV'}</Badge>}
           {paid.map((m) => (
             <PayBadge key={m} method={m} />
@@ -287,6 +301,21 @@ export function OrderDetailPage() {
     });
   };
 
+  const archived = isArchived(order, data.visits);
+  const toArchive = async () => {
+    const ok = await confirm({
+      title: `Odwołać zlecenie ${orderCode(order)}?`,
+      message: 'Zabiegi do zrobienia zostaną odwołane i znikną z kalendarza, a zlecenie trafi do archiwum. Wykonane zabiegi zostają w raportach.',
+      confirmLabel: 'Odwołaj, do archiwum',
+      danger: true,
+    });
+    if (!ok) return;
+    await run(async () => {
+      await archiveOrder(id);
+      toast('Zlecenie w archiwum');
+    });
+  };
+
   const onSms = (phone: Phone) =>
     void sms(phone, nextPlanned ? reminderSms(order, nextPlanned, settings) : '');
 
@@ -309,7 +338,7 @@ export function OrderDetailPage() {
         <p>{orderAddress(order)}</p>
       </div>
 
-      <ContactBar order={order} mapsHref={mapsUrl(order)} onSms={onSms} />
+      <ContactBar order={order} onSms={onSms} />
       {nextPlanned && <p className="field-hint">SMS zawiera przypomnienie o zabiegu {formatDate(nextPlanned.start)} z prośbą o potwierdzenie.</p>}
 
       {order.pink && order.pinkNote && (
@@ -415,9 +444,21 @@ export function OrderDetailPage() {
         </Group>
       )}
 
-      <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void remove()}>
-        <Icon name="trash" /> Usuń zlecenie
-      </button>
+      {archived ? (
+        <>
+          <p className="notice notice-info">Zlecenie jest w archiwum (odwołane).</p>
+          <button type="button" className="btn btn-block" onClick={() => void run(async () => { await restoreOrder(id); toast('Przywrócono z archiwum'); })}>
+            Przywróć z archiwum
+          </button>
+          <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void remove()}>
+            <Icon name="trash" /> Usuń zlecenie (kosz)
+          </button>
+        </>
+      ) : (
+        <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void toArchive()}>
+          <Icon name="close" /> Odwołaj zlecenie (do archiwum)
+        </button>
+      )}
     </Page>
   );
 }

@@ -2,14 +2,14 @@ import { roman, visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { finishVisit, normalizeInterview, orderVisits, startVisit, type NextVisit } from '../data/orders';
+import { cancelVisit, finishVisit, normalizeInterview, orderVisits, restoreOrder, startVisit, type NextVisit } from '../data/orders';
+import { paymentMissing } from '../data/order-list';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, type AppSettings } from '../data/settings';
 import {
   accessDetails,
   finishSms,
   INVOICES,
-  mapsUrl,
   orderAddress,
   PAY_NAMES,
   PINK_PLACEHOLDER,
@@ -307,6 +307,9 @@ export function VisitPage() {
   const [finishing, setFinishing] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
   const [editingTerms, setEditingTerms] = useState(false);
+  // Próba zakończenia bez płatności: sekcja płatności świeci na czerwono, ekran przewija się do niej.
+  const [payAlert, setPayAlert] = useState(false);
+  const payRef = useRef<HTMLDivElement>(null);
   // Pole opisu kodu pink dostaje kursor tylko zaraz po zaznaczeniu, a nie przy każdym wejściu na ekran.
   const [pinkJustOn, setPinkJustOn] = useState(false);
   // Wykonany zabieg pokazuje podsumowanie; formularz otwiera „Edytuj zabieg” albo link z ?edycja=1.
@@ -351,15 +354,58 @@ export function VisitPage() {
     if (phone) await sms(phone, finishSms(done, next, settings));
   };
 
-  const finish = async (input: { recommendations: string[]; next: NextVisit }) => {
-    if (!visit.payMethod || !visit.amount) {
-      const ok = await confirm({
+  const scrollToPay = () => setTimeout(() => payRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+
+  /**
+   * „Zakończ zabieg”: forma płatności i kwota są wymagane. Gdy ich brakuje, płatność świeci na czerwono i ekran
+   * przewija się do niej; można też zakończyć teraz i uzupełnić później (zabieg trafia do „Pilnych”).
+   */
+  const requestFinish = async () => {
+    // Kwota zapisuje się przy wyjściu z pola, więc czytamy świeży stan po chwili.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const fresh = (await visits.get(visit.id)) ?? visit;
+    const missing = [!fresh.payMethod && 'formy płatności', !fresh.amount && 'kwoty'].filter(Boolean) as string[];
+    if (missing.length) {
+      setPayAlert(true);
+      const later = await confirm({
         title: 'Brak płatności',
-        message: 'Nie zapisano formy płatności lub kwoty. Zakończyć mimo to?',
-        confirmLabel: 'Zakończ',
+        message: `Nie wybrano ${missing.join(' ani ')}. Uzupełnij płatność albo zakończ teraz i uzupełnij później: zabieg trafi do „Pilnych”.`,
+        confirmLabel: 'Później (do Pilnych)',
+        cancelLabel: 'Uzupełnię teraz',
       });
-      if (!ok) return;
+      if (!later) {
+        scrollToPay();
+        return;
+      }
     }
+    setFinishing(true);
+  };
+
+  const cancel = async () => {
+    const ok = await confirm({
+      title: `Odwołać zabieg ${roman(visit.seq)}?`,
+      message: 'Zabieg zniknie z kalendarza. Gdy w zleceniu nie zostanie nic do zrobienia ani wykonane, zlecenie trafi do archiwum.',
+      confirmLabel: 'Odwołaj zabieg',
+      danger: true,
+    });
+    if (!ok) return;
+    const previous = visit.status;
+    await run(async () => {
+      const { archived } = await cancelVisit(visit.id);
+      toast(archived ? 'Zabieg odwołany, zlecenie w archiwum' : 'Zabieg odwołany', {
+        action: {
+          label: 'Cofnij',
+          onClick: () =>
+            void run(async () => {
+              await visits.update(visit.id, { status: previous });
+              if (archived) await restoreOrder(order.id);
+            }),
+        },
+      });
+    });
+  };
+
+  const finish = async (input: { recommendations: string[]; next: NextVisit }) => {
     await run(async () => {
       const { next } = await finishVisit(visit.id, {
         payMethod: visit.payMethod,
@@ -398,7 +444,6 @@ export function VisitPage() {
 
       <ContactBar
         order={order}
-        mapsHref={mapsUrl(order)}
         onSms={(p) => void sms(p, visit.status === 'zaplanowany' && visit.start ? reminderSms(order, visit, settings) : '')}
       />
 
@@ -441,6 +486,9 @@ export function VisitPage() {
                 <Icon name="calendar" /> Dodaj do kalendarza iPhone'a
               </button>
             )}
+            <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
+              <Icon name="close" /> Odwołaj zabieg
+            </button>
           </div>
           <Group title="Zlecenie">
             {order.description && <Info label="Opis">{order.description}</Info>}
@@ -449,6 +497,26 @@ export function VisitPage() {
             <Info label="Faktura">{INVOICES[order.invoice]}</Info>
           </Group>
         </>
+      )}
+
+      {summary && paymentMissing(visit) && (
+        <div className="notice notice-danger">
+          <Icon name="alert" />
+          <span>
+            <strong>Brak płatności.</strong> Zabieg jest w „Pilnych”, dopóki nie uzupełnisz formy płatności i kwoty.
+          </span>
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() => {
+              setEditingId(visit.id);
+              setPayAlert(true);
+              scrollToPay();
+            }}
+          >
+            Uzupełnij
+          </button>
+        </div>
       )}
 
       {summary && (
@@ -470,13 +538,19 @@ export function VisitPage() {
 
       {active && (
         <>
-          <Group title="Płatność" plain>
+          <div ref={payRef} className={payAlert && (!visit.payMethod || !visit.amount) ? 'pay-group pay-alert' : 'pay-group'}>
+          <Group title="Płatność (wymagana)" plain>
+            {payAlert && (!visit.payMethod || !visit.amount) && (
+              <p className="pay-alert-text">
+                <Icon name="alert" size={16} /> {!visit.payMethod ? 'Wybierz formę płatności' : 'Wpisz kwotę pobraną od klienta'}
+              </p>
+            )}
             <div className="pay-choice">
               {(['gotowka', 'blik', 'przelew'] as PayMethod[]).map((m) => (
                 <button
                   key={m}
                   type="button"
-                  className={`pay-option pay-${m}${visit.payMethod === m ? ' active' : ''}`}
+                  className={`pay-option${visit.payMethod === m ? ' active' : ''}${payAlert && !visit.payMethod ? ' missing' : ''}`}
                   aria-pressed={visit.payMethod === m}
                   onClick={() => save({ payMethod: visit.payMethod === m ? null : m })}
                 >
@@ -484,7 +558,7 @@ export function VisitPage() {
                 </button>
               ))}
             </div>
-            <AmountField value={visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
+            <AmountField value={visit.amount} missing={payAlert && !visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
             <div className="choice">
               {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([value, label]) => (
                 <button
@@ -498,6 +572,7 @@ export function VisitPage() {
               ))}
             </div>
           </Group>
+          </div>
 
           <Group title="Wywiad" plain>
             <AutoText
@@ -552,9 +627,14 @@ export function VisitPage() {
           </div>
 
           {visit.status === 'w_trakcie' ? (
-            <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => setFinishing(true)}>
-              <Icon name="check" /> Zakończ zabieg
-            </button>
+            <>
+              <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void requestFinish()}>
+                <Icon name="check" /> Zakończ zabieg
+              </button>
+              <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void cancel()}>
+                <Icon name="close" /> Odwołaj zabieg
+              </button>
+            </>
           ) : (
             <Group title="Po zabiegu" plain>
               {visit.bonus > 0 && <Badge tone="ok">Premia {moneyToInput(visit.bonus)} zł</Badge>}
@@ -635,20 +715,33 @@ function EditTerms(props: { initial: VisitTerms; invoice: Order['invoice']; onSa
   );
 }
 
-function AmountField(props: { value: number | null; hint?: string; onSave: (value: number | null) => void }) {
+function AmountField(props: { value: number | null; hint?: string; missing?: boolean; onSave: (value: number | null) => void }) {
   const [text, setText] = useState(props.value !== null ? moneyToInput(props.value) : '');
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const invalid = text.trim() !== '' && parseMoney(text) === null;
+  const commit = (raw: string) => {
+    clearTimeout(timer.current);
+    if (raw.trim() !== '' && parseMoney(raw) === null) return;
+    const value = raw.trim() ? parseMoney(raw) : null;
+    if (value !== props.value) props.onSave(value);
+  };
   return (
-    <Field label="Kwota pobrana (zł)" error={invalid ? 'Podaj kwotę, np. 350' : undefined} hint={props.hint}>
+    <Field
+      label="Kwota pobrana (zł)"
+      error={invalid ? 'Podaj kwotę, np. 350' : props.missing && !text.trim() ? 'Wpisz kwotę pobraną od klienta' : undefined}
+      hint={props.hint}
+    >
       <input
         inputMode="decimal"
         value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => {
-          if (invalid) return;
-          const value = text.trim() ? parseMoney(text) : null;
-          if (value !== props.value) props.onSave(value);
+        onChange={(e) => {
+          setText(e.target.value);
+          // Zapis po chwili bez pisania, żeby „Zakończ zabieg” widział kwotę bez wychodzenia z pola.
+          const raw = e.target.value;
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => commit(raw), 500);
         }}
+        onBlur={() => commit(text)}
       />
     </Field>
   );
@@ -687,8 +780,17 @@ function Reschedule({ visit, onDone }: { visit: Visit; onDone: () => void }) {
           className="btn btn-danger-quiet btn-block"
           onClick={() =>
             void run(async () => {
-              await visits.update(visit.id, { status: 'odwolany' });
-              toast('Zabieg odwołany', { action: { label: 'Cofnij', onClick: () => void run(() => visits.update(visit.id, { status: 'zaplanowany' })) } });
+              const { archived } = await cancelVisit(visit.id);
+              toast(archived ? 'Zabieg odwołany, zlecenie w archiwum' : 'Zabieg odwołany', {
+                action: {
+                  label: 'Cofnij',
+                  onClick: () =>
+                    void run(async () => {
+                      await visits.update(visit.id, { status: 'zaplanowany' });
+                      if (archived) await restoreOrder(visit.orderId);
+                    }),
+                },
+              });
               onDone();
             })
           }

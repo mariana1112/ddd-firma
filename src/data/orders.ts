@@ -13,7 +13,7 @@ import type { Order, PayMethod, Visit } from './types';
 export { orders, visits, trips };
 export { EMPTY_INTERVIEW, normalizeInterview } from './interview';
 
-export type OrderDraft = Omit<NewRecord<Order>, 'number' | 'prefix' | 'ownerId' | 'ownerName' | 'closed'>;
+export type OrderDraft = Omit<NewRecord<Order>, 'number' | 'prefix' | 'ownerId' | 'ownerName' | 'closed' | 'archived'>;
 
 export interface PlannedVisit {
   start: string | null;
@@ -187,6 +187,39 @@ export async function scheduleNextVisit(orderId: string, plan: PlannedVisit): Pr
     if (order.closed) await orders.update(orderId, { closed: false });
     return created;
   });
+}
+
+/**
+ * Odwołuje zabieg. Gdy w zleceniu nie zostaje żaden zabieg do zrobienia ani wykonany, całe zlecenie trafia
+ * do archiwum (odwołane w całości).
+ */
+export async function cancelVisit(id: string): Promise<{ archived: boolean }> {
+  return writeTransaction([db.orders, db.visits], async () => {
+    const visit = await visits.get(id);
+    if (!visit || visit.deletedAt) throw new DomainError('Nie znaleziono zabiegu.');
+    await visits.update(id, { status: 'odwolany' });
+    const rest = (await orderVisits(visit.orderId)).filter((v) => v.id !== id && v.status !== 'odwolany');
+    if (rest.length === 0) {
+      await orders.update(visit.orderId, { archived: true, closed: true });
+      return { archived: true };
+    }
+    return { archived: false };
+  });
+}
+
+/** Odwołuje zlecenie: zabiegi do zrobienia zostają odwołane, a zlecenie trafia do archiwum. Wykonane zostają. */
+export async function archiveOrder(id: string): Promise<void> {
+  await writeTransaction([db.orders, db.visits], async () => {
+    for (const v of await orderVisits(id)) {
+      if (v.status === 'zaplanowany' || v.status === 'w_trakcie') await visits.update(v.id, { status: 'odwolany' });
+    }
+    await orders.update(id, { archived: true, closed: true });
+  });
+}
+
+/** Przywraca zlecenie z archiwum. Odwołane zabiegi zostają odwołane; kolejny umawia się „Umów kolejny zabieg”. */
+export async function restoreOrder(id: string): Promise<void> {
+  await orders.update(id, { archived: false, closed: false });
 }
 
 /** Usuwa zlecenie do kosza razem z zabiegami i zdjęciami. */

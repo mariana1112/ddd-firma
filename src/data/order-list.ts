@@ -1,6 +1,16 @@
 import { formatDateLong } from '../lib/dates';
 import type { Order, Visit } from './types';
 
+/** Wykonany zabieg bez formy płatności albo kwoty: trafia do „Pilnych”, dopóki ktoś nie uzupełni płatności. */
+export function paymentMissing(visit: Pick<Visit, 'status' | 'payMethod' | 'amount'>): boolean {
+  return visit.status === 'wykonany' && (!visit.payMethod || !visit.amount);
+}
+
+/** Zlecenie w archiwum: przeniesione ręcznie albo ze wszystkimi zabiegami odwołanymi. */
+export function isArchived(order: Pick<Order, 'archived'>, list: Visit[]): boolean {
+  return Boolean(order.archived) || (list.length > 0 && list.every((v) => v.status === 'odwolany'));
+}
+
 /** Kolejność listy zleceń. */
 export type OrderSort = 'najwczesniej' | 'najpozniej' | 'numer';
 

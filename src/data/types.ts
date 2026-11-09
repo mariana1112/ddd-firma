@@ -223,6 +223,13 @@ export interface Order extends BaseRecord {
   pink: boolean;
   pinkNote: string;
   closed: boolean;
+  /** Zlecenie odwołane i przeniesione do archiwum: znika z list roboczych, można je przywrócić. */
+  archived?: boolean;
+  /**
+   * Link do miejsca z Google Maps wklejony przy adresie (np. maps.app.goo.gl/…). Nawigacja Google otwiera dokładnie
+   * to miejsce, a gdy link zawiera współrzędne, dostają je też inne mapy.
+   */
+  mapsLink?: string;
 }
 
 export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';

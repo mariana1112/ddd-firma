@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from './db';
-import { createOrder, finishVisit, orderVisits, scheduleNextVisit, startVisit, type OrderDraft } from './orders';
+import { archiveOrder, cancelVisit, createOrder, finishVisit, orderVisits, restoreOrder, scheduleNextVisit, startVisit, type OrderDraft } from './orders';
 import { buildReport, formatPln, periodOf, reportText, shiftPeriod } from './reports';
 import { expenses, orders, trips, visits } from './repo';
 import { DEFAULT_APP, getProfile, nextOrderNumber, ownedBy, saveProfile, saveRegion, setOrderCounter, setSyncState } from './settings';
@@ -112,6 +112,31 @@ describe('zlecenia', () => {
     const second = await scheduleNextVisit(order.id, { start: '2026-11-24T15:30', durationMin: 60, terms: { scope: { kind: 'pokoj', note: 'sypialnia' }, priceMin: 25000, priceMax: 25000 } });
     expect(second).toMatchObject({ seq: 2, start: '2026-11-24T15:30', status: 'zaplanowany', bonus: 0, scope: { kind: 'pokoj', note: 'sypialnia' }, priceMin: 25000 });
     expect((await orders.get(order.id))?.closed).toBe(false);
+  });
+
+  it('odwołanie zabiegu i zlecenia: archiwum, przywrócenie', async () => {
+    const { isArchived } = await import('./order-list');
+    const { order, visits: [first, second] } = await createOrder(draft(), { start: '2026-11-10T10:00', durationMin: 60 }, { start: '2026-11-24T10:00', durationMin: 60 });
+    expect(await cancelVisit(second.id)).toEqual({ archived: false });
+    expect(await cancelVisit(first.id)).toEqual({ archived: true });
+    expect((await orders.get(order.id))?.archived).toBe(true);
+    await restoreOrder(order.id);
+    expect((await orders.get(order.id))?.archived).toBe(false);
+    // Zlecenie z wykonanym zabiegiem: archiwum odwołuje tylko zabiegi do zrobienia.
+    const other = await createOrder(draft(), { start: '2026-11-10T10:00', durationMin: 60 }, { start: '2026-11-24T10:00', durationMin: 60 });
+    await visits.update(other.visits[0].id, { status: 'wykonany', doneOn: '2026-11-10' });
+    await archiveOrder(other.order.id);
+    const list = await orderVisits(other.order.id);
+    expect(list.map((v) => v.status)).toEqual(['wykonany', 'odwolany']);
+    expect(isArchived((await orders.get(other.order.id))!, list)).toBe(true);
+  });
+
+  it('wykonany zabieg bez płatności jest pilny', async () => {
+    const { paymentMissing } = await import('./order-list');
+    expect(paymentMissing({ status: 'wykonany', payMethod: null, amount: 30000 })).toBe(true);
+    expect(paymentMissing({ status: 'wykonany', payMethod: 'blik', amount: null })).toBe(true);
+    expect(paymentMissing({ status: 'wykonany', payMethod: 'blik', amount: 30000 })).toBe(false);
+    expect(paymentMissing({ status: 'w_trakcie', payMethod: null, amount: null })).toBe(false);
   });
 
   it('umówienie ze zlecenia nadaje termin zabiegowi, który czeka bez terminu', async () => {
