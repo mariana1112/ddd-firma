@@ -2,7 +2,7 @@ import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { watchForUpdates } from './lib/updates';
-import { AccountPage, BranchesPage, LoginGate } from './features/account';
+import { AccountPage, BranchesPage, ClaimAccountPage, LoginGate } from './features/account';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getSyncState } from './data/settings';
 import { isSyncConfigured } from './data/sync/config';
@@ -131,6 +131,17 @@ function Shell() {
   const state = useLiveQuery(async () => (await getSyncState()) ?? null);
   if (isSyncConfigured && state === undefined) return <Loading />;
   const locked = isSyncConfigured && state === null && !PUBLIC_PATHS.includes(pathname);
+  // Konto z loginem tymczasowym: najpierw własny e-mail i hasło.
+  if (state?.temp && !PUBLIC_PATHS.includes(pathname)) {
+    return (
+      <div className="shell shell-locked">
+        <div className="content">
+          <UpdatePrompt />
+          <ClaimAccountPage state={state} />
+        </div>
+      </div>
+    );
+  }
   if (locked) {
     return (
       <div className="shell shell-locked">

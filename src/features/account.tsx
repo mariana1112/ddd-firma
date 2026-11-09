@@ -67,7 +67,8 @@ type Step =
   | { kind: 'signin' }
   | { kind: 'signup' }
   | { kind: 'confirm'; email: string }
-  | { kind: 'org'; userId: string; email: string; name: string };
+  | { kind: 'org'; userId: string; email: string; name: string }
+  | { kind: 'admin' };
 
 const MIN_PASSWORD = 12;
 
@@ -79,11 +80,13 @@ function Connect() {
     void (async () => {
       const api = await supabaseApi();
       const user = await api.currentUser().catch(() => null);
-      setStep(user ? { kind: 'org', ...user } : { kind: 'signin' });
+      setStep(user ? { kind: 'org', ...user } : { kind: 'admin' });
     })();
   }, []);
 
   if (step.kind === 'checking') return <Loading />;
+
+  if (step.kind === 'admin') return <AdminDataForm onOwnAccount={() => setStep({ kind: 'signin' })} />;
 
   if (step.kind === 'confirm') {
     return (
@@ -107,7 +110,7 @@ function Connect() {
     return (
       <PasswordForm
         signup={signup}
-        onSwitch={() => setStep({ kind: signup ? 'signin' : 'signup' })}
+        onSwitch={() => setStep({ kind: signup ? 'signin' : 'admin' })}
         submit={(email, password, name) =>
           run(async () => {
             const api = await supabaseApi();
@@ -198,7 +201,7 @@ function PasswordForm(props: {
         {busy ? 'Chwileczkę…' : props.signup ? 'Załóż konto' : 'Zaloguj'}
       </button>
       <button type="button" className="link" onClick={props.onSwitch}>
-        {props.signup ? 'Mam już konto, zaloguj' : 'Nie mam konta, załóż je'}
+        {props.signup ? 'Mam już konto, zaloguj' : 'Nie mam konta: mam login, hasło i kod od admina'}
       </button>
     </form>
   );
@@ -269,6 +272,118 @@ function UnlockForm(props: { busyLabel: string; onUnlock: (passphrase: string) =
         {busy ? props.busyLabel : 'Odblokuj'}
       </button>
     </form>
+  );
+}
+
+/**
+ * Pierwsze logowanie danymi od admina: login, hasło tymczasowe i kod regionu. Konto od razu należy do firmy
+ * i regionu z kodu; przed pracą aplikacja wymaga ustawienia własnego e-maila i hasła.
+ */
+function AdminDataForm({ onOwnAccount }: { onOwnAccount: () => void }) {
+  const { run } = useFeedback();
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ready = login.trim().length >= 6 && password.length >= 12 && code.trim().length >= INVITE_LENGTH;
+  return (
+    <form
+      className="form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!ready) return;
+        setBusy(true);
+        await run(async () => {
+          const api = await supabaseApi();
+          const { key, orgId, user } = await api.signInWithAdminData(login, password, code);
+          const m = (await api.myMemberships()).find((x) => x.orgId === orgId);
+          if (!m) throw new Error('Nie udało się dołączyć do firmy. Poproś admina o nowe dane.');
+          await startEncryptedSync(key, membershipAccount(m, user));
+          const latest = await getSyncState();
+          if (latest) await setSyncState({ ...latest, temp: true });
+        });
+        setBusy(false);
+      }}
+    >
+      <div className="notice notice-info">
+        <Icon name="users" />
+        <span>Konto zakłada admin. Wpisz login, hasło i kod regionu, które od niego dostałeś. Potem ustawisz własny e-mail i hasło.</span>
+      </div>
+      <Field label="Login">
+        <input value={login} autoCapitalize="none" autoComplete="username" spellCheck={false} placeholder="np. gda-k7m2p4" onChange={(e) => setLogin(e.target.value)} />
+      </Field>
+      <Field label="Hasło">
+        <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      <Field label="Kod regionu">
+        <input value={code} autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="np. ABCD2345EF" onChange={(e) => setCode(e.target.value)} />
+      </Field>
+      <button type="submit" className="btn btn-primary btn-block" disabled={!ready || busy}>
+        {busy ? 'Łączę…' : 'Zaloguj'}
+      </button>
+      <button type="button" className="link" onClick={onOwnAccount}>
+        Mam już własny e-mail i hasło
+      </button>
+    </form>
+  );
+}
+
+/** Konto z loginem tymczasowym: przed pracą własne imię, e-mail i hasło. */
+export function ClaimAccountPage({ state }: { state: SyncState }) {
+  const { run, toast } = useFeedback();
+  const [name, setName] = useState(state.displayName ?? '');
+  const [email, setEmail] = useState('');
+  const [email2, setEmail2] = useState('');
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
+  const ready =
+    name.trim().length > 0 && validEmail && email.trim().toLowerCase() === email2.trim().toLowerCase() && password.length >= MIN_PASSWORD && password === password2;
+  return (
+    <Page title="Ustaw własne dane">
+      <form
+        className="form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!ready) return;
+          setBusy(true);
+          await run(async () => {
+            const api = await supabaseApi();
+            await api.claimAccount(email.trim(), password);
+            await api.updateMyProfile(state.orgId, name.trim());
+            const latest = (await getSyncState()) ?? state;
+            await setSyncState({ ...latest, email: email.trim().toLowerCase(), displayName: name.trim(), temp: false });
+            await saveProfile({ name: name.trim(), userId: latest.userId });
+            toast('Gotowe. Od teraz logujesz się swoim e-mailem i hasłem.');
+          });
+          setBusy(false);
+        }}
+      >
+        <p className="field-hint">
+          Login i hasło od admina są tymczasowe. Ustaw swoje dane: od teraz będziesz logować się własnym e-mailem i hasłem, także na
+          innych urządzeniach.
+        </p>
+        <Field label="Imię i nazwisko" hint="Pojawi się w raportach i na liście techników regionu.">
+          <input value={name} autoComplete="name" onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Twój e-mail">
+          <input type="email" inputMode="email" autoCapitalize="none" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+        <Field label="Powtórz e-mail" error={email2 && email.trim().toLowerCase() !== email2.trim().toLowerCase() ? 'Adresy się różnią' : undefined}>
+          <input type="email" inputMode="email" autoCapitalize="none" autoComplete="off" value={email2} onChange={(e) => setEmail2(e.target.value)} />
+        </Field>
+        <Field label="Nowe hasło" error={password && password.length < MIN_PASSWORD ? `Co najmniej ${MIN_PASSWORD} znaków` : undefined}>
+          <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </Field>
+        <Field label="Powtórz hasło" error={password2 && password2 !== password ? 'Hasła się różnią' : undefined}>
+          <input type="password" autoComplete="new-password" value={password2} onChange={(e) => setPassword2(e.target.value)} />
+        </Field>
+        <button type="submit" className="btn btn-primary btn-block" disabled={!ready || busy}>
+          {busy ? 'Zapisuję…' : 'Zapisz i zacznij pracę'}
+        </button>
+      </form>
+    </Page>
   );
 }
 
@@ -545,6 +660,36 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
  * Urządzenie, które synchronizowało się przed włączeniem szyfrowania: trzeba odblokować firmę
  * hasłem albo, gdy firma jeszcze go nie ma, ustawić je.
  */
+/** Nowe urządzenie osoby z kontem od admina: hasło i kod od admina przenoszą klucz firmy. */
+function DeviceCodeForm({ onKey }: { onKey: (key: CryptoKey) => Promise<unknown> }) {
+  const { run } = useFeedback();
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="form card"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        await run(async () => onKey(await (await supabaseApi()).redeemDeviceCode(password, code)));
+        setBusy(false);
+      }}
+    >
+      <p className="field-hint">Masz hasło i kod od admina na nowe urządzenie? Wpisz je tutaj. Hasło firmy nie jest wtedy potrzebne.</p>
+      <Field label="Hasło od admina">
+        <input type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      <Field label="Kod">
+        <input value={code} autoCapitalize="characters" autoComplete="off" onChange={(e) => setCode(e.target.value)} />
+      </Field>
+      <button type="submit" className="btn btn-primary btn-block" disabled={busy || password.length < 12 || code.trim().length < INVITE_LENGTH}>
+        {busy ? 'Sprawdzam…' : 'Odblokuj kodem od admina'}
+      </button>
+    </form>
+  );
+}
+
 function KeyMissing({ state }: { state: SyncState }) {
   const { run, toast } = useFeedback();
   const [membership, setMembership] = useState<Membership | null | undefined>(undefined);
@@ -575,15 +720,25 @@ function KeyMissing({ state }: { state: SyncState }) {
   if (membership.dataKey) {
     const wrapped = membership.dataKey;
     return (
-      <UnlockForm
-        busyLabel="Odblokowuję…"
-        onUnlock={(passphrase) =>
-          run(async () => {
-            await startEncryptedSync(await unwrapDataKey(passphrase, wrapped), account);
-            toast('Synchronizacja odblokowana');
-          })
-        }
-      />
+      <>
+        <DeviceCodeForm
+          onKey={(key) =>
+            run(async () => {
+              await startEncryptedSync(key, account);
+              toast('Synchronizacja odblokowana');
+            })
+          }
+        />
+        <UnlockForm
+          busyLabel="Odblokowuję…"
+          onUnlock={(passphrase) =>
+            run(async () => {
+              await startEncryptedSync(await unwrapDataKey(passphrase, wrapped), account);
+              toast('Synchronizacja odblokowana');
+            })
+          }
+        />
+      </>
     );
   }
   return (

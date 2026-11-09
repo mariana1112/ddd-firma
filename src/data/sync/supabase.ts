@@ -1,7 +1,19 @@
 // Adapter Supabase. Ładowany dynamicznie, więc bez konfiguracji klient Supabase nie trafia do aplikacji.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SYNC_KEY, SYNC_URL } from './config';
-import { CryptoError, inviteProof, newInviteCode, sha256Hex, type WrappedKey } from './crypto';
+import {
+  accountPassword,
+  CryptoError,
+  inviteProof,
+  newInviteCode,
+  newTempLogin,
+  newTempPassword,
+  rewrapDataKey,
+  sha256Hex,
+  tempEmail,
+  unwrapDataKey,
+  type WrappedKey,
+} from './crypto';
 import { SyncError, type PushChange, type RemoteRecord, type SyncServer } from './engine';
 
 let client: SupabaseClient | undefined;
@@ -23,6 +35,10 @@ const MESSAGES: Record<string, string> = {
   ORG_EXISTS: 'To konto ma już firmę.',
   NOT_AUTHENTICATED: 'Sesja wygasła. Zaloguj się ponownie.',
   NOT_PENDING: 'Ta prośba została już rozpatrzona.',
+  EMAIL_TAKEN: 'Ten e-mail ma już konto. Podaj inny albo zaloguj się nim.',
+  BAD_EMAIL: 'Podaj poprawny adres e-mail.',
+  NOT_TEMP: 'To konto ma już własny e-mail.',
+  BAD_ACCOUNT: 'Nie udało się przygotować danych konta. Spróbuj ponownie.',
   RECOVERY_PENDING: 'Najpierw odpowiedz na pytania pomocnicze (konto czeka na potwierdzenie po resecie hasła).',
   BAD_ANSWERS: 'Każda odpowiedź musi mieć co najmniej 2 znaki.',
 };
@@ -349,6 +365,138 @@ export async function setMemberBranch(orgId: string, userId: string, branchId: s
  * Jednorazowy kod, którym nowy technik dołącza do oddziału. Ważny 14 dni. Działa tylko razem z hasłem
  * szyfrowania: serwer dostaje skrót dowodu wyliczonego kluczem firmy z tego urządzenia.
  */
+// ---------- Konta zakładane przez admina ----------
+
+export interface IssuedAccount {
+  /** Login tymczasowy, np. „gda-k7m2p4”. */
+  login: string;
+  /** Hasło tymczasowe (16 znaków). Odwija klucz firmy; serwer zna tylko jego skrót. */
+  password: string;
+  /** Kod regionu (jednorazowy, 14 dni). */
+  code: string;
+}
+
+/** Wywołanie funkcji serwera „konta” z czytelnym komunikatem błędu. */
+async function invokeKonta(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase().functions.invoke('konta', { body });
+  if (error) {
+    let message = error.message;
+    try {
+      const context = (error as { context?: Response }).context;
+      const parsed = (await context?.json()) as { error?: string } | undefined;
+      if (parsed?.error) message = parsed.error;
+    } catch {
+      // Zostaje ogólny komunikat.
+    }
+    fail(message);
+  }
+  return (data ?? {}) as Record<string, unknown>;
+}
+
+/** Kod z kluczem firmy zawiniętym hasłem tymczasowym, przypisany do jednego konta. */
+async function accountInvite(opts: {
+  orgId: string;
+  branchId: string | null;
+  role: 'technik' | 'owner';
+  forUser: string;
+  password: string;
+  accountKey: WrappedKey;
+  deviceKey: CryptoKey;
+}): Promise<string> {
+  const code = newInviteCode();
+  const proofHash = await sha256Hex(await inviteProof(opts.deviceKey, code));
+  const { error } = await supabase().rpc('create_account_invite', {
+    p_org: opts.orgId,
+    p_branch: opts.branchId,
+    p_role: opts.role,
+    p_code: code,
+    p_proof_hash: proofHash,
+    p_account_key: opts.accountKey,
+    p_for_user: opts.forUser,
+  });
+  if (error) fail(error);
+  return code;
+}
+
+/**
+ * Admin zakłada konto: login i hasło tymczasowe oraz kod regionu (albo kod admina). Hasło firmy jest potrzebne,
+ * żeby przepakować klucz firmy pod hasło tymczasowe; sprawdzane jest przed utworzeniem konta.
+ */
+export async function issueAccount(opts: {
+  orgId: string;
+  branchId: string | null;
+  role: 'technik' | 'owner';
+  prefix: string;
+  companyPassword: string;
+  orgWrapped: WrappedKey;
+  deviceKey: CryptoKey;
+}): Promise<IssuedAccount> {
+  const password = newTempPassword();
+  const login = newTempLogin(opts.role === 'owner' ? 'adm' : opts.prefix);
+  const accountKey = await rewrapDataKey(opts.companyPassword, opts.orgWrapped, password);
+  const created = await invokeKonta({ action: 'create', org_id: opts.orgId, login, password: await accountPassword(password) });
+  const code = await accountInvite({ ...opts, forUser: String(created.user_id), password, accountKey });
+  return { login, password, code };
+}
+
+/** Kod na nowe urządzenie istniejącej osoby: hasło tymczasowe i kod przenoszą klucz firmy bez hasła firmy. */
+export async function issueDeviceCode(opts: {
+  orgId: string;
+  branchId: string | null;
+  userId: string;
+  role: 'technik' | 'owner';
+  companyPassword: string;
+  orgWrapped: WrappedKey;
+  deviceKey: CryptoKey;
+}): Promise<{ password: string; code: string }> {
+  const password = newTempPassword();
+  const accountKey = await rewrapDataKey(opts.companyPassword, opts.orgWrapped, password);
+  const code = await accountInvite({ ...opts, forUser: opts.userId, password, accountKey });
+  return { password, code };
+}
+
+/** Klucz firmy z kodu od admina: odwinięty hasłem tymczasowym, a dołączenie potwierdza go dowodem. */
+async function keyFromAccountCode(password: string, code: string): Promise<{ key: CryptoKey; orgId: string }> {
+  const normalized = code.trim().toUpperCase();
+  const { data, error } = await supabase().rpc('invite_preview', { p_code: normalized });
+  if (error) fail(error);
+  const preview = data as { account_key: WrappedKey | null };
+  if (!preview.account_key) throw new SyncError('To nie jest kod do konta od admina.');
+  let key: CryptoKey;
+  try {
+    key = await unwrapDataKey(password, preview.account_key);
+  } catch {
+    throw new SyncError('Hasło nie pasuje do kodu.');
+  }
+  const orgId = await joinWithInvite(normalized, '', await inviteProof(key, normalized));
+  if (!orgId) throw new SyncError('Hasło nie pasuje do kodu.');
+  return { key, orgId };
+}
+
+/** Logowanie danymi od admina: login, hasło tymczasowe i kod regionu. */
+export async function signInWithAdminData(login: string, password: string, code: string): Promise<{ key: CryptoKey; orgId: string; user: SignedIn }> {
+  const user = await signIn(tempEmail(login), await accountPassword(password));
+  return { ...(await keyFromAccountCode(password, code)), user };
+}
+
+/** Zalogowana osoba bez klucza na tym urządzeniu: hasło i kod od admina. */
+export async function redeemDeviceCode(password: string, code: string): Promise<CryptoKey> {
+  return (await keyFromAccountCode(password, code)).key;
+}
+
+/** Konto tymczasowe ustawia własne hasło i e-mail; potem loguje się nimi jak każde konto. */
+export async function claimAccount(email: string, newPassword: string): Promise<void> {
+  const { error } = await supabase().auth.updateUser({ password: newPassword });
+  if (error) fail(error);
+  await invokeKonta({ action: 'claim', email });
+  await supabase().auth.refreshSession();
+}
+
+export async function isTempAccount(): Promise<boolean> {
+  const { data } = await supabase().auth.getSession();
+  return Boolean(data.session?.user?.user_metadata?.temp);
+}
+
 /** Przełącza aktywny region konta (technik: tylko swoje regiony, admin: każdy). */
 export async function switchBranch(orgId: string, branchId: string): Promise<void> {
   const { error } = await supabase().rpc('switch_branch', { p_org: orgId, p_branch: branchId });

@@ -214,3 +214,74 @@ export async function sha256Hex(text: string): Promise<string> {
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(text)));
   return Array.from(hash, (b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+// ---------- Konta zakładane przez admina ----------
+
+/**
+ * Przepakowuje klucz firmy: odwija go hasłem firmy i zawija hasłem tymczasowym nowego konta. Surowy klucz istnieje
+ * tylko przez chwilę w pamięci urządzenia admina i jest zerowany.
+ */
+export async function rewrapDataKey(companyPassphrase: string, orgWrapped: WrappedKey, newPassphrase: string): Promise<WrappedKey> {
+  requireCrypto();
+  const kek = await passphraseKey(companyPassphrase, fromBase64(orgWrapped.salt), orgWrapped.iterations);
+  let raw: Uint8Array<ArrayBuffer>;
+  try {
+    raw = new Uint8Array(
+      await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: fromBase64(orgWrapped.iv), additionalData: encoder.encode('data-key') },
+        kek,
+        fromBase64(orgWrapped.wrapped),
+      ),
+    );
+  } catch {
+    throw new CryptoError('Nieprawidłowe hasło firmy (szyfrowania).');
+  }
+  const salt = random(16);
+  const iv = random(12);
+  const newKek = await passphraseKey(newPassphrase, salt, PBKDF2_ITERATIONS);
+  const wrapped = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: encoder.encode('data-key') }, newKek, raw));
+  raw.fill(0);
+  return { v: 1, kdf: 'PBKDF2-SHA-256', iterations: PBKDF2_ITERATIONS, salt: toBase64(salt), iv: toBase64(iv), wrapped: toBase64(wrapped) };
+}
+
+/**
+ * Hasło konta tymczasowego dla serwera, wyliczone z hasła tymczasowego (PBKDF2, 100 000 iteracji). Serwer nie zna
+ * hasła tymczasowego, którym zawinięty jest klucz firmy, więc dalej nie może odczytać danych.
+ */
+export async function accountPassword(tempPassword: string): Promise<string> {
+  requireCrypto();
+  const material = await crypto.subtle.importKey('raw', encoder.encode(tempPassword.normalize('NFC')), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(
+    await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: encoder.encode('pogromcy/konto-tymczasowe'), iterations: 100_000 }, material, 256),
+  );
+  return toBase64(bits).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+const TEMP_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+function randomText(length: number, alphabet: string): string {
+  const bytes = random(length);
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+}
+
+/** Login tymczasowy z prefiksem regionu, np. „gda-k7m2p4”. */
+export function newTempLogin(prefix: string): string {
+  const ascii = prefix
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ł/g, 'l')
+    .replace(/[^a-z]/g, '')
+    .slice(0, 5);
+  return `${ascii.length >= 2 ? ascii : 'pi'}-${randomText(6, TEMP_ALPHABET)}`;
+}
+
+/** Hasło tymczasowe: 16 znaków bez mylących się liter i cyfr. */
+export function newTempPassword(): string {
+  return randomText(16, 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789');
+}
+
+/** Adres konta tymczasowego w Supabase Auth (domena .invalid nigdy nie odbiera poczty). */
+export const TEMP_DOMAIN = 'konta.pogromcy.invalid';
+
+export const tempEmail = (login: string) => `${login.trim().toLowerCase()}@${TEMP_DOMAIN}`;

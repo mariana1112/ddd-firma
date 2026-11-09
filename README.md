@@ -119,6 +119,14 @@ odpowiedziach pytania blokują się na godzinę. Wymaga migracji `20261109000000
 
 **Logowanie przed użyciem**: bez konta firmy aplikacja pokazuje tylko ekran logowania.
 
+**Konta zakłada admin** (panel admina → Konta): „Konto w regionie” albo „Drugi admin” daje login tymczasowy
+(np. `gda-k7m2p4`), hasło (16 znaków) i kod (jednorazowy, 14 dni). Zwykła rejestracja jest wyłączona. Nowa osoba
+loguje się tymi danymi i od razu jest w regionie (albo jest adminem), a przed pracą ustawia własne imię, e-mail
+i hasło. Admin wpisuje przy tym hasło firmy: aplikacja przepakowuje klucz firmy pod hasło tymczasowe, a serwer
+dostaje tylko skrót tego hasła, więc dalej nie może odczytać danych. „Kod na nowe urządzenie” daje hasło i kod
+osobie, która loguje się na nowym telefonie i nie zna hasła firmy. Konta tworzy funkcja serwera
+`supabase/functions/konta` (klucz serwisowy tylko w Supabase), a kody migracja `20261111000000_konta_od_admina.sql`.
+
 **Regiony w panelu admina**: „Utwórz region i dane do dołączenia” tworzy region z prefiksem i jednorazowy kod
 weryfikacyjny (14 dni). Dołączenie: login (e-mail osoby, konto zakładane przy pierwszym logowaniu albo istniejące),
 hasło firmy (przekazywane osobiście) i kod. Jeden e-mail może należeć do kilku regionów: członek firmy dołącza do

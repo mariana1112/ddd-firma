@@ -449,6 +449,185 @@ function NewRegionForm(props: { disabled: boolean; onCreate: (name: string, pref
   );
 }
 
+// ---------- Konta od admina ----------
+
+type IssueResult = { title: string; login?: string; password: string; code: string };
+
+/** Dane dla nowej osoby: login, hasło i kod. Hasło najlepiej przekazać osobno. */
+function IssuedDetails(props: { result: IssueResult; onClose: () => void }) {
+  const { copy, share } = useContactActions();
+  const r = props.result;
+  const lines = [
+    `${COMPANY_NAME}: dane do pierwszego logowania.`,
+    'Aplikacja: https://mariana1112.github.io/ddd-firma/ (na iPhonie w Safari, potem „Do ekranu początkowego”).',
+    r.login ? `Login: ${r.login}` : 'Zaloguj się swoim e-mailem, potem „Odblokuj kodem od admina”.',
+    `Kod: ${r.code}`,
+  ];
+  return (
+    <div className="form">
+      <Group>
+        {r.login && (
+          <Info label="Login">
+            <strong className="invite-code">{r.login}</strong>
+          </Info>
+        )}
+        <Info label="Hasło">
+          <strong className="invite-code">{r.password}</strong>
+        </Info>
+        <Info label="Kod">
+          <strong className="invite-code">{r.code}</strong>
+        </Info>
+        <Info label="Ważność">Kod jednorazowy, 14 dni</Info>
+      </Group>
+      <p className="field-hint">
+        {r.login
+          ? 'Przy pierwszym logowaniu osoba ustawi własny e-mail i hasło. Hasło wyślij osobno (np. SMS-em) albo podaj osobiście.'
+          : 'Osoba loguje się swoim e-mailem i na ekranie odblokowania wpisuje to hasło i kod.'}{' '}
+        Tych danych nie da się wyświetlić ponownie.
+      </p>
+      <button type="button" className="btn btn-primary btn-block" onClick={() => void share(lines.join('\n'), r.title)}>
+        <Icon name="share" /> Wyślij login i kod (bez hasła)
+      </button>
+      <button type="button" className="btn btn-block" onClick={() => void copy(r.password)}>
+        <Icon name="copy" /> Kopiuj hasło
+      </button>
+      <button type="button" className="btn btn-block" onClick={props.onClose}>
+        Gotowe
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Zakładanie kont przez admina: technik w regionie albo drugi admin, oraz kod na nowe urządzenie istniejącej osoby.
+ * Hasło firmy jest potrzebne, żeby przenieść klucz firmy na nowe konto bez ujawniania go serwerowi.
+ */
+function AccountsSection(props: { state: SyncState; regions: RegionRef[] }) {
+  const { run } = useFeedback();
+  const [role, setRole] = useState<'technik' | 'owner'>('technik');
+  const [branchId, setBranchId] = useState('');
+  const [companyPassword, setCompanyPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<IssueResult | null>(null);
+  const [members, setMembers] = useState<Array<{ userId: string; displayName: string; email: string; role: 'owner' | 'technik'; branchId: string | null }>>([]);
+  const [deviceFor, setDeviceFor] = useState('');
+
+  useEffect(() => {
+    void supabaseApi()
+      .then((api) => api.listMembers(props.state.orgId))
+      .then((list) => setMembers(list.filter((m) => m.approved)))
+      .catch(() => setMembers([]));
+  }, [props.state.orgId, result]);
+
+  const region = props.regions.find((r) => r.id === branchId);
+  const ready = companyPassword.length >= 12 && (role === 'owner' || Boolean(region));
+
+  const keys = async () => {
+    const api = await supabaseApi();
+    const orgWrapped = (await api.myMemberships()).find((m) => m.orgId === props.state.orgId)?.dataKey;
+    const deviceKey = await getDataKey();
+    if (!orgWrapped || !deviceKey) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
+    return { api, orgWrapped, deviceKey };
+  };
+
+  const create = () =>
+    run(async () => {
+      setBusy(true);
+      try {
+        const { api, orgWrapped, deviceKey } = await keys();
+        const issued = await api.issueAccount({
+          orgId: props.state.orgId,
+          branchId: role === 'owner' ? null : branchId,
+          role,
+          prefix: region?.prefix || region?.name || 'pi',
+          companyPassword,
+          orgWrapped,
+          deviceKey,
+        });
+        setCompanyPassword('');
+        setResult({ title: role === 'owner' ? 'Nowe konto admina' : `Nowe konto: ${region?.name}`, ...issued });
+      } finally {
+        setBusy(false);
+      }
+    });
+
+  const deviceCode = () =>
+    run(async () => {
+      const member = members.find((m) => m.userId === deviceFor);
+      if (!member) return;
+      setBusy(true);
+      try {
+        const { api, orgWrapped, deviceKey } = await keys();
+        const issued = await api.issueDeviceCode({
+          orgId: props.state.orgId,
+          branchId: member.branchId,
+          userId: member.userId,
+          role: member.role,
+          companyPassword,
+          orgWrapped,
+          deviceKey,
+        });
+        setCompanyPassword('');
+        setResult({ title: `Nowe urządzenie: ${member.displayName || member.email}`, ...issued });
+      } finally {
+        setBusy(false);
+      }
+    });
+
+  return (
+    <Group title="Konta">
+      <div className="form group-pad">
+        <div className="choice">
+          <button type="button" className={role === 'technik' ? 'choice-item active' : 'choice-item'} onClick={() => setRole('technik')}>
+            Konto w regionie
+          </button>
+          <button type="button" className={role === 'owner' ? 'choice-item active' : 'choice-item'} onClick={() => setRole('owner')}>
+            Drugi admin
+          </button>
+        </div>
+        {role === 'technik' && (
+          <Field label="Region">
+            <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+              <option value="">Wybierz region</option>
+              {props.regions.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {regionLabel(r)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <Field label="Hasło firmy (szyfrowania)" hint="Potrzebne, żeby przekazać nowemu kontu klucz firmy. Nie trafia na serwer.">
+          <input type="password" autoComplete="off" value={companyPassword} onChange={(e) => setCompanyPassword(e.target.value)} />
+        </Field>
+        <button type="button" className="btn btn-primary btn-block" disabled={!ready || busy} onClick={() => void create()}>
+          <Icon name="plus" /> {busy ? 'Tworzę…' : role === 'owner' ? 'Utwórz konto admina' : 'Utwórz konto: login, hasło, kod'}
+        </button>
+        {members.length > 0 && (
+          <>
+            <Field label="Kod na nowe urządzenie" hint="Dla osoby, która loguje się na nowym telefonie i nie zna hasła firmy.">
+              <select value={deviceFor} onChange={(e) => setDeviceFor(e.target.value)}>
+                <option value="">Wybierz osobę</option>
+                {members.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {(m.displayName || m.email) + (m.role === 'owner' ? ' (admin)' : '')}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <button type="button" className="btn btn-block" disabled={!deviceFor || companyPassword.length < 12 || busy} onClick={() => void deviceCode()}>
+              <Icon name="building" /> Utwórz hasło i kod na urządzenie
+            </button>
+          </>
+        )}
+      </div>
+      <Sheet open={Boolean(result)} title={result?.title ?? ''} onClose={() => setResult(null)}>
+        {result && <IssuedDetails result={result} onClose={() => setResult(null)} />}
+      </Sheet>
+    </Group>
+  );
+}
+
 // ---------- Strona główna panelu ----------
 
 const regionLabel = (r: RegionRef) => (r.prefix ? `${r.name} (${r.prefix})` : r.name);
@@ -606,6 +785,8 @@ export function AdminPage() {
         />
         <Row to="/oddzialy" icon="users" title="Technicy i zaproszenia" sub="Zatwierdzanie, przenoszenie między regionami, kody dołączenia" />
       </Group>
+
+      {gate.state && <AccountsSection state={gate.state} regions={regionsApi.regions} />}
 
       {gate.state && <RegionSwitcher state={gate.state} />}
 
