@@ -119,6 +119,10 @@ odpowiedziach pytania blokują się na godzinę. Wymaga migracji `20261109000000
 
 **Logowanie przed użyciem**: bez konta firmy aplikacja pokazuje tylko ekran logowania.
 
+**Zarejestrowane konta** (panel admina): lista wszystkich kont z rolą, regionami i stanem. Admin przyjmuje prośby,
+zawiesza konto (zostaje w firmie, ale nie widzi ani nie zapisuje danych), przywraca je i usuwa konto z firmy
+i z logowania. Siebie nie zawiesi ani nie usunie. Wymaga migracji `20261112000000_zawieszanie_kont.sql`.
+
 **Konta zakłada admin** (panel admina → Konta): „Konto w regionie” albo „Drugi admin” daje login tymczasowy
 (np. `gda-k7m2p4`), hasło (16 znaków) i kod (jednorazowy, 14 dni). Zwykła rejestracja jest wyłączona. Nowa osoba
 loguje się tymi danymi i od razu jest w regionie (albo jest adminem), a przed pracą ustawia własne imię, e-mail

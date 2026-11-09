@@ -31,7 +31,7 @@ const MESSAGES: Record<string, string> = {
   KEY_EXISTS: 'Firma ma już hasło szyfrowania. Odśwież ekran i wpisz to hasło.',
   BAD_INVITE: 'Kod zaproszenia jest nieprawidłowy, wykorzystany albo wygasł.',
   BAD_BRANCH: 'Nie ma takiego oddziału.',
-  FORBIDDEN: 'To konto nie ma uprawnień do zapisu w tej firmie.',
+  FORBIDDEN: 'To konto nie ma uprawnień w tej firmie (np. zostało zawieszone przez admina).',
   ORG_EXISTS: 'To konto ma już firmę.',
   NOT_AUTHENTICATED: 'Sesja wygasła. Zaloguj się ponownie.',
   NOT_PENDING: 'Ta prośba została już rozpatrzona.',
@@ -148,6 +148,8 @@ export interface Member {
   branchId: string | null;
   approved: boolean;
   email: string;
+  /** Konto zawieszone przez admina: zostaje w firmie, ale nie widzi danych. */
+  suspended?: boolean;
 }
 
 // Logowanie hasłem działa w całości w zainstalowanej aplikacji. Link z e-maila służy tylko
@@ -333,7 +335,15 @@ export async function listBranches(orgId: string): Promise<Branch[]> {
 }
 
 export async function listMembers(orgId: string): Promise<Member[]> {
-  const { data, error } = await supabase().from('memberships').select('user_id, display_name, role, branch_id, approved, email').eq('org_id', orgId);
+  // Kolumna suspended jest od migracji zawieszania; bez niej lista działa jak dotąd.
+  type Row = Record<string, unknown>;
+  let { data, error }: { data: Row[] | null; error: { message?: string } | null } = await supabase()
+    .from('memberships')
+    .select('user_id, display_name, role, branch_id, approved, email, suspended')
+    .eq('org_id', orgId);
+  if (error && /suspended/.test(error.message ?? '')) {
+    ({ data, error } = await supabase().from('memberships').select('user_id, display_name, role, branch_id, approved, email').eq('org_id', orgId));
+  }
   if (error) fail(error);
   return (data ?? []).map((row) => ({
     userId: row.user_id as string,
@@ -342,6 +352,7 @@ export async function listMembers(orgId: string): Promise<Member[]> {
     branchId: (row.branch_id as string | null) ?? null,
     approved: row.approved !== false,
     email: (row.email as string) ?? '',
+    suspended: (row as { suspended?: boolean }).suspended === true,
   }));
 }
 
@@ -490,6 +501,17 @@ export async function claimAccount(email: string, newPassword: string): Promise<
   if (error) fail(error);
   await invokeKonta({ action: 'claim', email });
   await supabase().auth.refreshSession();
+}
+
+/** Admin zawiesza (tymczasowo blokuje) albo przywraca konto. */
+export async function suspendMember(orgId: string, userId: string, suspended: boolean): Promise<void> {
+  const { error } = await supabase().rpc('suspend_member', { p_org: orgId, p_user: userId, p_suspended: suspended });
+  if (error) fail(error);
+}
+
+/** Admin usuwa konto z firmy i z logowania (funkcja serwera). */
+export async function deleteAccount(orgId: string, userId: string): Promise<void> {
+  await invokeKonta({ action: 'delete', org_id: orgId, user_id: userId });
 }
 
 export async function isTempAccount(): Promise<boolean> {

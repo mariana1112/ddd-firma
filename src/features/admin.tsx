@@ -449,6 +449,125 @@ function NewRegionForm(props: { disabled: boolean; onCreate: (name: string, pref
   );
 }
 
+// ---------- Zarejestrowane konta ----------
+
+type MemberRow = {
+  userId: string;
+  displayName: string;
+  email: string;
+  role: 'owner' | 'technik';
+  branchId: string | null;
+  approved: boolean;
+  suspended?: boolean;
+};
+
+/**
+ * Wszystkie konta firmy: kto czeka na zgodę, kto pracuje, kto jest zawieszony. Admin przyjmuje, zawiesza (konto zostaje,
+ * ale nie widzi danych), przywraca i usuwa konta. Siebie zawiesić ani usunąć nie można.
+ */
+function MembersSection(props: { state: SyncState; regions: RegionRef[] }) {
+  const { confirm, run, toast } = useFeedback();
+  const [members, setMembers] = useState<MemberRow[] | null>(null);
+  const [access, setAccess] = useState<Array<{ userId: string; branchId: string }>>([]);
+
+  const load = async () => {
+    const api = await supabaseApi();
+    const [list, pairs] = await Promise.all([api.listMembers(props.state.orgId), api.listMemberBranches(props.state.orgId)]);
+    setMembers(list);
+    setAccess(pairs);
+  };
+
+  useEffect(() => {
+    void load().catch(() => setMembers(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.state.orgId]);
+
+  const regionNames = (m: MemberRow) => {
+    const ids = new Set([...access.filter((a) => a.userId === m.userId).map((a) => a.branchId), ...(m.branchId ? [m.branchId] : [])]);
+    const names = props.regions.filter((r) => ids.has(r.id)).map((r) => r.name);
+    return names.length ? names.join(', ') : 'bez regionu';
+  };
+  const label = (m: MemberRow) => m.displayName || m.email || 'Bez nazwy';
+  const temp = (m: MemberRow) => m.email.endsWith('@konta.pogromcy.invalid');
+
+  const act = (fn: () => Promise<void>, done: string) =>
+    run(async () => {
+      await fn();
+      await load();
+      toast(done);
+    });
+
+  const remove = async (m: MemberRow) => {
+    const ok = await confirm({
+      title: `Usunąć konto ${label(m)}?`,
+      message: 'Konto zostanie usunięte z firmy i z logowania. Zlecenia i raporty tej osoby zostają. Tego nie da się cofnąć; do ponownej pracy trzeba utworzyć nowe konto.',
+      confirmLabel: 'Usuń konto',
+      danger: true,
+    });
+    if (ok) await act(async () => (await supabaseApi()).deleteAccount(props.state.orgId, m.userId), 'Konto usunięte');
+  };
+
+  const suspend = async (m: MemberRow, on: boolean) => {
+    if (on) {
+      const ok = await confirm({
+        title: `Zawiesić konto ${label(m)}?`,
+        message: 'Konto zostaje w firmie, ale do czasu przywrócenia nie zobaczy ani nie zapisze żadnych danych.',
+        confirmLabel: 'Zawieś',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    await act(async () => (await supabaseApi()).suspendMember(props.state.orgId, m.userId, on), on ? 'Konto zawieszone' : 'Konto przywrócone');
+  };
+
+  const sorted = [...(members ?? [])].sort(
+    (a, b) => Number(a.approved) - Number(b.approved) || Number(Boolean(b.suspended)) - Number(Boolean(a.suspended)) || label(a).localeCompare(label(b), 'pl'),
+  );
+
+  return (
+    <Group title={`Zarejestrowane konta${members ? ` (${members.length})` : ''}`}>
+      {members === null && <p className="field-hint group-pad">Lista kont wymaga internetu.</p>}
+      {sorted.map((m) => {
+        const self = m.userId === props.state.userId;
+        return (
+          <div key={m.userId} className="member-row">
+            <div className="member-main">
+              <strong>
+                {label(m)}
+                {self ? ' (Ty)' : ''}
+              </strong>
+              <span className="row-sub">
+                {temp(m) ? 'login tymczasowy, jeszcze bez własnego e-maila' : m.email} · {regionNames(m)}
+              </span>
+              <span className="member-badges">
+                {m.role === 'owner' ? <Badge tone="primary">Admin</Badge> : <Badge tone="muted">Technik</Badge>}
+                {!m.approved ? <Badge tone="warn">Czeka na zgodę</Badge> : m.suspended ? <Badge tone="danger">Zawieszone</Badge> : <Badge tone="ok">Aktywne</Badge>}
+              </span>
+            </div>
+            {!self && (
+              <div className="member-actions">
+                {!m.approved && (
+                  <button type="button" className="btn btn-sm btn-primary" onClick={() => void act(async () => (await supabaseApi()).approveMember(props.state.orgId, m.userId), 'Konto przyjęte')}>
+                    Przyjmij
+                  </button>
+                )}
+                {m.approved && (
+                  <button type="button" className="btn btn-sm" onClick={() => void suspend(m, !m.suspended)}>
+                    {m.suspended ? 'Przywróć' : 'Zawieś'}
+                  </button>
+                )}
+                <button type="button" className="btn btn-sm btn-danger-quiet" onClick={() => void remove(m)}>
+                  {m.approved ? 'Usuń' : 'Odrzuć'}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </Group>
+  );
+}
+
 // ---------- Konta od admina ----------
 
 type IssueResult = { title: string; login?: string; password: string; code: string };
@@ -785,6 +904,8 @@ export function AdminPage() {
         />
         <Row to="/oddzialy" icon="users" title="Technicy i zaproszenia" sub="Zatwierdzanie, przenoszenie między regionami, kody dołączenia" />
       </Group>
+
+      {gate.state && <MembersSection state={gate.state} regions={regionsApi.regions} />}
 
       {gate.state && <AccountsSection state={gate.state} regions={regionsApi.regions} />}
 

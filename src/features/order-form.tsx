@@ -12,7 +12,7 @@ import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
-import { isValidNip } from '../lib/validators';
+import { formatPhoneInput, formatPostalInput, isValidNip } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Field, Group, Info, Loading, NotFound, Page } from '../ui/kit';
@@ -452,7 +452,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           )}
           <div className="form-row form-row-postal">
             <Field label="Kod" error={errors.postalCode}>
-              <input value={s.postalCode} onChange={(e) => set({ postalCode: e.target.value })} inputMode="numeric" placeholder="00-000" autoComplete="off" />
+              <input value={s.postalCode} onChange={(e) => set({ postalCode: formatPostalInput(e.target.value) })} inputMode="numeric" pattern="[0-9-]*" maxLength={6} placeholder="00-000" autoComplete="off" />
             </Field>
             <Field label="Miejscowość" error={errors.city}>
               <input value={s.city} onChange={(e) => set({ city: e.target.value })} autoComplete="off" />
@@ -582,7 +582,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
       return (
         <div className="form">
           <Field label="Telefon" error={errors.phone1}>
-            <input type="tel" inputMode="tel" value={s.phone1} onChange={(e) => set({ phone1: e.target.value })} autoComplete="off" />
+            <input type="tel" inputMode="tel" value={s.phone1} placeholder="500 600 700" onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })} autoComplete="off" />
           </Field>
           <ReturningClient
             phone={s.phone1}
@@ -596,7 +596,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           </Field>
           <div className="form-row">
             <Field label="Drugi telefon">
-              <input type="tel" inputMode="tel" value={s.phone2} onChange={(e) => set({ phone2: e.target.value })} autoComplete="off" />
+              <input type="tel" inputMode="tel" value={s.phone2} placeholder="500 600 700" onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })} autoComplete="off" />
             </Field>
             <Field label="Dopisek" hint="Np. tata, tutaj dzwonić">
               <input value={s.phone2Label} onChange={(e) => set({ phone2Label: e.target.value })} autoComplete="off" />
@@ -663,7 +663,7 @@ function QuickForm(props: { state: FormState; set: (patch: Partial<FormState>) =
     <div className="form">
       <div className="form-row">
         <Field label="Telefon" error={errors.phone1}>
-          <input type="tel" inputMode="tel" value={s.phone1} onChange={(e) => set({ phone1: e.target.value })} autoComplete="off" />
+          <input type="tel" inputMode="tel" value={s.phone1} placeholder="500 600 700" onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })} autoComplete="off" />
         </Field>
         <Field label="Imię / firma" error={errors.clientName}>
           <input value={s.clientName} onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />

@@ -3,6 +3,7 @@
 // - create: admin firmy zakłada konto z loginem tymczasowym. Hasło przychodzi już jako skrót wyliczony na
 //   urządzeniu admina z hasła tymczasowego, więc serwer nie zna hasła, którym zawinięty jest klucz firmy.
 // - claim: konto tymczasowe ustawia własny e-mail (hasło zmienia wcześniej samo, przez Supabase Auth).
+// - delete: admin usuwa konto z firmy i z logowania (nie siebie).
 //
 // Klucz serwisowy (SUPABASE_SERVICE_ROLE_KEY) jest tylko w środowisku funkcji, nigdy w aplikacji.
 
@@ -40,21 +41,42 @@ Deno.serve(async (req) => {
     return json({ error: 'BAD_ACTION' }, 400);
   }
 
+  /** Tylko zatwierdzony, niezawieszony admin tej firmy, bez czekającego potwierdzenia po resecie hasła. */
+  const isAdmin = async (orgId: string): Promise<boolean> => {
+    const { data: member } = await admin
+      .from('memberships')
+      .select('role, approved, suspended')
+      .eq('org_id', orgId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (!member || member.role !== 'owner' || !member.approved || member.suspended) return false;
+    const { data: status } = await caller.rpc('recovery_status');
+    return !(status as { pending?: boolean } | null)?.pending;
+  };
+
+  if (body.action === 'delete') {
+    const orgId = String(body.org_id ?? '');
+    const target = String(body.user_id ?? '');
+    if (!target || target === user.id || !(await isAdmin(orgId))) return json({ error: 'FORBIDDEN' }, 403);
+    const { data: inOrg } = await admin.from('memberships').select('user_id').eq('org_id', orgId).eq('user_id', target).maybeSingle();
+    if (!inOrg) return json({ error: 'FORBIDDEN' }, 403);
+    const { count } = await admin.from('memberships').select('user_id', { count: 'exact', head: true }).eq('user_id', target);
+    await admin.from('member_branches').delete().eq('org_id', orgId).eq('user_id', target);
+    await admin.from('memberships').delete().eq('org_id', orgId).eq('user_id', target);
+    // Konto jest tylko w tej firmie: usuwamy je też z logowania.
+    if ((count ?? 0) <= 1) {
+      const { error } = await admin.auth.admin.deleteUser(target);
+      if (error) return json({ error: error.message }, 400);
+    }
+    return json({ ok: true });
+  }
+
   if (body.action === 'create') {
     const orgId = String(body.org_id ?? '');
     const login = String(body.login ?? '').toLowerCase();
     const password = String(body.password ?? '');
     if (!/^[a-z]{2,5}-[a-z0-9]{6,12}$/.test(login) || password.length < 32) return json({ error: 'BAD_ACCOUNT' }, 400);
-    // Tylko zatwierdzony admin tej firmy, bez czekającego potwierdzenia po resecie hasła.
-    const { data: member } = await admin
-      .from('memberships')
-      .select('role, approved')
-      .eq('org_id', orgId)
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (!member || member.role !== 'owner' || !member.approved) return json({ error: 'FORBIDDEN' }, 403);
-    const { data: status } = await caller.rpc('recovery_status');
-    if ((status as { pending?: boolean } | null)?.pending) return json({ error: 'RECOVERY_PENDING' }, 403);
+    if (!(await isAdmin(orgId))) return json({ error: 'FORBIDDEN' }, 403);
     const { data, error } = await admin.auth.admin.createUser({
       email: `${login}@${TEMP_DOMAIN}`,
       password,

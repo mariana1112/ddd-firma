@@ -31,7 +31,7 @@ import {
   type AppSettings,
 } from '../data/settings';
 import type { CompanySettings } from '../data/types';
-import { isValidNip } from '../lib/validators';
+import { formatPostalInput, isValidNip } from '../lib/validators';
 import { isSyncConfigured } from '../data/sync/config';
 import { BUILDINGS, INVOICES, orderAddress, PAY_NAMES, pestName } from '../data/texts';
 import type { BaseRecord } from '../data/types';
@@ -286,7 +286,7 @@ function SettingsForm(props: {
         </Field>
         <div className="form-row">
           <Field label="Kod pocztowy">
-            <input value={company.postalCode} inputMode="numeric" autoComplete="postal-code" onChange={(e) => setC({ postalCode: e.target.value })} />
+            <input value={company.postalCode} inputMode="numeric" maxLength={6} placeholder="00-000" autoComplete="postal-code" onChange={(e) => setC({ postalCode: formatPostalInput(e.target.value) })} />
           </Field>
           <Field label="Miejscowość">
             <input value={company.city} autoComplete="address-level2" onChange={(e) => setC({ city: e.target.value })} />
