@@ -17,6 +17,9 @@ import { Icon } from '../ui/icons';
 import { Badge, Empty, Field, Group, Info, Loading, Page, Row, ScopeBannerContext, Sheet, Stat } from '../ui/kit';
 import { useContactActions } from './common';
 
+import { getAdminSecrets, saveAdminSecret, type AdminSecrets } from '../data/admin-secrets';
+import { unwrapDataKey } from '../data/sync/crypto';
+
 const supabaseApi = () => import('../data/sync/supabase');
 
 // ---------- Blokada panelu ----------
@@ -92,8 +95,17 @@ async function refetchAfterRecovery(): Promise<void> {
 /** Logowanie do panelu: login (e-mail konta admina) i hasło, sprawdzane na serwerze. */
 function AdminLogin(props: { state: SyncState; onUnlocked: () => void }) {
   const { run, toast } = useFeedback();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(props.state.email ?? '');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(false);
+  useEffect(() => {
+    void getAdminSecrets().then((saved) => {
+      if (saved.panel) {
+        setPassword(saved.panel);
+        setRemember(true);
+      }
+    });
+  }, []);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'login' | 'reset' | 'questions'>('login');
 
@@ -114,6 +126,7 @@ function AdminLogin(props: { state: SyncState; onUnlocked: () => void }) {
         const api = await supabaseApi();
         const user = await api.signIn(email.trim(), password);
         if (user.userId !== props.state.userId) throw new Error('Nieprawidłowe konto.');
+        await saveAdminSecret('panel', remember ? password : '').catch(() => undefined);
         setPassword('');
         // Po prośbie o reset hasła uprawnienia admina czekają na odpowiedzi na pytania pomocnicze.
         const status = await api.recoveryStatus();
@@ -205,6 +218,9 @@ function AdminLogin(props: { state: SyncState; onUnlocked: () => void }) {
       <Field label="Hasło">
         <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
+      <label className="check">
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Zapamiętaj hasło na tym telefonie
+      </label>
       <button type="submit" className="btn btn-primary btn-block" disabled={busy || !email.trim() || !password}>
         {busy ? 'Sprawdzam…' : 'Wejdź do panelu'}
       </button>
@@ -570,6 +586,12 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; preset: s
     if (props.preset) setTarget(props.preset);
   }, [props.preset]);
 
+  useEffect(() => {
+    void getAdminSecrets().then((saved) => {
+      if (saved.company && !rememberedCompanyPassword) setCompanyPassword(saved.company);
+    });
+  }, []);
+
   const region = props.regions.find((r) => r.id === target);
   const ready = (target === ADMIN_TARGET || Boolean(region)) && companyPassword.length >= 12;
 
@@ -635,6 +657,112 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; preset: s
       <Sheet open={Boolean(result)} title={result?.title ?? ''} onClose={() => setResult(null)}>
         {result && <CodeDetails result={result} onClose={() => setResult(null)} />}
       </Sheet>
+    </Group>
+  );
+}
+
+// ---------- Hasła zapamiętane na tym telefonie ----------
+
+/** Jedno zapamiętane hasło: ukryte kropkami, „Pokaż”, „Kopiuj”, zmiana i usunięcie. */
+function SecretRow(props: { label: string; value: string | undefined; verify: (value: string) => Promise<void>; onSave: (value: string) => Promise<unknown> }) {
+  const { copy } = useContactActions();
+  const { run } = useFeedback();
+  const [shown, setShown] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="form group-pad">
+      <Info label={props.label}>
+        {props.value ? <span className="invite-code">{shown ? props.value : '••••••••••••'}</span> : 'Nie zapamiętane'}
+      </Info>
+      {props.value && !editing && (
+        <div className="quick-actions">
+          <button type="button" className="btn btn-sm" onClick={() => setShown(!shown)}>
+            {shown ? 'Ukryj' : 'Pokaż'}
+          </button>
+          <button type="button" className="btn btn-sm" onClick={() => void copy(props.value!)}>
+            <Icon name="copy" /> Kopiuj
+          </button>
+          <button type="button" className="btn btn-sm" onClick={() => setEditing(true)}>
+            Zmień
+          </button>
+          <button type="button" className="btn btn-sm btn-danger-quiet" onClick={() => void run(() => props.onSave(''))}>
+            Usuń
+          </button>
+        </div>
+      )}
+      {(!props.value || editing) && (
+        <form
+          className="form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!draft) return;
+            setBusy(true);
+            void run(async () => {
+              try {
+                await props.verify(draft);
+                await props.onSave(draft);
+                setDraft('');
+                setEditing(false);
+              } finally {
+                setBusy(false);
+              }
+            });
+          }}
+        >
+          <Field label={`Wpisz ${props.label.toLowerCase()}`}>
+            <input type="password" autoComplete="off" value={draft} onChange={(e) => setDraft(e.target.value)} />
+          </Field>
+          <button type="submit" className="btn btn-block" disabled={!draft || busy}>
+            {busy ? 'Sprawdzam…' : 'Sprawdź i zapamiętaj'}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Hasła admina zapamiętane na tym telefonie, do podejrzenia w panelu. Zaszyfrowane kluczem firmy z tego urządzenia,
+ * nigdy nie trafiają na serwer. Zapamiętane hasło do panelu wpisuje się samo przy logowaniu do panelu.
+ */
+function SavedPasswordsSection(props: { state: SyncState }) {
+  const { toast } = useFeedback();
+  const [version, setVersion] = useState(0);
+  const secrets = useLiveQuery(() => getAdminSecrets(), [version]);
+  const save = (kind: keyof AdminSecrets) => async (value: string) => {
+    await saveAdminSecret(kind, value);
+    setVersion((v) => v + 1);
+    toast(value ? 'Zapamiętano na tym telefonie' : 'Usunięto z tego telefonu');
+  };
+  return (
+    <Group title="Hasła zapamiętane na tym telefonie">
+      <p className="field-hint group-pad">
+        Tylko na tym telefonie, zaszyfrowane; nie trafiają na serwer. Chroni je blokada telefonu: kto zna kod telefonu, wejdzie
+        do panelu i zobaczy hasła.
+      </p>
+      <SecretRow
+        label="Hasło do panelu"
+        value={secrets?.panel}
+        verify={async (value) => {
+          const user = await (await supabaseApi()).signIn(props.state.email, value);
+          if (user.userId !== props.state.userId) throw new Error('Nieprawidłowe konto.');
+        }}
+        onSave={save('panel')}
+      />
+      <SecretRow
+        label="Hasło szyfrowania"
+        value={secrets?.company}
+        verify={async (value) => {
+          const wrapped = (await (await supabaseApi()).myMemberships()).find((m) => m.orgId === props.state.orgId)?.dataKey;
+          if (!wrapped) throw new Error('Firma nie ma hasła szyfrowania.');
+          await unwrapDataKey(value, wrapped).catch(() => {
+            throw new Error('To nie jest hasło szyfrowania firmy.');
+          });
+        }}
+        onSave={save('company')}
+      />
     </Group>
   );
 }
@@ -810,6 +938,8 @@ export function AdminPage() {
       {gate.state && <MembersSection state={gate.state} regions={regionsApi.regions} />}
 
       {gate.state && <CodesSection state={gate.state} regions={regionsApi.regions} preset={codeFor} />}
+
+      {gate.state && <SavedPasswordsSection state={gate.state} />}
 
       {gate.state && <RegionSwitcher state={gate.state} />}
 

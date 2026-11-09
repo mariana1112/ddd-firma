@@ -127,6 +127,8 @@ odpowiedziach pytania blokują się na godzinę. Wymaga migracji `20261109000000
 zawiesza konto (zostaje w firmie, ale nie widzi ani nie zapisuje danych), przywraca je i usuwa konto z firmy
 i z logowania. Siebie nie zawiesi ani nie usunie. Wymaga migracji `20261112000000_zawieszanie_kont.sql`.
 
+**Hasła zapamiętane na telefonie** (panel admina): admin może zapamiętać hasło do panelu (wpisuje się samo przy logowaniu, pole „Zapamiętaj hasło”) i hasło szyfrowania (wpisuje się samo przy generowaniu kodów) oraz podejrzeć je i skopiować w panelu. Zapisy są tylko na tym urządzeniu, zaszyfrowane kluczem firmy, poza kopią zapasową i serwerem; po zmianie hasła szyfrowania przechodzą na nowy klucz. Chroni je blokada telefonu.
+
 **Konto z kodem od admina**: admin w panelu (sekcja „Kody dla nowych osób”) wybiera region (albo „Admin”), wpisuje
 hasło firmy i dostaje kod weryfikacyjny, np. `ABCD-EFGH-JKMN-PQRS` (jednorazowy, 14 dni). Osoba w aplikacji wybiera
 „Załóż konto”: imię, własny e-mail, hasło i kod. Bez ważnego kodu serwer konta nie założy (zwykła rejestracja jest

@@ -346,8 +346,12 @@ function ChangePassphrase() {
     if (!ok) return;
     await run(async () => {
       try {
-        const [{ rotateDataKey }, server, api] = await Promise.all([engineApi(), loadServer(), supabaseApi()]);
+        const [{ rotateDataKey }, server, api, secretsApi] = await Promise.all([engineApi(), loadServer(), supabaseApi(), import('../data/admin-secrets')]);
+        const saved = await secretsApi.getAdminSecrets();
         const { photosMissing } = await rotateDataKey(server, pass, api.replaceOrgKey, setStep);
+        // Zapamiętane hasła trzeba zaszyfrować nowym kluczem; zapamiętane hasło szyfrowania to teraz nowe hasło.
+        if (saved.panel) await secretsApi.saveAdminSecret('panel', saved.panel);
+        if (saved.company) await secretsApi.saveAdminSecret('company', pass);
         setPass('');
         setRepeat('');
         setOpen(false);
