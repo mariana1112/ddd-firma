@@ -2,6 +2,10 @@ import { roman, visitCode } from '../data/codes';
 import { scopeText } from '../data/visit-terms';
 import { mainPhone } from '../data/order-search';
 import { paymentMissing } from '../data/order-list';
+import { orderCode } from '../data/codes';
+import { cancelVisit, restoreOrder } from '../data/orders';
+import { dropEditDraft, listDrafts } from '../lib/drafts';
+import { useFeedback } from '../ui/feedback';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -50,7 +54,47 @@ function QuickSearch() {
   );
 }
 
-function VisitRow({ visit, order, timeOnly, urgent }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean }) {
+/** Powód, dla którego zabieg jest w „Do dokończenia”. */
+type TodoReason = 'w_trakcie' | 'platnosc' | 'zalegly';
+const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'W trakcie', platnosc: 'Uzupełnij płatność', zalegly: 'Zaległy termin' };
+
+/** Pozycja „Do umówienia” z możliwością usunięcia przypomnienia (odwołanie zabiegu po potwierdzeniu). */
+function ToScheduleRow({ visit, order }: { visit: Visit; order: Order }) {
+  const { confirm, run, toast } = useFeedback();
+  const remove = async () => {
+    const ok = await confirm({
+      title: 'Usunąć przypomnienie?',
+      message: `Zabieg ${roman(visit.seq)} zlecenia ${orderCode(order)} (${order.clientName || orderAddress(order)}) zostanie odwołany i zniknie z „Do umówienia”.`,
+      confirmLabel: 'Usuń przypomnienie',
+      cancelLabel: 'Zostaw',
+      danger: true,
+    });
+    if (!ok) return;
+    await run(async () => {
+      const { archived } = await cancelVisit(visit.id);
+      toast('Usunięto przypomnienie', {
+        action: {
+          label: 'Cofnij',
+          onClick: () =>
+            void run(async () => {
+              await visits.update(visit.id, { status: 'zaplanowany' });
+              if (archived) await restoreOrder(order.id);
+            }),
+        },
+      });
+    });
+  };
+  return (
+    <div className="row-with-action">
+      <VisitRow visit={visit} order={order} />
+      <button type="button" className="icon-btn" aria-label={`Usuń przypomnienie: ${visitCode(order, visit.seq)}`} onClick={() => void remove()}>
+        <Icon name="close" size={18} />
+      </button>
+    </div>
+  );
+}
+
+function VisitRow({ visit, order, timeOnly, urgent, reason }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean; reason?: TodoReason }) {
   return (
     <Row
       to={`/zabieg/${visit.id}`}
@@ -64,7 +108,13 @@ function VisitRow({ visit, order, timeOnly, urgent }: { visit: Visit; order: Ord
       trailing={
         <span className="row-end">
           {order.pink && <PinkBadge />}
-          {urgent ? <Badge tone="danger">Uzupełnij płatność</Badge> : <VisitBadge visit={visit} />}
+          {reason ? (
+            <Badge tone={reason === 'w_trakcie' ? 'warn' : 'danger'}>{TODO_LABEL[reason]}</Badge>
+          ) : urgent ? (
+            <Badge tone="danger">Uzupełnij płatność</Badge>
+          ) : (
+            <VisitBadge visit={visit} />
+          )}
         </span>
       }
     />
@@ -72,6 +122,8 @@ function VisitRow({ visit, order, timeOnly, urgent }: { visit: Visit; order: Ord
 }
 
 export function DashboardPage() {
+  // Szkice są w pamięci przeglądarki, której baza nie obserwuje: po porzuceniu szkicu odświeżamy ręcznie.
+  const [, refresh] = useState(0);
   const data = useLiveQuery(async () => ({
     visits: await visits.all(),
     orders: await orders.all(),
@@ -104,13 +156,20 @@ export function DashboardPage() {
   const todayList = withOrder
     .filter(({ visit }) => visit.status !== 'odwolany' && visit.start?.slice(0, 10) === today)
     .sort((a, b) => a.visit.start!.localeCompare(b.visit.start!));
-  const overdue = planned.filter(({ visit }) => visit.start!.slice(0, 10) < today);
+  const overdue = planned.filter(({ visit }) => visit.status === 'zaplanowany' && visit.start!.slice(0, 10) < today);
   const upcoming = planned.filter(({ visit }) => visit.start!.slice(0, 10) > today && visit.start!.slice(0, 10) <= addDays(today, 7));
   const toSchedule = withOrder.filter(({ visit }) => visit.status === 'zaplanowany' && !visit.start);
-  // Pilne: zabieg zakończony bez formy płatności albo kwoty, do uzupełnienia.
-  const urgent = withOrder
-    .filter(({ visit, order }) => paymentMissing(visit) && !order.archived)
-    .sort((a, b) => (b.visit.doneOn ?? '').localeCompare(a.visit.doneOn ?? ''));
+  // Do dokończenia: rozpoczęte, bez płatności („później”) i zaległe terminy, od najnowszych.
+  const todo = [
+    ...withOrder.filter(({ visit }) => visit.status === 'w_trakcie').map((x) => ({ ...x, reason: 'w_trakcie' as TodoReason, at: x.visit.startedAt ?? x.visit.start ?? '' })),
+    ...withOrder
+      .filter(({ visit, order }) => paymentMissing(visit) && !order.archived)
+      .map((x) => ({ ...x, reason: 'platnosc' as TodoReason, at: x.visit.finishedAt ?? x.visit.doneOn ?? '' })),
+    ...overdue.map((x) => ({ ...x, reason: 'zalegly' as TodoReason, at: x.visit.start ?? '' })),
+  ].sort((a, b) => b.at.localeCompare(a.at));
+  const drafts = listDrafts();
+  const draftEdits = drafts.edits.map((id) => orderById.get(id)).filter((o): o is Order => Boolean(o));
+  const todoCount = todo.length + (drafts.newOrder ? 1 : 0) + draftEdits.length;
 
   const month = monthOf(today);
   const km = kmSummary(mine(data.trips), `${month}-01`, `${month}-31`);
@@ -176,10 +235,30 @@ export function DashboardPage() {
         </Link>
       )}
 
-      {urgent.length > 0 && (
-        <Group title={`Pilne: brak płatności (${urgent.length})`}>
-          {urgent.map(({ visit, order }) => (
-            <VisitRow key={visit.id} visit={visit} order={order} urgent />
+      {todoCount > 0 && (
+        <Group title={`Do dokończenia (${todoCount})`}>
+          {drafts.newOrder && (
+            <Row to="/zlecenia/nowe" icon="clipboard" title="Niedokończone nowe zlecenie" sub={drafts.newOrder} trailing={<Badge tone="warn">Szkic</Badge>} />
+          )}
+          {draftEdits.map((o) => (
+            <div key={o.id} className="row-with-action">
+              <Row
+                to={`/zlecenia/${o.id}/edycja`}
+                icon="edit"
+                title={`Niezapisane zmiany: ${orderCode(o)}`}
+                sub={o.clientName || orderAddress(o)}
+                trailing={<Badge tone="warn">Edycja</Badge>}
+              />
+              <button type="button" className="icon-btn" aria-label={`Porzuć zmiany: ${orderCode(o)}`} onClick={() => {
+                  dropEditDraft(o.id);
+                  refresh((n) => n + 1);
+                }}>
+                <Icon name="close" size={18} />
+              </button>
+            </div>
+          ))}
+          {todo.map(({ visit, order, reason }) => (
+            <VisitRow key={`${reason}-${visit.id}`} visit={visit} order={order} reason={reason} />
           ))}
         </Group>
       )}
@@ -191,18 +270,10 @@ export function DashboardPage() {
         ))}
       </Group>
 
-      {overdue.length > 0 && (
-        <Group title={`Niezakończone z poprzednich dni (${overdue.length})`}>
-          {overdue.map(({ visit, order }) => (
-            <VisitRow key={visit.id} visit={visit} order={order} />
-          ))}
-        </Group>
-      )}
-
       {toSchedule.length > 0 && (
         <Group title={`Do umówienia z klientem (${toSchedule.length})`}>
           {toSchedule.map(({ visit, order }) => (
-            <VisitRow key={visit.id} visit={visit} order={order} />
+            <ToScheduleRow key={visit.id} visit={visit} order={order} />
           ))}
         </Group>
       )}

@@ -9,7 +9,7 @@ import { getAppSettings } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
 import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind } from '../data/types';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
-import { coordsFromLink, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
+import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { isValidNip } from '../lib/validators';
@@ -249,8 +249,22 @@ function validate(step: StepId, s: FormState): Errors {
  * do map i wrócić bez utraty danych. Zapisany link sprawia, że „Nawiguj” prowadzi dokładnie do tego miejsca.
  */
 function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState>) => void; error?: string }) {
+  const { toast } = useFeedback();
   const query = mapsQuery(props.state);
   const coords = coordsFromLink(props.state.mapsLink);
+  /** Otwiera wyszukiwanie adresu w Google Maps; szkic formularza jest już zapisany, więc można wrócić. */
+  const openSearch = (app: boolean) => {
+    if (!query) {
+      toast('Najpierw wpisz ulicę, numer i miejscowość.', { tone: 'error' });
+      return;
+    }
+    if (app) {
+      window.location.href = `comgooglemaps://?q=${encodeURIComponent(query)}`;
+      return;
+    }
+    const opened = window.open(mapsSearchUrl(query), '_blank');
+    if (!opened) window.location.href = mapsSearchUrl(query);
+  };
   const paste = async () => {
     try {
       const text = (await navigator.clipboard.readText()).trim();
@@ -263,9 +277,14 @@ function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState
     <div className={props.error ? 'field field-error' : 'field'}>
       <span className="field-label">Miejsce w Google Maps</span>
       <div className="maps-row">
-        <a className={`btn btn-sm${query ? '' : ' disabled'}`} href={query ? mapsSearchUrl(query) : undefined} target="_blank" rel="noreferrer" aria-disabled={!query}>
+        <button type="button" className="btn btn-sm" onClick={() => openSearch(false)}>
           <Icon name="search" /> Znajdź adres w Google Maps
-        </a>
+        </button>
+        {isIos() && (
+          <button type="button" className="btn btn-sm" onClick={() => openSearch(true)}>
+            <Icon name="nav" /> W aplikacji Google Maps
+          </button>
+        )}
         <button type="button" className="btn btn-sm" onClick={() => void paste()}>
           <Icon name="copy" /> Wklej link
         </button>

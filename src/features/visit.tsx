@@ -474,7 +474,19 @@ export function VisitPage() {
 
       {visit.status === 'zaplanowany' && (
         <>
-          <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void run(() => startVisit(visit.id))}>
+          {/* Kolejny zabieg (II, III…) można zacząć dopiero po umówieniu terminu z klientem. */}
+          {visit.seq > 1 && !visit.start && (
+            <p className="notice notice-warn">
+              <Icon name="alert" />
+              <span>Zabieg {roman(visit.seq)} nie jest umówiony. Najpierw umów termin z klientem, potem go rozpoczniesz.</span>
+            </p>
+          )}
+          <button
+            type="button"
+            className="btn btn-primary btn-block btn-big"
+            disabled={visit.seq > 1 && !visit.start}
+            onClick={() => void run(() => startVisit(visit.id))}
+          >
             <Icon name="play" /> Rozpocznij zabieg
           </button>
           <div className="btn-stack">

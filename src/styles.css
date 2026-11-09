@@ -2192,3 +2192,20 @@ a.btn.disabled {
   pointer-events: none;
   opacity: 0.5;
 }
+
+/* Wiersz z przyciskiem obok (np. usuń przypomnienie) */
+.row-with-action {
+  display: flex;
+  align-items: center;
+}
+
+.row-with-action > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-with-action > .icon-btn {
+  flex: none;
+  margin-right: 6px;
+  color: var(--muted);
+}

@@ -87,6 +87,9 @@ export async function orderVisits(orderId: string): Promise<Visit[]> {
 /** Zabieg rozlicza technik, który go rozpoczął, także gdy zlecenie przyjął ktoś inny z oddziału. */
 export async function startVisit(id: string): Promise<void> {
   const profile = await getProfile();
+  const visit = await visits.get(id);
+  // Kolejny zabieg (II, III…) zaczyna się tylko po umówieniu terminu z klientem.
+  if (visit && visit.seq > 1 && !visit.start) throw new DomainError('Najpierw umów termin tego zabiegu z klientem.');
   await visits.update(id, {
     status: 'w_trakcie',
     startedAt: new Date().toISOString(),
