@@ -48,7 +48,7 @@ returns uuid
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_invite public.invites;
   v_member public.memberships;
@@ -98,7 +98,7 @@ begin
   update public.invites set used_by = auth.uid(), used_at = now() where code = v_invite.code;
   return v_invite.org_id;
 end;
-$;
+$$;
 
 revoke all on function public.create_signup_code(uuid, uuid, text, text, text, jsonb, uuid) from public, anon;
 grant execute on function public.create_signup_code(uuid, uuid, text, text, text, jsonb, uuid) to authenticated;
