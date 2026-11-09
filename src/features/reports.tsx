@@ -1,17 +1,17 @@
 import { visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { buildReport, costName, formatPln, PAY_METHODS, periodOf, periodTitle, reportText, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
-import { getAppSettings, getProfile, ownedBy } from '../data/settings';
+import { getAppSettings, getProfile, getSyncState, ownedBy } from '../data/settings';
 import { orderAddress, PAY_NAMES, pestName } from '../data/texts';
 import { formatDate, todayWarsaw } from '../lib/dates';
 import { reportDocument } from '../pdf/documents';
 import { renderPdf } from '../pdf/render';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Chips, Empty, Group, Loading, Page, Row, Stat } from '../ui/kit';
+import { Badge, Chips, Empty, Group, Loading, Page, Row, ScopeBannerContext, Stat } from '../ui/kit';
 import { PayBadge, useContactActions } from './common';
 
 export function ReportsPage() {
@@ -22,20 +22,29 @@ export function ReportsPage() {
   // Szef otwiera raport technika z listy oddziałów; domyślnie raport jest własny.
   const [params] = useSearchParams();
   const otherId = params.get('technik');
+  // Admin widzi domyślnie zabiegi wszystkich techników (w panelu: wybranego regionu albo firmy); technik tylko swoje.
+  const inPanel = useContext(ScopeBannerContext) !== null;
+  const [onlyMine, setOnlyMine] = useState(false);
   const data = useLiveQuery(async () => {
     const profile = await getProfile();
+    const state = await getSyncState();
+    const owner = state?.role === 'owner';
+    const everyone = !otherId && owner && (inPanel || !onlyMine);
     const who = otherId ?? profile.userId;
     const self = !otherId || otherId === profile.userId;
-    const own = <T extends { ownerId?: string | null }>(list: T[]) => list.filter((x) => ownedBy(x.ownerId, who, self));
+    const own = <T extends { ownerId?: string | null }>(list: T[]) => (everyone ? list : list.filter((x) => ownedBy(x.ownerId, who, self)));
     return {
+      owner,
+      everyone,
+      regionName: state?.branchName ?? '',
       profile: otherId ? { name: params.get('imie') ?? 'technik', userId: otherId } : profile,
       settings: await getAppSettings(),
-      visits: (await visits.all()).filter((v) => ownedBy(v.technicianId, who, self)),
+      visits: (await visits.all()).filter((v) => everyone || ownedBy(v.technicianId, who, self)),
       orders: await orders.all(),
       expenses: own(await expenses.all()),
       trips: own(await trips.all()),
     };
-  }, [otherId]);
+  }, [otherId, onlyMine, inPanel]);
 
   if (!data) {
     return (
@@ -46,7 +55,8 @@ export function ReportsPage() {
   }
 
   const report = buildReport(period, data);
-  const names = { technician: data.profile.name || 'technik', bossGenitive: data.settings.bossName };
+  const allName = inPanel ? 'wszyscy technicy' : data.regionName ? `wszyscy technicy, region ${data.regionName}` : 'wszyscy technicy';
+  const names = { technician: data.everyone ? allName : data.profile.name || 'technik', bossGenitive: data.settings.bossName };
   const text = reportText(report, names);
   const isCurrent = period.from === periodOf(period.kind, todayWarsaw()).from;
 
@@ -58,6 +68,16 @@ export function ReportsPage() {
 
   return (
     <Page title={otherId ? `Raport: ${data.profile.name}` : 'Raporty'} back={otherId ? '/oddzialy' : undefined}>
+      {data.owner && !otherId && !inPanel && (
+        <Chips
+          value={onlyMine ? 'moje' : 'wszyscy'}
+          onChange={(v: string) => setOnlyMine(v === 'moje')}
+          options={[
+            { value: 'wszyscy', label: 'Wszyscy technicy' },
+            { value: 'moje', label: 'Tylko moje' },
+          ]}
+        />
+      )}
       <Chips
         value={period.kind}
         onChange={(kind: PeriodKind) => setPeriod(periodOf(kind, todayWarsaw()))}
@@ -112,6 +132,7 @@ export function ReportsPage() {
             key={visit.id}
             to={`/zabieg/${visit.id}`}
             title={order ? `${visitCode(order, visit.seq)} ${order.clientName}` : 'Zabieg'}
+            meta={data.everyone ? visit.technicianName || undefined : undefined}
             sub={order ? `${formatDate(visit.doneOn)} · ${orderAddress(order)} · ${pestName(order)}` : formatDate(visit.doneOn)}
             trailing={
               <span className="row-end">
