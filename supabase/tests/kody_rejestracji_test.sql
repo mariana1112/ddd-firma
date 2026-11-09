@@ -33,9 +33,9 @@ begin
   execute format(as_user, t);
   begin
     perform public.create_signup_code(org, b2, 'technik', 'AAAAAAAA', h, k, null);
-    res := res || 'BŁĄD: technik wygenerował kod';
+    res := array_append(res, ('BŁĄD: technik wygenerował kod')::text);
   exception when others then
-    res := res || ('technik bez kodu: ' || sqlerrm);
+    res := array_append(res, (('technik bez kodu: ' || sqlerrm))::text);
   end;
 
   -- Admin: kod do regionu, kod drugiego admina; złe dane odrzucone.
@@ -43,24 +43,24 @@ begin
   perform public.create_signup_code(org, b2, 'technik', 'ABCDEFGH', h, k, null);
   perform public.create_signup_code(org, b2, 'technik', 'BCDEFGHJ', h, k, null);
   perform public.create_signup_code(org, null, 'owner', 'CDEFGHJK', h, k, null);
-  res := res || 'admin wygenerował 3 kody';
+  res := array_append(res, ('admin wygenerował 3 kody')::text);
   begin
     perform public.create_signup_code(org, null, 'technik', 'DEFGHJKM', h, k, null);
-    res := res || 'BŁĄD: kod technika bez regionu';
+    res := array_append(res, ('BŁĄD: kod technika bez regionu')::text);
   exception when others then
-    res := res || ('kod technika bez regionu: ' || sqlerrm);
+    res := array_append(res, (('kod technika bez regionu: ' || sqlerrm))::text);
   end;
   begin
     perform public.create_signup_code(org, b2, 'technik', 'ABCDEFGHJK', h, k, null);
-    res := res || 'BŁĄD: 10-znakowy identyfikator';
+    res := array_append(res, ('BŁĄD: 10-znakowy identyfikator')::text);
   exception when others then
-    res := res || ('zły identyfikator: ' || sqlerrm);
+    res := array_append(res, (('zły identyfikator: ' || sqlerrm))::text);
   end;
   begin
     perform public.create_signup_code(org, b2, 'technik', 'EFGHJKMN', h, '{}', null);
-    res := res || 'BŁĄD: kod bez klucza';
+    res := array_append(res, ('BŁĄD: kod bez klucza')::text);
   exception when others then
-    res := res || ('kod bez klucza: ' || sqlerrm);
+    res := array_append(res, (('kod bez klucza: ' || sqlerrm))::text);
   end;
 
   -- Rejestracja (funkcja „konta”) przypisuje kod do nowego konta.
@@ -71,30 +71,30 @@ begin
   execute format(as_user, x);
   begin
     perform public.invite_preview('ABCDEFGH');
-    res := res || 'BŁĄD: obce konto widzi kod';
+    res := array_append(res, ('BŁĄD: obce konto widzi kod')::text);
   exception when others then
-    res := res || ('obce konto: ' || sqlerrm);
+    res := array_append(res, (('obce konto: ' || sqlerrm))::text);
   end;
 
   -- Nowe konto: zły dowód liczy próbę, dobry dołącza od razu do regionu z kodu.
   execute format(as_user, n);
   r := public.join_with_invite('ABCDEFGH', 'Nowy', 'zly-dowod');
-  res := res || ('zły dowód: ' || coalesce(r::text, 'null'));
+  res := array_append(res, (('zły dowód: ' || coalesce(r::text, 'null')))::text);
   r := public.join_with_invite('ABCDEFGH', 'Nowy', 'dowod-1');
   perform set_config('role', 'postgres', true);
   select * into m from public.memberships where user_id = n;
-  res := res || format('nowe konto: firma %s, rola %s, zatwierdzone %s, region R2 %s, regiony %s, próby %s',
+  res := array_append(res, (format('nowe konto: firma %s, rola %s, zatwierdzone %s, region R2 %s, regiony %s, próby %s',
     r = org, m.role, m.approved, m.branch_id = b2,
     (select count(*) from public.member_branches where user_id = n and branch_id = b2),
-    (select attempts from public.invites where code = 'ABCDEFGH'));
+    (select attempts from public.invites where code = 'ABCDEFGH')))::text);
 
   -- Ten sam kod drugi raz nie działa.
   execute format(as_user, n);
   begin
     perform public.join_with_invite('ABCDEFGH', 'Nowy', 'dowod-1');
-    res := res || 'BŁĄD: kod użyty dwa razy';
+    res := array_append(res, ('BŁĄD: kod użyty dwa razy')::text);
   exception when others then
-    res := res || ('kod drugi raz: ' || sqlerrm);
+    res := array_append(res, (('kod drugi raz: ' || sqlerrm))::text);
   end;
 
   -- Istniejący technik: kod regionu dodaje region (nowy telefon / kolejny region), bez zmiany roli.
@@ -102,15 +102,15 @@ begin
   r := public.join_with_invite('BCDEFGHJ', '', 'dowod-1');
   perform set_config('role', 'postgres', true);
   select * into m from public.memberships where user_id = t;
-  res := res || format('technik: rola %s, zatwierdzony %s, regiony %s',
-    m.role, m.approved, (select count(*) from public.member_branches where user_id = t));
+  res := array_append(res, (format('technik: rola %s, zatwierdzony %s, regiony %s',
+    m.role, m.approved, (select count(*) from public.member_branches where user_id = t)))::text);
 
   -- Kod admina: nowe konto zostaje adminem bez regionu.
   execute format(as_user, y);
   r := public.join_with_invite('CDEFGHJK', 'Drugi admin', 'dowod-1');
   perform set_config('role', 'postgres', true);
   select * into m from public.memberships where user_id = y;
-  res := res || format('kod admina: rola %s, zatwierdzony %s, bez regionu %s', m.role, m.approved, m.branch_id is null);
+  res := array_append(res, (format('kod admina: rola %s, zatwierdzony %s, bez regionu %s', m.role, m.approved, m.branch_id is null))::text);
 
   raise exception E'WYNIKI TESTU\n%', array_to_string(res, E'\n');
 end;
