@@ -9,7 +9,7 @@ import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type Period
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
 import { COMPANY_NAME, getDataKey, getRegions, getSyncState, saveRegions, setSyncState, type RegionInfo } from '../data/settings';
-import { enterRegion, RegionSwitcher } from './regions';
+import { RegionSwitcher } from './regions';
 import type { SyncState } from '../data/types';
 import { todayWarsaw } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
@@ -282,25 +282,16 @@ function useRegions(state: SyncState | null | undefined) {
       toast(prefix ? `Region ${name}: prefiks ${prefix}` : `Region ${name}: bez prefiksu`);
     });
 
-  /** Nowy kod weryfikacyjny do regionu (jednorazowy, ważny 14 dni). Wymaga klucza firmy na tym urządzeniu. */
-  const newCode = async (branchId: string): Promise<string> => {
-    if (!state?.orgId) throw new Error('Brak konta firmy.');
-    const key = await getDataKey();
-    if (!key) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
-    return (await supabaseApi()).createInvite(state.orgId, branchId, key);
-  };
-
-  /** Tworzy region: nazwa i prefiks w panelu, region na serwerze i kod do dołączenia. */
-  const createRegion = async (name: string, prefix: string): Promise<{ id: string; name: string; code: string }> => {
+  /** Tworzy region: nazwa i prefiks w panelu, region na serwerze. Kod dla ludzi generuje sekcja „Kody”. */
+  const createRegion = async (name: string, prefix: string): Promise<{ id: string; name: string }> => {
     if (!state?.orgId) throw new Error('Brak konta firmy.');
     const all = await getRegions();
     const taken = Object.entries(all).find(([, r]) => prefix && r.prefix === prefix);
     if (taken) throw new Error(`Prefiks ${prefix} ma już region ${taken[1].name}.`);
     const id = await (await supabaseApi()).createBranch(state.orgId, name);
     await saveRegions({ ...(await getRegions()), [id]: { name, prefix } });
-    const code = await newCode(id);
     await load();
-    return { id, name, code };
+    return { id, name };
   };
 
   const deleteRegion = (id: string) =>
@@ -326,7 +317,7 @@ function useRegions(state: SyncState | null | undefined) {
     void saveRegions(next);
   }, [server, saved]);
 
-  return { regions, members, loaded: saved !== undefined, online: server !== null, savePrefix, createRegion, newCode, deleteRegion };
+  return { regions, members, loaded: saved !== undefined, online: server !== null, savePrefix, createRegion, deleteRegion };
 }
 
 function PrefixEditor(props: {
@@ -348,7 +339,7 @@ function PrefixEditor(props: {
         <span className="row-sub">Konta: {props.members}</span>
         <span className="region-actions">
           <button type="button" className="link" onClick={props.onCode}>
-            Nowy kod
+            Kod dla osoby
           </button>
           <button type="button" className="link link-danger" onClick={props.onDelete}>
             Usuń region
@@ -366,41 +357,6 @@ function PrefixEditor(props: {
       />
       <button type="button" className="btn btn-sm" disabled={prefix === props.region.prefix} onClick={() => props.onSave(prefix)}>
         Zapisz
-      </button>
-    </div>
-  );
-}
-
-/** Dane do dołączenia do regionu: login, hasło, kod weryfikacyjny. */
-function JoinDetails(props: { regionName: string; code: string; onEnter?: () => void; onClose: () => void }) {
-  const { share } = useContactActions();
-  const text = [
-    `Dołączenie do aplikacji ${COMPANY_NAME}, region ${props.regionName}.`,
-    '1. Otwórz https://mariana1112.github.io/ddd-firma/ (na iPhonie w Safari) i dodaj do ekranu początkowego.',
-    '2. Login: załóż konto swoim e-mailem i hasłem albo zaloguj się istniejącym (jeden e-mail może być w kilku regionach).',
-    `3. Kod weryfikacyjny: ${props.code} (jednorazowy, ważny 14 dni).`,
-    '4. Hasło firmy podam osobiście.',
-  ].join('\n');
-  return (
-    <div className="form">
-      <Group>
-        <Info label="Login">E-mail osoby z regionu: zakłada konto przy pierwszym logowaniu albo loguje się istniejącym</Info>
-        <Info label="Hasło">Hasło firmy (szyfrowania): przekaż osobiście, nigdy razem z kodem</Info>
-        <Info label="Kod weryfikacyjny">
-          <strong className="invite-code">{props.code}</strong>
-        </Info>
-        <Info label="Ważność">Jednorazowy, 14 dni; po 5 złych hasłach przestaje działać</Info>
-      </Group>
-      <button type="button" className="btn btn-primary btn-block" onClick={() => void share(text, `Region ${props.regionName}`)}>
-        <Icon name="share" /> Wyślij instrukcję i kod (bez hasła)
-      </button>
-      {props.onEnter && (
-        <button type="button" className="btn btn-block" onClick={props.onEnter}>
-          <Icon name="building" /> Wejdź do tego regionu na tym telefonie
-        </button>
-      )}
-      <button type="button" className="btn btn-block" onClick={props.onClose}>
-        Gotowe
       </button>
     </div>
   );
@@ -443,7 +399,7 @@ function NewRegionForm(props: { disabled: boolean; onCreate: (name: string, pref
         </Field>
       </div>
       <button type="submit" className="btn btn-primary btn-block" disabled={busy || props.disabled || !name.trim()}>
-        <Icon name="plus" /> {busy ? 'Tworzę…' : 'Utwórz region i dane do dołączenia'}
+        <Icon name="plus" /> {busy ? 'Tworzę…' : 'Utwórz region'}
       </button>
     </form>
   );
@@ -568,47 +524,25 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[] }) {
   );
 }
 
-// ---------- Konta od admina ----------
+// ---------- Kody weryfikacyjne ----------
 
-type IssueResult = { title: string; login?: string; password: string; code: string };
+const APP_URL = 'https://mariana1112.github.io/ddd-firma/';
+const ADMIN_TARGET = 'admin';
 
-/** Dane dla nowej osoby: login, hasło i kod. Hasło najlepiej przekazać osobno. */
-function IssuedDetails(props: { result: IssueResult; onClose: () => void }) {
+type CodeResult = { title: string; code: string; text: string };
+
+/** Kod gotowy do wysłania: duży, z przyciskami „Wyślij” i „Kopiuj”. Drugi raz go nie zobaczysz. */
+function CodeDetails(props: { result: CodeResult; onClose: () => void }) {
   const { copy, share } = useContactActions();
-  const r = props.result;
-  const lines = [
-    `${COMPANY_NAME}: dane do pierwszego logowania.`,
-    'Aplikacja: https://mariana1112.github.io/ddd-firma/ (na iPhonie w Safari, potem „Do ekranu początkowego”).',
-    r.login ? `Login: ${r.login}` : 'Zaloguj się swoim e-mailem, potem „Odblokuj kodem od admina”.',
-    `Kod: ${r.code}`,
-  ];
   return (
     <div className="form">
-      <Group>
-        {r.login && (
-          <Info label="Login">
-            <strong className="invite-code">{r.login}</strong>
-          </Info>
-        )}
-        <Info label="Hasło">
-          <strong className="invite-code">{r.password}</strong>
-        </Info>
-        <Info label="Kod">
-          <strong className="invite-code">{r.code}</strong>
-        </Info>
-        <Info label="Ważność">Kod jednorazowy, 14 dni</Info>
-      </Group>
-      <p className="field-hint">
-        {r.login
-          ? 'Przy pierwszym logowaniu osoba ustawi własny e-mail i hasło. Hasło wyślij osobno (np. SMS-em) albo podaj osobiście.'
-          : 'Osoba loguje się swoim e-mailem i na ekranie odblokowania wpisuje to hasło i kod.'}{' '}
-        Tych danych nie da się wyświetlić ponownie.
-      </p>
-      <button type="button" className="btn btn-primary btn-block" onClick={() => void share(lines.join('\n'), r.title)}>
-        <Icon name="share" /> Wyślij login i kod (bez hasła)
+      <p className="invite-code">{props.result.code}</p>
+      <p className="sheet-text">Jednorazowy, ważny 14 dni. Po zamknięciu tego okna kodu nie da się wyświetlić ponownie.</p>
+      <button type="button" className="btn btn-primary btn-block" onClick={() => void share(props.result.text, props.result.title)}>
+        <Icon name="share" /> Wyślij kod z instrukcją
       </button>
-      <button type="button" className="btn btn-block" onClick={() => void copy(r.password)}>
-        <Icon name="copy" /> Kopiuj hasło
+      <button type="button" className="btn btn-block" onClick={() => void copy(props.result.code)}>
+        <Icon name="copy" /> Kopiuj kod
       </button>
       <button type="button" className="btn btn-block" onClick={props.onClose}>
         Gotowe
@@ -617,131 +551,89 @@ function IssuedDetails(props: { result: IssueResult; onClose: () => void }) {
   );
 }
 
+/** Hasło firmy w pamięci tylko do zamknięcia aplikacji, żeby nie wpisywać go przy każdym kodzie. */
+let rememberedCompanyPassword = '';
+
 /**
- * Zakładanie kont przez admina: technik w regionie albo drugi admin, oraz kod na nowe urządzenie istniejącej osoby.
- * Hasło firmy jest potrzebne, żeby przenieść klucz firmy na nowe konto bez ujawniania go serwerowi.
+ * Admin generuje tylko kod przypisany do regionu (albo kod admina). Osoba sama zakłada konto swoim e-mailem i hasłem
+ * i wpisuje kod; ten sam kod działa też na nowym telefonie osoby, która już ma konto. Hasło firmy jest potrzebne,
+ * bo kod niesie klucz szyfrowania firmy; nie trafia na serwer.
  */
-function AccountsSection(props: { state: SyncState; regions: RegionRef[] }) {
+function CodesSection(props: { state: SyncState; regions: RegionRef[]; preset: string | null }) {
   const { run } = useFeedback();
-  const [role, setRole] = useState<'technik' | 'owner'>('technik');
-  const [branchId, setBranchId] = useState('');
-  const [companyPassword, setCompanyPassword] = useState('');
+  const [target, setTarget] = useState('');
+  const [companyPassword, setCompanyPassword] = useState(rememberedCompanyPassword);
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<IssueResult | null>(null);
-  const [members, setMembers] = useState<Array<{ userId: string; displayName: string; email: string; role: 'owner' | 'technik'; branchId: string | null }>>([]);
-  const [deviceFor, setDeviceFor] = useState('');
+  const [result, setResult] = useState<CodeResult | null>(null);
 
   useEffect(() => {
-    void supabaseApi()
-      .then((api) => api.listMembers(props.state.orgId))
-      .then((list) => setMembers(list.filter((m) => m.approved)))
-      .catch(() => setMembers([]));
-  }, [props.state.orgId, result]);
+    if (props.preset) setTarget(props.preset);
+  }, [props.preset]);
 
-  const region = props.regions.find((r) => r.id === branchId);
-  const ready = companyPassword.length >= 12 && (role === 'owner' || Boolean(region));
+  const region = props.regions.find((r) => r.id === target);
+  const ready = (target === ADMIN_TARGET || Boolean(region)) && companyPassword.length >= 12;
 
-  const keys = async () => {
-    const api = await supabaseApi();
-    const orgWrapped = (await api.myMemberships()).find((m) => m.orgId === props.state.orgId)?.dataKey;
-    const deviceKey = await getDataKey();
-    if (!orgWrapped || !deviceKey) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
-    return { api, orgWrapped, deviceKey };
-  };
-
-  const create = () =>
+  const generate = () =>
     run(async () => {
       setBusy(true);
       try {
-        const { api, orgWrapped, deviceKey } = await keys();
-        const issued = await api.issueAccount({
+        const api = await supabaseApi();
+        const orgWrapped = (await api.myMemberships()).find((m) => m.orgId === props.state.orgId)?.dataKey;
+        const deviceKey = await getDataKey();
+        if (!orgWrapped || !deviceKey) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
+        const admin = target === ADMIN_TARGET;
+        const code = await api.issueSignupCode({
           orgId: props.state.orgId,
-          branchId: role === 'owner' ? null : branchId,
-          role,
-          prefix: region?.prefix || region?.name || 'pi',
+          branchId: admin ? null : target,
+          role: admin ? 'owner' : 'technik',
           companyPassword,
           orgWrapped,
           deviceKey,
         });
-        setCompanyPassword('');
-        setResult({ title: role === 'owner' ? 'Nowe konto admina' : `Nowe konto: ${region?.name}`, ...issued });
-      } finally {
-        setBusy(false);
-      }
-    });
-
-  const deviceCode = () =>
-    run(async () => {
-      const member = members.find((m) => m.userId === deviceFor);
-      if (!member) return;
-      setBusy(true);
-      try {
-        const { api, orgWrapped, deviceKey } = await keys();
-        const issued = await api.issueDeviceCode({
-          orgId: props.state.orgId,
-          branchId: member.branchId,
-          userId: member.userId,
-          role: member.role,
-          companyPassword,
-          orgWrapped,
-          deviceKey,
+        rememberedCompanyPassword = companyPassword;
+        const where = admin ? 'admin (wszystkie regiony)' : `region ${region?.name ?? ''}`;
+        setResult({
+          title: `Kod: ${where}`,
+          code,
+          text: [
+            `${COMPANY_NAME}: kod do aplikacji (${where}).`,
+            `1. Otwórz ${APP_URL} (iPhone: Safari → Udostępnij → Do ekranu początkowego).`,
+            '2. Nie masz konta: „Załóż konto”, wpisz imię, swój e-mail, hasło i kod.',
+            '   Masz konto: zaloguj się i wpisz kod.',
+            `Kod: ${code}`,
+            'Działa raz, ważny 14 dni.',
+          ].join('\n'),
         });
-        setCompanyPassword('');
-        setResult({ title: `Nowe urządzenie: ${member.displayName || member.email}`, ...issued });
+        setTarget('');
       } finally {
         setBusy(false);
       }
     });
 
   return (
-    <Group title="Konta">
-      <div className="form group-pad">
-        <div className="choice">
-          <button type="button" className={role === 'technik' ? 'choice-item active' : 'choice-item'} onClick={() => setRole('technik')}>
-            Konto w regionie
-          </button>
-          <button type="button" className={role === 'owner' ? 'choice-item active' : 'choice-item'} onClick={() => setRole('owner')}>
-            Drugi admin
-          </button>
-        </div>
-        {role === 'technik' && (
-          <Field label="Region">
-            <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-              <option value="">Wybierz region</option>
-              {props.regions.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {regionLabel(r)}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-        <Field label="Hasło firmy (szyfrowania)" hint="Potrzebne, żeby przekazać nowemu kontu klucz firmy. Nie trafia na serwer.">
+    <Group title="Kody dla nowych osób">
+      <div className="form group-pad" id="kody">
+        <p className="field-hint">Osoba sama zakłada konto swoim e-mailem i hasłem i wpisuje kod. Bez kodu konta nie założy.</p>
+        <Field label="Region">
+          <select value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="">Wybierz</option>
+            {props.regions.map((r) => (
+              <option key={r.id} value={r.id}>
+                {regionLabel(r)}
+              </option>
+            ))}
+            <option value={ADMIN_TARGET}>Admin (wszystkie regiony)</option>
+          </select>
+        </Field>
+        <Field label="Hasło firmy (szyfrowania)" hint="Nie trafia na serwer. Aplikacja pamięta je do zamknięcia.">
           <input type="password" autoComplete="off" value={companyPassword} onChange={(e) => setCompanyPassword(e.target.value)} />
         </Field>
-        <button type="button" className="btn btn-primary btn-block" disabled={!ready || busy} onClick={() => void create()}>
-          <Icon name="plus" /> {busy ? 'Tworzę…' : role === 'owner' ? 'Utwórz konto admina' : 'Utwórz konto: login, hasło, kod'}
+        <button type="button" className="btn btn-primary btn-block" disabled={!ready || busy} onClick={() => void generate()}>
+          <Icon name="plus" /> {busy ? 'Generuję…' : 'Wygeneruj kod'}
         </button>
-        {members.length > 0 && (
-          <>
-            <Field label="Kod na nowe urządzenie" hint="Dla osoby, która loguje się na nowym telefonie i nie zna hasła firmy.">
-              <select value={deviceFor} onChange={(e) => setDeviceFor(e.target.value)}>
-                <option value="">Wybierz osobę</option>
-                {members.map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    {(m.displayName || m.email) + (m.role === 'owner' ? ' (admin)' : '')}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <button type="button" className="btn btn-block" disabled={!deviceFor || companyPassword.length < 12 || busy} onClick={() => void deviceCode()}>
-              <Icon name="building" /> Utwórz hasło i kod na urządzenie
-            </button>
-          </>
-        )}
       </div>
       <Sheet open={Boolean(result)} title={result?.title ?? ''} onClose={() => setResult(null)}>
-        {result && <IssuedDetails result={result} onClose={() => setResult(null)} />}
+        {result && <CodeDetails result={result} onClose={() => setResult(null)} />}
       </Sheet>
     </Group>
   );
@@ -763,7 +655,11 @@ export function AdminPage() {
   const region = params.get('region') ?? 'all';
   const [kind, setKind] = useState<PeriodKind>('tydzien');
   const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
-  const [joinInfo, setJoinInfo] = useState<{ id: string; name: string; code: string } | null>(null);
+  const [codeFor, setCodeFor] = useState<string | null>(null);
+  const showCodes = (branchId: string) => {
+    setCodeFor(branchId);
+    window.setTimeout(() => document.getElementById('kody')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  };
   const { confirm, run, toast } = useFeedback();
   const regionsApi = useRegions(gate.state);
   // Dane całej firmy, bez filtra regionu z ekranów technika.
@@ -885,7 +781,7 @@ export function AdminPage() {
             members={regionsApi.members[r.id] ?? 0}
             active={gate.state?.branchId === r.id}
             onSave={(prefix) => void regionsApi.savePrefix(r.id, r.name, prefix)}
-            onCode={() => void run(async () => setJoinInfo({ id: r.id, name: r.name, code: await regionsApi.newCode(r.id) }))}
+            onCode={() => showCodes(r.id)}
             onDelete={async () => {
               const ok = await confirm({
                 title: `Usunąć region ${r.name}?`,
@@ -900,36 +796,22 @@ export function AdminPage() {
         ))}
         <NewRegionForm
           disabled={!regionsApi.online}
-          onCreate={(name, prefix) => run(async () => setJoinInfo(await regionsApi.createRegion(name, prefix)))}
+          onCreate={(name, prefix) =>
+            run(async () => {
+              const created = await regionsApi.createRegion(name, prefix);
+              toast(`Region ${created.name} utworzony. Wygeneruj kod dla osoby z regionu.`);
+              showCodes(created.id);
+            })
+          }
         />
-        <Row to="/oddzialy" icon="users" title="Technicy i zaproszenia" sub="Zatwierdzanie, przenoszenie między regionami, kody dołączenia" />
+        <Row to="/oddzialy" icon="users" title="Technicy" sub="Przenoszenie między regionami, obrót techników" />
       </Group>
 
       {gate.state && <MembersSection state={gate.state} regions={regionsApi.regions} />}
 
-      {gate.state && <AccountsSection state={gate.state} regions={regionsApi.regions} />}
+      {gate.state && <CodesSection state={gate.state} regions={regionsApi.regions} preset={codeFor} />}
 
       {gate.state && <RegionSwitcher state={gate.state} />}
-
-      <Sheet open={Boolean(joinInfo)} title={joinInfo ? `Region ${joinInfo.name}: dane do dołączenia` : ''} onClose={() => setJoinInfo(null)}>
-        {joinInfo && (
-          <JoinDetails
-            regionName={joinInfo.name}
-            code={joinInfo.code}
-            onClose={() => setJoinInfo(null)}
-            onEnter={
-              gate.state?.branchId === joinInfo.id
-                ? undefined
-                : () =>
-                    void run(async () => {
-                      await enterRegion(gate.state!, joinInfo);
-                      setJoinInfo(null);
-                      toast(`Jesteś w regionie ${joinInfo.name}`);
-                    })
-            }
-          />
-        )}
-      </Sheet>
 
       <Group title="Firma">
         <Row to="/ustawienia" icon="gear" title="Ustawienia firmy" sub="Premia, zalecenia, SMS, dane do kilometrówki" />

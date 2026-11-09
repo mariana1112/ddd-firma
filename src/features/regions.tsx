@@ -45,7 +45,7 @@ export function RegionSwitcher({ state }: { state: SyncState }) {
       try {
         const ok = await (await supabaseApi()).joinAnotherRegion(code, key);
         if (!ok) {
-          toast('Kod nie pasuje do hasła firmy na tym urządzeniu.', { tone: 'error' });
+          toast('Kod jest błędny. Sprawdź wszystkie 16 znaków.', { tone: 'error' });
           return;
         }
         setCode('');
@@ -86,7 +86,7 @@ export function RegionSwitcher({ state }: { state: SyncState }) {
         }}
       >
         <Field label="Dołącz do kolejnego regionu" hint="Kod weryfikacyjny od admina. Ten sam e-mail może należeć do kilku regionów.">
-          <input value={code} autoCapitalize="characters" autoComplete="off" placeholder="Kod, np. ABCD2345EF" onChange={(e) => setCode(e.target.value)} />
+          <input value={code} autoCapitalize="characters" autoComplete="off" placeholder="XXXX-XXXX-XXXX-XXXX" onChange={(e) => setCode(e.target.value)} />
         </Field>
         <button type="submit" className="btn btn-block" disabled={busy || code.trim().length < 10}>
           <Icon name="plus" /> {busy ? 'Dołączam…' : 'Dołącz kodem'}

@@ -3,15 +3,14 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createSnapshot } from '../data/backup';
 import { pendingCount } from '../data/changes';
 import { db } from '../data/db';
-import { COMPANY_NAME, getDataKey, getSyncState, ownedBy, saveProfile, setDataKey, setSyncState } from '../data/settings';
+import { getDataKey, getSyncState, ownedBy, saveProfile, setDataKey, setSyncState } from '../data/settings';
 import { checkServerConnection, isSyncConfigured } from '../data/sync/config';
-import { createDataKey, CryptoError, INVITE_LENGTH, inviteProof, MIN_PASSPHRASE, unwrapDataKey } from '../data/sync/crypto';
+import { CODE_LENGTH, createDataKey, formatSignupCode, MIN_PASSPHRASE, parseSignupCode, unwrapDataKey } from '../data/sync/crypto';
 import type { Account } from '../data/sync/engine';
 import { getSyncStatus, loadServer, subscribeSyncStatus, syncInBackground } from '../data/sync/runner';
-import type { Branch, InvitePreview, Member, Membership } from '../data/sync/supabase';
+import type { Branch, Member, Membership } from '../data/sync/supabase';
 import { formatPln, periodOf } from '../data/reports';
 import { orders, visits } from '../data/repo';
-import { useContactActions } from './common';
 import type { SyncState } from '../data/types';
 import { formatInstant, todayWarsaw } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
@@ -28,13 +27,12 @@ export function useSyncRunning(): boolean {
 }
 
 /**
- * Ekran logowania przed użyciem aplikacji: bez konta firmy nie widać zleceń ani menu. Po zalogowaniu i połączeniu
- * z firmą (kod, hasło szyfrowania, zgoda admina) urządzenie zostaje zalogowane na stałe.
+ * Ekran logowania przed użyciem aplikacji: bez konta firmy nie widać zleceń ani menu. Konto zakłada się własnym
+ * e-mailem i hasłem z kodem od admina; potem urządzenie zostaje zalogowane na stałe.
  */
 export function LoginGate() {
   return (
-    <Page title="Zaloguj się">
-      <p className="field-hint">Aplikacja Pogromców Insektów działa po zalogowaniu do konta firmy.</p>
+    <Page title="Logowanie">
       <Connect />
     </Page>
   );
@@ -65,13 +63,12 @@ export function AccountPage() {
 type Step =
   | { kind: 'checking' }
   | { kind: 'signin' }
-  | { kind: 'signup' }
-  | { kind: 'confirm'; email: string }
-  | { kind: 'org'; userId: string; email: string; name: string }
-  | { kind: 'admin' };
+  | { kind: 'register' }
+  | { kind: 'org'; userId: string; email: string; name: string; code?: string };
 
 const MIN_PASSWORD = 12;
 
+/** Logowanie albo zakładanie konta. Dwie zakładki, nic więcej. */
 function Connect() {
   const { run } = useFeedback();
   const [step, setStep] = useState<Step>({ kind: 'checking' });
@@ -80,140 +77,171 @@ function Connect() {
     void (async () => {
       const api = await supabaseApi();
       const user = await api.currentUser().catch(() => null);
-      setStep(user ? { kind: 'org', ...user } : { kind: 'admin' });
+      setStep(user ? { kind: 'org', ...user } : { kind: 'signin' });
     })();
   }, []);
 
   if (step.kind === 'checking') return <Loading />;
 
-  if (step.kind === 'admin') {
+  if (step.kind === 'signin' || step.kind === 'register') {
+    const register = step.kind === 'register';
     return (
       <>
-        <AdminDataForm onOwnAccount={() => setStep({ kind: 'signin' })} />
+        <div className="segmented" role="group">
+          <button type="button" className={register ? '' : 'active'} onClick={() => setStep({ kind: 'signin' })}>
+            Zaloguj się
+          </button>
+          <button type="button" className={register ? 'active' : ''} onClick={() => setStep({ kind: 'register' })}>
+            Załóż konto
+          </button>
+        </div>
+        {register ? (
+          <RegisterForm onSignedIn={(user, code) => setStep({ kind: 'org', ...user, code })} />
+        ) : (
+          <>
+            <SignInForm
+              onRegister={() => setStep({ kind: 'register' })}
+              submit={(email, password) =>
+                run(async () => {
+                  const api = await supabaseApi();
+                  setStep({ kind: 'org', ...(await api.signIn(email, password)) });
+                })
+              }
+            />
+            <ForgotPassword />
+          </>
+        )}
         <ConnectionCheck />
       </>
     );
   }
 
-  if (step.kind === 'confirm') {
-    return (
-      <div className="form">
-        <div className="notice notice-info">
-          <Icon name="mail" />
-          <span>
-            Wysłaliśmy wiadomość na adres <strong>{step.email}</strong>. Kliknij w niej link potwierdzający. Otworzy się w
-            przeglądarce i to w porządku. Potem wróć tutaj i zaloguj się hasłem. Sprawdź też folder spam.
-          </span>
-        </div>
-        <button type="button" className="btn btn-primary btn-block" onClick={() => setStep({ kind: 'signin' })}>
-          Potwierdziłem adres, zaloguj
-        </button>
-      </div>
-    );
-  }
-
-  if (step.kind === 'signin' || step.kind === 'signup') {
-    const signup = step.kind === 'signup';
-    return (
-      <>
-      <PasswordForm
-        signup={signup}
-        onSwitch={() => setStep({ kind: signup ? 'signin' : 'admin' })}
-        submit={(email, password, name) =>
-          run(async () => {
-            const api = await supabaseApi();
-            if (signup && (await api.signUp(email, password, name)) === 'confirm') {
-              setStep({ kind: 'confirm', email });
-              return;
-            }
-            setStep({ kind: 'org', ...(await api.signIn(email, password)) });
-          })
-        }
-      />
-      {!signup && <ForgotPassword />}
-      <ConnectionCheck />
-      </>
-    );
-  }
-
-  return <ChooseOrg userId={step.userId} email={step.email} name={step.name} onSignedOut={() => setStep({ kind: 'signin' })} />;
+  return (
+    <ChooseOrg
+      userId={step.userId}
+      email={step.email}
+      name={step.name}
+      initialCode={step.code}
+      onSignedOut={() => setStep({ kind: 'signin' })}
+    />
+  );
 }
 
-function PasswordForm(props: {
-  signup: boolean;
-  submit: (email: string, password: string, name: string) => Promise<unknown>;
-  onSwitch: () => void;
-}) {
+function SignInForm(props: { submit: (email: string, password: string) => Promise<unknown>; onRegister: () => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ready = /^\S+@\S+\.\S+$/.test(email.trim()) && password.length > 0;
+  return (
+    <form
+      className="form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!ready) return;
+        setBusy(true);
+        await props.submit(email.trim(), password);
+        setBusy(false);
+      }}
+    >
+      <Field label="E-mail">
+        <input type="email" name="email" inputMode="email" autoCapitalize="none" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </Field>
+      <Field label="Hasło">
+        <input type="password" name="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      <button type="submit" className="btn btn-primary btn-block" disabled={!ready || busy}>
+        {busy ? 'Chwileczkę…' : 'Zaloguj'}
+      </button>
+      <button type="button" className="link" onClick={props.onRegister}>
+        Nie mam konta, mam kod od admina
+      </button>
+    </form>
+  );
+}
+
+/** Pole kodu weryfikacyjnego: litery i cyfry, same układają się w grupy po 4 (ABCD-EFGH-JKMN-PQRS). */
+function CodeField(props: { value: string; onChange: (value: string) => void; label?: string; hint?: string }) {
+  const filled = props.value.replace(/[^0-9A-Z]/g, '').length;
+  return (
+    <Field
+      label={props.label ?? 'Kod od admina'}
+      hint={props.hint ?? '16 znaków. Wielkość liter i myślniki nie mają znaczenia.'}
+      error={filled > CODE_LENGTH ? `Kod ma ${CODE_LENGTH} znaków` : undefined}
+    >
+      <input
+        value={props.value}
+        autoCapitalize="characters"
+        autoComplete="one-time-code"
+        autoCorrect="off"
+        spellCheck={false}
+        placeholder="XXXX-XXXX-XXXX-XXXX"
+        onChange={(e) => props.onChange(formatSignupCode(e.target.value))}
+      />
+    </Field>
+  );
+}
+
+const codeComplete = (code: string) => parseSignupCode(code) !== null;
+
+/**
+ * Zakładanie konta: imię, własny e-mail i hasło oraz kod od admina. Bez ważnego kodu serwer konta nie założy.
+ * Po założeniu urządzenie od razu dołącza do regionu z kodu: bez czekania na zgodę i bez hasła firmy.
+ */
+function RegisterForm(props: { onSignedIn: (user: { userId: string; email: string; name: string }, code: string) => void }) {
+  const { run, toast } = useFeedback();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [repeat, setRepeat] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const validEmail = /^\S+@\S+\.\S+$/.test(email.trim());
-  const tooShort = props.signup && password.length > 0 && password.length < MIN_PASSWORD;
-  const mismatch = props.signup && repeat.length > 0 && repeat !== password;
-  const ready =
-    validEmail &&
-    password.length > 0 &&
-    (!props.signup || (password.length >= MIN_PASSWORD && repeat === password && name.trim().length > 0));
+  const tooShort = password.length > 0 && password.length < MIN_PASSWORD;
+  const mismatch = repeat.length > 0 && repeat !== password;
+  const ready = name.trim().length > 0 && validEmail && password.length >= MIN_PASSWORD && repeat === password && codeComplete(code);
 
   return (
     <form
       className="form"
       onSubmit={async (e) => {
         e.preventDefault();
+        if (!ready) return;
         setBusy(true);
-        await props.submit(email.trim(), password, name.trim());
+        await run(async () => {
+          const api = await supabaseApi();
+          try {
+            const { key, orgId, user } = await api.registerWithCode({ name, email, password, code });
+            const m = (await api.myMemberships()).find((x) => x.orgId === orgId);
+            if (!m) throw new Error('Nie udało się dołączyć do firmy. Wpisz kod ponownie.');
+            await startEncryptedSync(key, membershipAccount(m, { ...user, name: name.trim() }));
+            toast('Konto założone. Witaj!');
+          } catch (error) {
+            // Konto mogło już powstać (np. zerwane połączenie przy dołączaniu): dokończenie na następnym ekranie.
+            const user = await api.currentUser().catch(() => null);
+            if (user) props.onSignedIn({ ...user, name: user.name || name.trim() }, code);
+            throw error;
+          }
+        });
         setBusy(false);
       }}
     >
-      <div className="notice notice-info">
-        <Icon name="database" />
-        <span>
-          Konto łączy Twoje urządzenia i oddział firmy. Dane na serwerze w UE są zaszyfrowane, a aplikacja dalej działa bez
-          internetu i wysyła zmiany, gdy pojawi się połączenie.
-        </span>
-      </div>
-      {props.signup && (
-        <Field label="Imię" hint="Pojawi się w raportach, w danych dla centrali i na liście techników oddziału.">
-          <input value={name} autoComplete="given-name" onChange={(e) => setName(e.target.value)} />
-        </Field>
-      )}
-      <Field label="Adres e-mail">
-        <input
-          type="email"
-          name="email"
-          inputMode="email"
-          autoCapitalize="none"
-          autoComplete="username"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
+      <Field label="Imię i nazwisko">
+        <input value={name} autoComplete="name" onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field
-        label="Hasło"
-        error={tooShort ? `Hasło musi mieć co najmniej ${MIN_PASSWORD} znaków` : undefined}
-        hint={props.signup ? 'Co najmniej 12 znaków. iPhone może zaproponować silne hasło i zapamiętać je w pęku kluczy.' : undefined}
-      >
-        <input
-          type="password"
-          name="password"
-          autoComplete={props.signup ? 'new-password' : 'current-password'}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+      <Field label="Twój e-mail">
+        <input type="email" name="email" inputMode="email" autoCapitalize="none" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
-      {props.signup && (
-        <Field label="Powtórz hasło" error={mismatch ? 'Hasła się różnią' : undefined}>
-          <input type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} />
-        </Field>
-      )}
+      <Field label="Hasło" error={tooShort ? `Co najmniej ${MIN_PASSWORD} znaków` : undefined} hint="Co najmniej 12 znaków.">
+        <input type="password" name="new-password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      <Field label="Powtórz hasło" error={mismatch ? 'Hasła się różnią' : undefined}>
+        <input type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} />
+      </Field>
+      <CodeField value={code} onChange={setCode} />
       <button type="submit" className="btn btn-primary btn-block" disabled={!ready || busy}>
-        {busy ? 'Chwileczkę…' : props.signup ? 'Załóż konto' : 'Zaloguj'}
+        {busy ? 'Zakładam konto…' : 'Załóż konto'}
       </button>
-      <button type="button" className="link" onClick={props.onSwitch}>
-        {props.signup ? 'Mam już konto, zaloguj' : 'Nie mam konta: mam login, hasło i kod od admina'}
-      </button>
+      <p className="field-hint">Bez kodu od admina konta nie da się założyć. Kod przypisuje do regionu, działa raz i jest ważny 14 dni.</p>
     </form>
   );
 }
@@ -422,59 +450,6 @@ function ForgotPassword() {
   );
 }
 
-/**
- * Pierwsze logowanie danymi od admina: login, hasło tymczasowe i kod regionu. Konto od razu należy do firmy
- * i regionu z kodu; przed pracą aplikacja wymaga ustawienia własnego e-maila i hasła.
- */
-function AdminDataForm({ onOwnAccount }: { onOwnAccount: () => void }) {
-  const { run } = useFeedback();
-  const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
-  const [busy, setBusy] = useState(false);
-  const ready = login.trim().length >= 6 && password.length >= 12 && code.trim().length >= INVITE_LENGTH;
-  return (
-    <form
-      className="form"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        if (!ready) return;
-        setBusy(true);
-        await run(async () => {
-          const api = await supabaseApi();
-          const { key, orgId, user } = await api.signInWithAdminData(login, password, code);
-          const m = (await api.myMemberships()).find((x) => x.orgId === orgId);
-          if (!m) throw new Error('Nie udało się dołączyć do firmy. Poproś admina o nowe dane.');
-          await startEncryptedSync(key, membershipAccount(m, user));
-          const latest = await getSyncState();
-          if (latest) await setSyncState({ ...latest, temp: true });
-        });
-        setBusy(false);
-      }}
-    >
-      <div className="notice notice-info">
-        <Icon name="users" />
-        <span>Konto zakłada admin. Wpisz login, hasło i kod regionu, które od niego dostałeś. Potem ustawisz własny e-mail i hasło.</span>
-      </div>
-      <Field label="Login">
-        <input value={login} autoCapitalize="none" autoComplete="username" spellCheck={false} placeholder="np. gda-k7m2p4" onChange={(e) => setLogin(e.target.value)} />
-      </Field>
-      <Field label="Hasło">
-        <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      </Field>
-      <Field label="Kod regionu">
-        <input value={code} autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="np. ABCD2345EF" onChange={(e) => setCode(e.target.value)} />
-      </Field>
-      <button type="submit" className="btn btn-primary btn-block" disabled={!ready || busy}>
-        {busy ? 'Łączę…' : 'Zaloguj'}
-      </button>
-      <button type="button" className="link" onClick={onOwnAccount}>
-        Mam już własny e-mail i hasło
-      </button>
-    </form>
-  );
-}
-
 /** Konto z loginem tymczasowym: przed pracą własne imię, e-mail i hasło. */
 export function ClaimAccountPage({ state }: { state: SyncState }) {
   const { run, toast } = useFeedback();
@@ -555,20 +530,18 @@ function membershipAccount(m: Membership, user: { userId: string; email: string;
   };
 }
 
-function ChooseOrg(props: { userId: string; email: string; name: string; onSignedOut: () => void }) {
+/**
+ * Zalogowane konto bez firmy na tym urządzeniu: kod od admina (nowe konto, nowy telefon) albo hasło firmy.
+ * Stare kody (bez klucza) nadal czekają na zgodę admina.
+ */
+function ChooseOrg(props: { userId: string; email: string; name: string; initialCode?: string; onSignedOut: () => void }) {
   const { run, toast } = useFeedback();
   const [memberships, setMemberships] = useState<Membership[] | null>(null);
-  const [mode, setMode] = useState<'join' | 'create'>('join');
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState(props.initialCode ?? '');
   const [name, setName] = useState(props.name);
-  const [orgName, setOrgName] = useState(COMPANY_NAME);
-  const [branch, setBranch] = useState('');
   const [newPassphrase, setNewPassphrase] = useState<string | null>(null);
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [busy, setBusy] = useState(false);
-  // Dołączanie: kod, potem hasło od szefa. Klucz zostaje w pamięci do zgody szefa.
-  const [preview, setPreview] = useState<InvitePreview | null>(null);
-  const [joinPassphrase, setJoinPassphrase] = useState('');
-  const [joinedKey, setJoinedKey] = useState<CryptoKey | null>(null);
   const local = useLiveQuery(async () => ({ orders: await db.orders.count(), trips: await db.trips.count() }));
   const user = { userId: props.userId, email: props.email, name: name.trim() || props.name };
 
@@ -583,7 +556,7 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
   }, []);
 
   const pending = memberships?.[0] && !memberships[0].approved;
-  // Czekając na zgodę szefa, aplikacja sama sprawdza co 15 sekund.
+  // Czekając na zgodę admina (stary kod), aplikacja sama sprawdza co 15 sekund.
   useEffect(() => {
     if (!pending) return;
     const timer = window.setInterval(() => {
@@ -598,18 +571,6 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
     return () => window.clearInterval(timer);
   }, [pending]);
 
-  // Po zgodzie szefa urządzenie łączy się kluczem odwiniętym przy dołączaniu, bez ponownego hasła.
-  const approvedNow = memberships?.[0]?.approved && memberships[0].dataKey ? memberships[0] : null;
-  useEffect(() => {
-    if (!approvedNow || !joinedKey) return;
-    setJoinedKey(null);
-    void run(async () => {
-      await startEncryptedSync(joinedKey, membershipAccount(approvedNow, user));
-      toast('Szef zatwierdził konto. Urządzenie połączone z firmą.');
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approvedNow, joinedKey]);
-
   const withBusy = async (action: () => Promise<void>) => {
     setBusy(true);
     await run(action);
@@ -620,32 +581,15 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
   const hasLocal = Boolean(local && local.orders + local.trips > 0);
   const membership = memberships[0];
 
-  const createOrgAndSync = () =>
+  /** Kod od admina: nowe konto dołącza do regionu, istniejące dostaje klucz firmy na tym telefonie. */
+  const redeem = () =>
     withBusy(async () => {
-      const { key, wrapped } = await createDataKey(newPassphrase!);
       const api = await supabaseApi();
-      await api.createOrg(orgName.trim(), wrapped, name.trim(), branch.trim());
-      const [created] = await api.myMemberships();
-      await startEncryptedSync(key, membershipAccount(created, user));
-      toast('Firma utworzona, synchronizacja z szyfrowaniem włączona');
-    });
-
-  const checkCode = () =>
-    withBusy(async () => {
-      setPreview(await (await supabaseApi()).invitePreview(code.trim()));
-    });
-
-  const join = () =>
-    withBusy(async () => {
-      if (!preview?.dataKey) throw new CryptoError('Firma nie ma jeszcze hasła szyfrowania. Poproś szefa o nowy kod.');
-      const key = await unwrapDataKey(joinPassphrase, preview.dataKey);
-      const api = await supabaseApi();
-      const orgId = await api.joinWithInvite(code.trim(), name.trim(), await inviteProof(key, code.trim()));
-      if (!orgId) throw new CryptoError('Hasło nie pasuje do tego zaproszenia. Po 5 próbach kod przestaje działać.');
-      setJoinedKey(key);
-      setJoinPassphrase('');
-      toast('Prośba wysłana. Czekaj na zgodę szefa.');
-      await load();
+      const { key, orgId } = await api.redeemSignupCode(code, name);
+      const m = (await api.myMemberships()).find((x) => x.orgId === orgId);
+      if (!m) throw new Error('Nie udało się dołączyć do firmy. Poproś admina o nowy kod.');
+      await startEncryptedSync(key, membershipAccount(m, user));
+      toast('Gotowe. Telefon połączony z firmą.');
     });
 
   const setKeyAndSync = (m: Membership) =>
@@ -663,38 +607,68 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
       toast('Urządzenie połączone z firmą');
     });
 
+  const codeForm = (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (codeComplete(code)) void redeem();
+      }}
+    >
+      {!membership && (
+        <Field label="Imię i nazwisko">
+          <input value={name} autoComplete="name" onChange={(e) => setName(e.target.value)} />
+        </Field>
+      )}
+      <CodeField
+        value={code}
+        onChange={setCode}
+        hint={membership ? 'Nowy telefon? Poproś admina o kod (panel admina → Kody). Działa raz, 14 dni.' : undefined}
+      />
+      <button type="submit" className="btn btn-primary btn-block" disabled={busy || !codeComplete(code) || (!membership && !name.trim())}>
+        {busy ? 'Łączę…' : 'Połącz kodem'}
+      </button>
+    </form>
+  );
+
   return (
     <div className="form">
       <Group>
         <Info label="Konto">{props.email}</Info>
         {membership?.orgName && <Info label="Firma">{membership.orgName}</Info>}
-        {membership?.branchName && <Info label="Oddział">{membership.branchName}</Info>}
+        {membership?.branchName && <Info label="Region">{membership.branchName}</Info>}
       </Group>
       {hasLocal && (
         <div className="notice notice-warn">
           <Icon name="alert" />
           <span>
             Na tym urządzeniu są dane: zlecenia {local?.orders}, przejazdy {local?.trips}. Zostaną zaszyfrowane, wysłane na serwer
-            i dołączone do Twojego oddziału. Przed włączeniem powstanie migawka do przywrócenia.
+            i dołączone do Twojego regionu. Przed połączeniem powstanie migawka do przywrócenia.
           </span>
         </div>
       )}
       {membership && !membership.approved ? (
         <div className="form">
-          <p className="steps">Krok 3 z 3 · Zgoda szefa</p>
           <div className="notice notice-info">
             <Icon name="users" />
-            <span>
-              Kod i hasło są poprawne. Szef musi teraz zatwierdzić Twoje konto w aplikacji (Więcej → Oddziały). Do tego czasu nie
-              widzisz danych firmy. Ten ekran sprawdza to sam co 15 sekund.
-            </span>
+            <span>Admin musi jeszcze zatwierdzić Twoje konto. Ten ekran sprawdza to sam co 15 sekund.</span>
           </div>
           <button type="button" className="btn btn-primary btn-block" disabled={busy} onClick={() => void withBusy(async () => setMemberships(await (await supabaseApi()).myMemberships()))}>
             {busy ? 'Sprawdzam…' : 'Sprawdź teraz'}
           </button>
         </div>
       ) : membership?.dataKey ? (
-        <UnlockForm busyLabel="Łączę…" onUnlock={(passphrase) => unlockAndSync(membership, passphrase)} />
+        <>
+          <p className="field-hint">To konto jest w firmie, ale ten telefon nie ma jeszcze klucza firmy. Wpisz kod od admina.</p>
+          {codeForm}
+          {membership.role === 'owner' || showPassphrase ? (
+            <UnlockForm busyLabel="Łączę…" onUnlock={(passphrase) => unlockAndSync(membership, passphrase)} />
+          ) : (
+            <button type="button" className="link" onClick={() => setShowPassphrase(true)}>
+              Znam hasło firmy
+            </button>
+          )}
+        </>
       ) : membership ? (
         <>
           <NewPassphrase onReady={setNewPassphrase} />
@@ -704,87 +678,8 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
         </>
       ) : (
         <>
-          <div className="segmented" role="group">
-            <button type="button" className={mode === 'join' ? 'active' : ''} onClick={() => setMode('join')}>
-              Mam kod od szefa
-            </button>
-            <button type="button" className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>
-              Zakładam firmę
-            </button>
-          </div>
-          <Field label="Twoje imię">
-            <input value={name} autoComplete="given-name" onChange={(e) => setName(e.target.value)} />
-          </Field>
-          {mode === 'join' && !preview ? (
-            <>
-              <p className="steps">Krok 1 z 3 · Kod zaproszenia</p>
-              <Field label="Kod zaproszenia" hint="Szef tworzy go w aplikacji: Więcej → Oddziały. Kod przypisuje Cię do oddziału.">
-                <input
-                  value={code}
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  maxLength={INVITE_LENGTH + 4}
-                  onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, ''))}
-                />
-              </Field>
-              <button
-                type="button"
-                className="btn btn-primary btn-block"
-                disabled={busy || !name.trim() || code.trim().length !== INVITE_LENGTH}
-                onClick={() => void checkCode()}
-              >
-                {busy ? 'Sprawdzam…' : 'Dalej'}
-              </button>
-            </>
-          ) : mode === 'join' && preview ? (
-            <form
-              className="form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void join();
-              }}
-            >
-              <p className="steps">Krok 2 z 3 · Hasło od szefa</p>
-              <Group>
-                <Info label="Firma">{preview.orgName}</Info>
-                <Info label="Oddział">{preview.branchName}</Info>
-              </Group>
-              <Field label="Hasło szyfrowania firmy" hint="Szef przekazuje je osobiście. Hasło nie jest wysyłane na serwer: urządzenie sprawdza je samo.">
-                <input type="password" autoComplete="off" value={joinPassphrase} onChange={(e) => setJoinPassphrase(e.target.value)} />
-              </Field>
-              <button type="submit" className="btn btn-primary btn-block" disabled={busy || !joinPassphrase}>
-                {busy ? 'Sprawdzam hasło…' : 'Wyślij prośbę o dołączenie'}
-              </button>
-              <button
-                type="button"
-                className="link"
-                onClick={() => {
-                  setPreview(null);
-                  setJoinPassphrase('');
-                }}
-              >
-                Inny kod
-              </button>
-            </form>
-          ) : (
-            <>
-              <Field label="Nazwa firmy">
-                <input value={orgName} onChange={(e) => setOrgName(e.target.value)} autoComplete="organization" />
-              </Field>
-              <Field label="Twój oddział" hint="Np. Gdańsk. Kolejne oddziały dodasz później.">
-                <input value={branch} onChange={(e) => setBranch(e.target.value)} />
-              </Field>
-              <NewPassphrase onReady={setNewPassphrase} />
-              <button
-                type="button"
-                className="btn btn-primary btn-block"
-                disabled={busy || !orgName.trim() || !name.trim() || !branch.trim() || !newPassphrase}
-                onClick={() => void createOrgAndSync()}
-              >
-                {busy ? 'Włączam…' : 'Utwórz firmę i włącz synchronizację'}
-              </button>
-            </>
-          )}
+          <p className="field-hint">Wpisz kod od admina, żeby dołączyć do regionu.</p>
+          {codeForm}
         </>
       )}
       <button
@@ -803,14 +698,9 @@ function ChooseOrg(props: { userId: string; email: string; name: string; onSigne
   );
 }
 
-/**
- * Urządzenie, które synchronizowało się przed włączeniem szyfrowania: trzeba odblokować firmę
- * hasłem albo, gdy firma jeszcze go nie ma, ustawić je.
- */
-/** Nowe urządzenie osoby z kontem od admina: hasło i kod od admina przenoszą klucz firmy. */
+/** Nowe urządzenie: kod od admina przenosi klucz firmy (bez hasła firmy). */
 function DeviceCodeForm({ onKey }: { onKey: (key: CryptoKey) => Promise<unknown> }) {
   const { run } = useFeedback();
-  const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   return (
@@ -818,20 +708,15 @@ function DeviceCodeForm({ onKey }: { onKey: (key: CryptoKey) => Promise<unknown>
       className="form card"
       onSubmit={async (e) => {
         e.preventDefault();
+        if (!codeComplete(code)) return;
         setBusy(true);
-        await run(async () => onKey(await (await supabaseApi()).redeemDeviceCode(password, code)));
+        await run(async () => onKey((await (await supabaseApi()).redeemSignupCode(code)).key));
         setBusy(false);
       }}
     >
-      <p className="field-hint">Masz hasło i kod od admina na nowe urządzenie? Wpisz je tutaj. Hasło firmy nie jest wtedy potrzebne.</p>
-      <Field label="Hasło od admina">
-        <input type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} />
-      </Field>
-      <Field label="Kod">
-        <input value={code} autoCapitalize="characters" autoComplete="off" onChange={(e) => setCode(e.target.value)} />
-      </Field>
-      <button type="submit" className="btn btn-primary btn-block" disabled={busy || password.length < 12 || code.trim().length < INVITE_LENGTH}>
-        {busy ? 'Sprawdzam…' : 'Odblokuj kodem od admina'}
+      <CodeField value={code} onChange={setCode} hint="Nowy telefon? Poproś admina o kod (panel admina → Kody)." />
+      <button type="submit" className="btn btn-primary btn-block" disabled={busy || !codeComplete(code)}>
+        {busy ? 'Sprawdzam…' : 'Połącz kodem'}
       </button>
     </form>
   );
@@ -1084,12 +969,10 @@ interface BranchView {
 /** Technicy oddziałów z ich zleceniami i obrotem. Szef widzi wszystkie oddziały, technik swój. */
 export function BranchesPage() {
   const { confirm, run, toast } = useFeedback();
-  const { share } = useContactActions();
   const state = useLiveQuery(async () => (await getSyncState()) ?? null);
   const local = useLiveQuery(async () => ({ orders: await orders.all(), visits: await visits.all() }));
   const [view, setView] = useState<BranchView | null>(null);
   const [newBranch, setNewBranch] = useState('');
-  const [invite, setInvite] = useState<{ code: string; branch: string } | null>(null);
   const orgId = state?.orgId;
 
   const load = async () => {
@@ -1118,16 +1001,6 @@ export function BranchesPage() {
 
   const owner = state.role === 'owner';
   const week = periodOf('tydzien', todayWarsaw());
-
-  const inviteText = (code: string, branch: string) =>
-    [
-      `Zaproszenie do aplikacji ${COMPANY_NAME} (oddział ${branch}).`,
-      '1. Otwórz https://mariana1112.github.io/ddd-firma/ w Safari i dodaj do ekranu początkowego.',
-      '2. Więcej → Konto i synchronizacja → Nie mam konta, załóż je.',
-      `3. Wybierz „Mam kod od szefa” i wpisz kod: ${code}`,
-      '4. Wpisz hasło szyfrowania firmy, które podam Ci osobiście.',
-      '5. Poczekaj, aż zatwierdzę Twoje konto.',
-    ].join('\n');
 
   return (
     <Page title="Regiony i technicy" back="/admin">
@@ -1176,7 +1049,7 @@ export function BranchesPage() {
                     </div>
                   </div>
                 ))}
-              <p className="field-hint member-hint">Zatwierdzaj tylko osoby, które znasz i którym przekazałeś kod oraz hasło.</p>
+              <p className="field-hint member-hint">Zatwierdzaj tylko osoby, które znasz.</p>
             </Group>
           )}
 
@@ -1188,19 +1061,9 @@ export function BranchesPage() {
                 title={`${branch.name} (${members.length})`}
                 action={
                   owner ? (
-                    <button
-                      type="button"
-                      className="link"
-                      onClick={() =>
-                        void run(async () => {
-                          const key = await getDataKey();
-                          if (!key) throw new CryptoError('Najpierw odblokuj szyfrowanie na tym urządzeniu: Więcej → Konto.');
-                          setInvite({ code: await (await supabaseApi()).createInvite(state.orgId, branch.id, key), branch: branch.name });
-                        })
-                      }
-                    >
-                      Zaproś technika
-                    </button>
+                    <a className="link" href="#/admin">
+                      Kod dla technika
+                    </a>
                   ) : undefined
                 }
               >
@@ -1298,21 +1161,6 @@ export function BranchesPage() {
         </>
       )}
 
-      <Sheet open={Boolean(invite)} title="Kod zaproszenia" onClose={() => setInvite(null)}>
-        {invite && (
-          <>
-            <p className="invite-code">{invite.code}</p>
-            <p className="sheet-text">
-              Kod przypisuje do oddziału {invite.branch}, działa raz i jest ważny 14 dni. Sam kod nie wystarczy: technik musi
-              wpisać też hasło szyfrowania, które przekazujesz osobiście, nigdy razem z kodem. Potem jego prośba pojawi się tutaj
-              i musisz ją zatwierdzić.
-            </p>
-            <button type="button" className="btn btn-primary btn-block" onClick={() => void share(inviteText(invite.code, invite.branch), 'Zaproszenie')}>
-              <Icon name="share" /> Wyślij zaproszenie
-            </button>
-          </>
-        )}
-      </Sheet>
     </Page>
   );
 }

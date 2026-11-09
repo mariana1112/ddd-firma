@@ -2,15 +2,15 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SYNC_KEY, SYNC_URL } from './config';
 import {
-  accountPassword,
+  codeSecretPassphrase,
   CryptoError,
+  formatSignupCode,
   inviteProof,
   newInviteCode,
-  newTempLogin,
-  newTempPassword,
+  newSignupCode,
+  parseSignupCode,
   rewrapDataKey,
   sha256Hex,
-  tempEmail,
   unwrapDataKey,
   type WrappedKey,
 } from './crypto';
@@ -29,13 +29,14 @@ const MESSAGES: Record<string, string> = {
   UPDATE_REQUIRED: 'Zaktualizuj aplikację, żeby dalej synchronizować dane.',
   NOT_ENCRYPTED: 'Serwer odrzucił niezaszyfrowane dane. Zaktualizuj aplikację.',
   KEY_EXISTS: 'Firma ma już hasło szyfrowania. Odśwież ekran i wpisz to hasło.',
-  BAD_INVITE: 'Kod zaproszenia jest nieprawidłowy, wykorzystany albo wygasł.',
+  BAD_INVITE: 'Kod weryfikacyjny jest nieprawidłowy, wykorzystany albo wygasł. Poproś admina o nowy kod.',
+  WEAK_PASSWORD: 'Hasło musi mieć co najmniej 12 znaków.',
   BAD_BRANCH: 'Nie ma takiego oddziału.',
   FORBIDDEN: 'To konto nie ma uprawnień w tej firmie (np. zostało zawieszone przez admina).',
   ORG_EXISTS: 'To konto ma już firmę.',
   NOT_AUTHENTICATED: 'Sesja wygasła. Zaloguj się ponownie.',
   NOT_PENDING: 'Ta prośba została już rozpatrzona.',
-  EMAIL_TAKEN: 'Ten e-mail ma już konto. Podaj inny albo zaloguj się nim.',
+  EMAIL_TAKEN: 'Ten e-mail ma już konto. Zaloguj się nim, a kod wpiszesz po zalogowaniu.',
   BAD_EMAIL: 'Podaj poprawny adres e-mail.',
   NOT_TEMP: 'To konto ma już własny e-mail.',
   BAD_ACCOUNT: 'Nie udało się przygotować danych konta. Spróbuj ponownie.',
@@ -158,13 +159,6 @@ export interface Member {
 
 // Logowanie hasłem działa w całości w zainstalowanej aplikacji. Link z e-maila służy tylko
 // do jednorazowego potwierdzenia adresu, więc nie szkodzi, że otworzy się w Safari.
-
-/** Zakłada konto. Zwraca 'confirm', gdy trzeba jeszcze potwierdzić adres linkiem z e-maila. */
-export async function signUp(email: string, password: string, name: string): Promise<'confirm' | 'signed-in'> {
-  const { data, error } = await supabase().auth.signUp({ email, password, options: { data: { name } } });
-  if (error) fail(error);
-  return data.session ? 'signed-in' : 'confirm';
-}
 
 export interface SignedIn {
   userId: string;
@@ -386,16 +380,7 @@ export async function setMemberBranch(orgId: string, userId: string, branchId: s
  * Jednorazowy kod, którym nowy technik dołącza do oddziału. Ważny 14 dni. Działa tylko razem z hasłem
  * szyfrowania: serwer dostaje skrót dowodu wyliczonego kluczem firmy z tego urządzenia.
  */
-// ---------- Konta zakładane przez admina ----------
-
-export interface IssuedAccount {
-  /** Login tymczasowy, np. „gda-k7m2p4”. */
-  login: string;
-  /** Hasło tymczasowe (16 znaków). Odwija klucz firmy; serwer zna tylko jego skrót. */
-  password: string;
-  /** Kod regionu (jednorazowy, 14 dni). */
-  code: string;
-}
+// ---------- Rejestracja z kodem weryfikacyjnym od admina ----------
 
 /** Wywołanie funkcji serwera „konta” z czytelnym komunikatem błędu. */
 async function invokeKonta(body: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -414,95 +399,78 @@ async function invokeKonta(body: Record<string, unknown>): Promise<Record<string
   return (data ?? {}) as Record<string, unknown>;
 }
 
-/** Kod z kluczem firmy zawiniętym hasłem tymczasowym, przypisany do jednego konta. */
-async function accountInvite(opts: {
+/**
+ * Admin generuje kod weryfikacyjny: 16 znaków, ważny 14 dni, jednorazowy. Pierwsze 8 znaków to identyfikator
+ * na serwerze, kolejne 8 zawija klucz firmy (przepakowany z hasła firmy na urządzeniu admina) i nie trafia na serwer.
+ * forUser: kod tylko dla tego konta (np. nowe urządzenie istniejącej osoby).
+ */
+export async function issueSignupCode(opts: {
   orgId: string;
   branchId: string | null;
   role: 'technik' | 'owner';
-  forUser: string;
-  password: string;
-  accountKey: WrappedKey;
+  companyPassword: string;
+  orgWrapped: WrappedKey;
   deviceKey: CryptoKey;
+  forUser?: string;
 }): Promise<string> {
-  const code = newInviteCode();
-  const proofHash = await sha256Hex(await inviteProof(opts.deviceKey, code));
-  const { error } = await supabase().rpc('create_account_invite', {
+  const code = newSignupCode();
+  const accountKey = await rewrapDataKey(opts.companyPassword, opts.orgWrapped, codeSecretPassphrase(code.id, code.secret));
+  const proofHash = await sha256Hex(await inviteProof(opts.deviceKey, code.id));
+  const { error } = await supabase().rpc('create_signup_code', {
     p_org: opts.orgId,
     p_branch: opts.branchId,
     p_role: opts.role,
-    p_code: code,
+    p_code: code.id,
     p_proof_hash: proofHash,
-    p_account_key: opts.accountKey,
-    p_for_user: opts.forUser,
+    p_account_key: accountKey,
+    p_for_user: opts.forUser ?? null,
   });
   if (error) fail(error);
-  return code;
+  return formatSignupCode(code.full);
+}
+
+function parseOrFail(code: string): { id: string; secret: string } {
+  const parsed = parseSignupCode(code);
+  if (!parsed) throw new SyncError('Kod weryfikacyjny ma 16 znaków (litery i cyfry), np. ABCD-EFGH-JKMN-PQRS.');
+  return parsed;
 }
 
 /**
- * Admin zakłada konto: login i hasło tymczasowe oraz kod regionu (albo kod admina). Hasło firmy jest potrzebne,
- * żeby przepakować klucz firmy pod hasło tymczasowe; sprawdzane jest przed utworzeniem konta.
+ * Dołączenie zalogowanego konta kodem: klucz firmy odwinięty częścią tajną kodu, a dołączenie potwierdza go dowodem.
+ * Nowe konto wchodzi do regionu z kodu, istniejące dostaje kolejny region (albo klucz na nowym urządzeniu).
  */
-export async function issueAccount(opts: {
-  orgId: string;
-  branchId: string | null;
-  role: 'technik' | 'owner';
-  prefix: string;
-  companyPassword: string;
-  orgWrapped: WrappedKey;
-  deviceKey: CryptoKey;
-}): Promise<IssuedAccount> {
-  const password = newTempPassword();
-  const login = newTempLogin(opts.role === 'owner' ? 'adm' : opts.prefix);
-  const accountKey = await rewrapDataKey(opts.companyPassword, opts.orgWrapped, password);
-  const created = await invokeKonta({ action: 'create', org_id: opts.orgId, login, password: await accountPassword(password) });
-  const code = await accountInvite({ ...opts, forUser: String(created.user_id), password, accountKey });
-  return { login, password, code };
-}
-
-/** Kod na nowe urządzenie istniejącej osoby: hasło tymczasowe i kod przenoszą klucz firmy bez hasła firmy. */
-export async function issueDeviceCode(opts: {
-  orgId: string;
-  branchId: string | null;
-  userId: string;
-  role: 'technik' | 'owner';
-  companyPassword: string;
-  orgWrapped: WrappedKey;
-  deviceKey: CryptoKey;
-}): Promise<{ password: string; code: string }> {
-  const password = newTempPassword();
-  const accountKey = await rewrapDataKey(opts.companyPassword, opts.orgWrapped, password);
-  const code = await accountInvite({ ...opts, forUser: opts.userId, password, accountKey });
-  return { password, code };
-}
-
-/** Klucz firmy z kodu od admina: odwinięty hasłem tymczasowym, a dołączenie potwierdza go dowodem. */
-async function keyFromAccountCode(password: string, code: string): Promise<{ key: CryptoKey; orgId: string }> {
-  const normalized = code.trim().toUpperCase();
-  const { data, error } = await supabase().rpc('invite_preview', { p_code: normalized });
+export async function redeemSignupCode(code: string, displayName = ''): Promise<{ key: CryptoKey; orgId: string }> {
+  const { id, secret } = parseOrFail(code);
+  const { data, error } = await supabase().rpc('invite_preview', { p_code: id });
   if (error) fail(error);
   const preview = data as { account_key: WrappedKey | null };
-  if (!preview.account_key) throw new SyncError('To nie jest kod do konta od admina.');
+  if (!preview.account_key) throw new SyncError('To stary kod. Poproś admina o nowy kod weryfikacyjny.');
   let key: CryptoKey;
   try {
-    key = await unwrapDataKey(password, preview.account_key);
+    key = await unwrapDataKey(codeSecretPassphrase(id, secret), preview.account_key);
   } catch {
-    throw new SyncError('Hasło nie pasuje do kodu.');
+    throw new SyncError('Kod weryfikacyjny jest błędny. Sprawdź wszystkie 16 znaków.');
   }
-  const orgId = await joinWithInvite(normalized, '', await inviteProof(key, normalized));
-  if (!orgId) throw new SyncError('Hasło nie pasuje do kodu.');
+  const orgId = await joinWithInvite(id, displayName.trim(), await inviteProof(key, id));
+  if (!orgId) throw new SyncError('Kod weryfikacyjny jest błędny. Sprawdź wszystkie 16 znaków.');
   return { key, orgId };
 }
 
-/** Logowanie danymi od admina: login, hasło tymczasowe i kod regionu. */
-export async function signInWithAdminData(login: string, password: string, code: string): Promise<{ key: CryptoKey; orgId: string; user: SignedIn }> {
-  const user = await signIn(tempEmail(login), await accountPassword(password));
-  return { ...(await keyFromAccountCode(password, code)), user };
-}
-
-/** Zalogowana osoba bez klucza na tym urządzeniu: hasło i kod od admina. */
-export async function redeemDeviceCode(password: string, code: string): Promise<CryptoKey> {
-  return (await keyFromAccountCode(password, code)).key;
+/**
+ * Zakładanie konta: własny e-mail i hasło oraz kod weryfikacyjny od admina. Bez ważnego kodu serwer nie założy
+ * konta (zwykła rejestracja w Supabase jest wyłączona). Po założeniu: logowanie i dołączenie do regionu z kodu.
+ */
+export async function registerWithCode(opts: {
+  name: string;
+  email: string;
+  password: string;
+  code: string;
+}): Promise<{ key: CryptoKey; orgId: string; user: SignedIn }> {
+  const { id } = parseOrFail(opts.code);
+  const email = opts.email.trim().toLowerCase();
+  await invokeKonta({ action: 'register', code_id: id, email, password: opts.password, name: opts.name.trim() });
+  const user = await signIn(email, opts.password);
+  return { ...(await redeemSignupCode(opts.code, opts.name)), user };
 }
 
 /** Konto tymczasowe ustawia własne hasło i e-mail; potem loguje się nimi jak każde konto. */
@@ -555,9 +523,10 @@ export async function listMemberBranches(orgId: string): Promise<Array<{ userId:
   return (data ?? []).map((r) => ({ userId: r.user_id as string, branchId: r.branch_id as string }));
 }
 
-/** Członek firmy dołącza do kolejnego regionu samym kodem: dowód hasła liczy z klucza firmy na urządzeniu. */
+/** Członek firmy dołącza do kolejnego regionu samym kodem: dowód liczy z klucza firmy na urządzeniu. */
 export async function joinAnotherRegion(code: string, dataKey: CryptoKey): Promise<boolean> {
-  const normalized = code.trim().toUpperCase();
+  const parsed = parseSignupCode(code);
+  const normalized = parsed ? parsed.id : code.trim().toUpperCase();
   const org = await joinWithInvite(normalized, '', await inviteProof(dataKey, normalized));
   return org !== null;
 }

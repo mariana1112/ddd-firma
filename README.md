@@ -127,33 +127,28 @@ odpowiedziach pytania blokują się na godzinę. Wymaga migracji `20261109000000
 zawiesza konto (zostaje w firmie, ale nie widzi ani nie zapisuje danych), przywraca je i usuwa konto z firmy
 i z logowania. Siebie nie zawiesi ani nie usunie. Wymaga migracji `20261112000000_zawieszanie_kont.sql`.
 
-**Konta zakłada admin** (panel admina → Konta): „Konto w regionie” albo „Drugi admin” daje login tymczasowy
-(np. `gda-k7m2p4`), hasło (16 znaków) i kod (jednorazowy, 14 dni). Zwykła rejestracja jest wyłączona. Nowa osoba
-loguje się tymi danymi i od razu jest w regionie (albo jest adminem), a przed pracą ustawia własne imię, e-mail
-i hasło. Admin wpisuje przy tym hasło firmy: aplikacja przepakowuje klucz firmy pod hasło tymczasowe, a serwer
-dostaje tylko skrót tego hasła, więc dalej nie może odczytać danych. „Kod na nowe urządzenie” daje hasło i kod
-osobie, która loguje się na nowym telefonie i nie zna hasła firmy. Konta tworzy funkcja serwera
-`supabase/functions/konta` (klucz serwisowy tylko w Supabase), a kody migracja `20261111000000_konta_od_admina.sql`.
+**Konto z kodem od admina**: admin w panelu (sekcja „Kody dla nowych osób”) wybiera region (albo „Admin”), wpisuje
+hasło firmy i dostaje kod weryfikacyjny, np. `ABCD-EFGH-JKMN-PQRS` (jednorazowy, 14 dni). Osoba w aplikacji wybiera
+„Załóż konto”: imię, własny e-mail, hasło i kod. Bez ważnego kodu serwer konta nie założy (zwykła rejestracja jest
+wyłączona). Konto od razu jest w regionie z kodu, bez czekania na zgodę i bez hasła firmy. Ten sam rodzaj kodu
+działa dla osoby, która już ma konto: na nowym telefonie (logowanie i kod) albo do kolejnego regionu. Pierwsze 8 znaków
+kodu zna serwer, kolejne 8 odwija klucz firmy tylko na telefonie, więc szyfrowanie end-to-end zostaje. Wymaga migracji
+`20261114000000_kody_rejestracji.sql` i funkcji serwera `supabase/functions/konta` (akcja `register`).
 
-**Regiony w panelu admina**: „Utwórz region i dane do dołączenia” tworzy region z prefiksem i jednorazowy kod
-weryfikacyjny (14 dni). Dołączenie: login (e-mail osoby, konto zakładane przy pierwszym logowaniu albo istniejące),
-hasło firmy (przekazywane osobiście) i kod. Jeden e-mail może należeć do kilku regionów: członek firmy dołącza do
-kolejnego regionu samym kodem w „Konto → Regiony tego konta” i tam przełącza aktywny region. Admin może wejść do
+**Regiony w panelu admina**: „Utwórz region” tworzy region z prefiksem, a „Kod dla osoby” przy regionie przygotowuje
+kod do niego. Jeden e-mail może należeć do kilku regionów: członek firmy dołącza do kolejnego regionu samym kodem
+w „Konto → Regiony tego konta” i tam przełącza aktywny region. Admin może wejść do
 każdego regionu, wygenerować nowy kod albo usunąć region (jego zlecenia widzi wtedy tylko admin). Wymaga migracji
 `20261110000000_regiony.sql`.
 
 **Stałe logowanie**: urządzenie technika po dołączeniu zostaje zalogowane do swojego regionu i przy każdym uruchomieniu
 wchodzi od razu do niego. Technik nie ma przycisku wylogowania; region zmienia albo konto odłącza admin.
 
-**Technik** dołącza w trzech krokach:
+**Technik** zakłada konto sam, z kodem od admina:
 
-1. **Kod zaproszenia** od szefa: 10 znaków, jednorazowy, ważny 14 dni, przypisany do oddziału.
-2. **Hasło szyfrowania** firmy, które szef przekazuje osobiście, nigdy razem z kodem. Urządzenie technika odwija nim
-   klucz firmy i wysyła dowód, że go ma. Serwer porównuje skrót tego dowodu ze skrótem zapisanym przez urządzenie
-   szefa przy tworzeniu kodu, więc sprawdza hasło, nie znając ani hasła, ani klucza. Po 5 błędnych próbach kod
-   przestaje działać.
-3. **Zgoda szefa**: prośba z imieniem i adresem e-mail pojawia się w **Więcej → Oddziały**. Do zatwierdzenia konto
-   nie jest członkiem firmy: nie czyta ani nie zapisuje żadnych danych. Po zgodzie urządzenie łączy się samo.
+1. Admin w panelu admina wybiera region i klikając „Wygeneruj kod” dostaje kod (16 znaków, jednorazowy, 14 dni).
+2. Technik w aplikacji: „Załóż konto”, imię, swój e-mail, hasło i kod. Konto od razu działa w regionie z kodu.
+   Serwer sprawdza kod, zanim założy konto; po 5 błędnych próbach kod przestaje działać.
 
 | | Technik | Admin (szef) |
 | --- | --- | --- |

@@ -4,6 +4,8 @@
 //   urządzeniu admina z hasła tymczasowego, więc serwer nie zna hasła, którym zawinięty jest klucz firmy.
 // - claim: konto tymczasowe ustawia własny e-mail (hasło zmienia wcześniej samo, przez Supabase Auth).
 // - delete: admin usuwa konto z firmy i z logowania (nie siebie).
+// - register: rejestracja z kodem weryfikacyjnym od admina (bez logowania). Konto powstaje tylko z ważnym,
+//   niewykorzystanym kodem; kod zostaje przypisany do nowego konta, które dołącza nim do firmy i regionu.
 //
 // Klucz serwisowy (SUPABASE_SERVICE_ROLE_KEY) jest tylko w środowisku funkcji, nigdy w aplikacji.
 
@@ -27,11 +29,6 @@ Deno.serve(async (req) => {
   const url = Deno.env.get('SUPABASE_URL')!;
   const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const authorization = req.headers.get('Authorization') ?? '';
-  const caller = createClient(url, anon, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
-  const { data: who } = await caller.auth.getUser();
-  const user = who.user;
-  if (!user) return json({ error: 'NOT_AUTHENTICATED' }, 401);
   const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
 
   let body: Record<string, unknown>;
@@ -40,6 +37,48 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: 'BAD_ACTION' }, 400);
   }
+
+  if (body.action === 'register') {
+    const codeId = String(body.code_id ?? '').toUpperCase();
+    const email = String(body.email ?? '').trim().toLowerCase();
+    const password = String(body.password ?? '');
+    const name = String(body.name ?? '').trim().slice(0, 80);
+    if (!/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(codeId)) return json({ error: 'BAD_INVITE' }, 400);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.endsWith(`@${TEMP_DOMAIN}`)) return json({ error: 'BAD_EMAIL' }, 400);
+    if (password.length < 12) return json({ error: 'WEAK_PASSWORD' }, 400);
+    const { data: invite } = await admin
+      .from('invites')
+      .select('code, used_by, expires_at, attempts, account_key, for_user')
+      .eq('code', codeId)
+      .maybeSingle();
+    if (!invite || invite.used_by || invite.for_user || !invite.account_key || invite.attempts >= 5 || new Date(invite.expires_at) < new Date()) {
+      return json({ error: 'BAD_INVITE' }, 400);
+    }
+    const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name } });
+    if (error || !data.user) {
+      return json({ error: /already|exists|registered/i.test(error?.message ?? '') ? 'EMAIL_TAKEN' : error?.message ?? 'CREATE_FAILED' }, 400);
+    }
+    // Kod należy teraz do tego konta: tylko ono nim dołączy (od razu, bez czekania na zgodę admina).
+    const { data: bound } = await admin
+      .from('invites')
+      .update({ for_user: data.user.id })
+      .eq('code', codeId)
+      .is('for_user', null)
+      .is('used_by', null)
+      .select('code');
+    if (!bound?.length) {
+      // Ktoś użył kodu w tej samej chwili: konto bez kodu nie może zostać.
+      await admin.auth.admin.deleteUser(data.user.id);
+      return json({ error: 'BAD_INVITE' }, 400);
+    }
+    return json({ ok: true });
+  }
+
+  const authorization = req.headers.get('Authorization') ?? '';
+  const caller = createClient(url, anon, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
+  const { data: who } = await caller.auth.getUser();
+  const user = who.user;
+  if (!user) return json({ error: 'NOT_AUTHENTICATED' }, 401);
 
   /** Tylko zatwierdzony, niezawieszony admin tej firmy, bez czekającego potwierdzenia po resecie hasła. */
   const isAdmin = async (orgId: string): Promise<boolean> => {

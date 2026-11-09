@@ -285,3 +285,43 @@ export function newTempPassword(): string {
 export const TEMP_DOMAIN = 'konta.pogromcy.invalid';
 
 export const tempEmail = (login: string) => `${login.trim().toLowerCase()}@${TEMP_DOMAIN}`;
+
+// ---------- Kody weryfikacyjne (rejestracja konta) ----------
+
+/**
+ * Kod weryfikacyjny od admina: 16 znaków, np. „ABCD-EFGH-JKMN-PQRS”. Pierwsze 8 znaków identyfikuje kod na serwerze,
+ * kolejne 8 to część tajna: odwija klucz firmy na urządzeniu (PBKDF2) i nigdy nie trafia na serwer. Dzięki temu nowa
+ * osoba nie potrzebuje hasła firmy, a serwer nadal nie może odczytać danych.
+ */
+export const CODE_ID_LENGTH = 8;
+export const CODE_LENGTH = 16;
+
+function randomFromAlphabet(length: number): string {
+  let out = '';
+  const limit = 256 - (256 % INVITE_ALPHABET.length);
+  while (out.length < length) {
+    for (const b of random(32)) if (b < limit && out.length < length) out += INVITE_ALPHABET[b % INVITE_ALPHABET.length];
+  }
+  return out;
+}
+
+export function newSignupCode(): { id: string; secret: string; full: string } {
+  const full = randomFromAlphabet(CODE_LENGTH);
+  return { id: full.slice(0, CODE_ID_LENGTH), secret: full.slice(CODE_ID_LENGTH), full };
+}
+
+/** Kod wpisany przez człowieka: wielkość liter, spacje i myślniki nie mają znaczenia. */
+export function parseSignupCode(input: string): { id: string; secret: string } | null {
+  const clean = input.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (clean.length !== CODE_LENGTH || [...clean].some((c) => !INVITE_ALPHABET.includes(c))) return null;
+  return { id: clean.slice(0, CODE_ID_LENGTH), secret: clean.slice(CODE_ID_LENGTH) };
+}
+
+/** „ABCD-EFGH-JKMN-PQRS”. */
+export function formatSignupCode(input: string): string {
+  const clean = input.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LENGTH);
+  return (clean.match(/.{1,4}/g) ?? []).join('-');
+}
+
+/** Klucz zawijający klucz firmy w kodzie: z części tajnej i identyfikatora (różne kody, różne sole). */
+export const codeSecretPassphrase = (id: string, secret: string) => `kod/${id}/${secret}`;

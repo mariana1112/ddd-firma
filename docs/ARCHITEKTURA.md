@@ -129,20 +129,19 @@ prawdziwym kodzie, usuniętym po teście.
   z zakresem regionu z adresu. `data/company.ts` liczy raport każdego regionu, ranking (obrót, potem wynik gotówki)
   i tekst podsumowania firmy.
 
-### Konta zakładane przez admina (migracja `20261111000000_konta_od_admina.sql`, funkcja `konta`)
+### Rejestracja z kodem weryfikacyjnym (migracja `20261114000000_kody_rejestracji.sql`, funkcja `konta`)
 
-- Rejestracja w Supabase Auth jest wyłączona (od 9.11.2026). Konta tworzy funkcja serwera `supabase/functions/konta`
-  (`auth.admin.createUser`, klucz serwisowy tylko w środowisku funkcji) na prośbę zatwierdzonego admina firmy.
-- Login tymczasowy `gda-k7m2p4` to konto `gda-k7m2p4@konta.pogromcy.invalid` (domena .invalid nie odbiera poczty).
-  Hasło tymczasowe zna tylko admin i nowa osoba: serwer dostaje skrót PBKDF2 (`accountPassword`), a klucz firmy
-  w kodzie (`invites.account_key`) jest zawinięty samym hasłem tymczasowym (`rewrapDataKey` na urządzeniu admina,
-  po podaniu hasła firmy). E2E zostaje: serwer nie ma czym odwinąć klucza.
-- Kod z `for_user` widzi i wykorzystuje tylko to konto; członkostwo jest od razu zatwierdzone, z rolą z kodu
-  (drugi admin bez regionu). Ten sam rodzaj kodu dla istniejącej osoby przenosi klucz na nowe urządzenie.
-- Konto tymczasowe (`SyncState.temp`) przed pracą ustawia imię, własne hasło (`updateUser`) i e-mail (`claim`).
-- Test SQL (cofany): technik bez regionu odrzucony; obce konto nie widzi ani nie użyje kodu konta; konto z kodem
-  wchodzi od razu, zatwierdzone, z regionem; technik nie tworzy kont; drugi admin ma rolę admina bez regionu.
-  Funkcja: bez logowania 401, konto nietymczasowe przy `claim` dostaje NOT_TEMP; rejestracja z zewnątrz: signup_disabled.
+- Rejestracja w Supabase Auth jest wyłączona (od 9.11.2026). Konto zakłada funkcja `supabase/functions/konta`
+  (akcja `register`, bez logowania; klucz serwisowy tylko w środowisku funkcji), ale tylko z ważnym, niewykorzystanym
+  i nieprzypisanym kodem (`invites`, `account_key` obecny, mniej niż 5 prób, przed `expires_at`). Potem przypisuje kod
+  do nowego konta (`for_user`); gdy ktoś zdążył pierwszy, nowe konto jest usuwane.
+- Kod ma 16 znaków (`newSignupCode`): 8 znaków identyfikatora (`invites.code`) i 8 znaków tajnych. Admin
+  (`create_signup_code`, tylko `owner`) przepakowuje klucz firmy z hasła firmy pod `kod/<id>/<tajne>`
+  (`rewrapDataKey`, PBKDF2) i wysyła skrót dowodu `inviteProof(klucz, id)`. Serwer nie zna części tajnej.
+- Dołączenie (`redeemSignupCode`): `invite_preview(id)` → odwinięcie `account_key` → `join_with_invite(id, imię, dowód)`.
+  Kod z kluczem to zgoda admina: członkostwo od razu zatwierdzone, z rolą z kodu (admin bez regionu). Istniejący
+  członek dostaje tym samym kodem kolejny region albo klucz na nowym telefonie. Stare kody bez klucza czekają na zgodę.
+- Konta tymczasowe z poprzedniej wersji (`SyncState.temp`, akcje `create` i `claim`) zostają tylko dla zgodności.
 
 ### Kilka regionów na konto (migracja `20261110000000_regiony.sql`)
 
