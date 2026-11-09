@@ -2372,3 +2372,8 @@ a.btn.disabled {
   gap: 6px;
   margin-top: 8px;
 }
+
+/* Hasło bez podpowiedzi menedżera haseł: zwykłe pole tekstowe, znaki ukryte kropkami. */
+.input-secret {
+  -webkit-text-security: disc;
+}

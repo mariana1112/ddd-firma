@@ -529,29 +529,29 @@ function CodeDetails(props: { result: CodeResult; onClose: () => void }) {
 }
 
 /** Hasło firmy w pamięci tylko do zamknięcia aplikacji, żeby nie wpisywać go przy każdym kodzie. */
-let rememberedCompanyPassword = '';
-
 /**
  * Admin generuje tylko kod przypisany do regionu (albo kod admina). Osoba sama zakłada konto swoim e-mailem i hasłem
- * i wpisuje kod; ten sam kod działa też na nowym telefonie osoby, która już ma konto. Hasło firmy jest potrzebne,
- * bo kod niesie klucz szyfrowania firmy; nie trafia na serwer.
+ * i wpisuje kod; ten sam kod działa też na nowym telefonie osoby, która już ma konto. Kod niesie klucz szyfrowania
+ * firmy, więc telefon admina musi raz poznać hasło szyfrowania; potem pamięta je (zaszyfrowane, tylko na tym
+ * telefonie) i zalogowany admin generuje kody jednym przyciskiem.
  */
 function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegion?: RegionRef }) {
   const { run } = useFeedback();
   const [target, setTarget] = useState(props.fixedRegion?.id ?? '');
-  const [companyPassword, setCompanyPassword] = useState(rememberedCompanyPassword);
+  const [companyPassword, setCompanyPassword] = useState('');
+  // Hasło szyfrowania zapamiętane na tym telefonie: undefined = jeszcze sprawdzam, null = brak.
+  const [saved, setSaved] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CodeResult | null>(null);
 
-
   useEffect(() => {
-    void getAdminSecrets().then((saved) => {
-      if (saved.company && !rememberedCompanyPassword) setCompanyPassword(saved.company);
-    });
+    void getAdminSecrets()
+      .then((secrets) => setSaved(secrets.company ?? null))
+      .catch(() => setSaved(null));
   }, []);
 
   const region = props.regions.find((r) => r.id === target);
-  const ready = (target === ADMIN_TARGET || Boolean(region)) && companyPassword.length >= 12;
+  const ready = (target === ADMIN_TARGET || Boolean(region)) && (Boolean(saved) || companyPassword.length >= 12);
 
   const generate = () =>
     run(async () => {
@@ -562,15 +562,31 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
         const deviceKey = await getDataKey();
         if (!orgWrapped || !deviceKey) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
         const admin = target === ADMIN_TARGET;
-        const code = await api.issueSignupCode({
-          orgId: props.state.orgId,
-          branchId: admin ? null : target,
-          role: admin ? 'owner' : 'technik',
-          companyPassword,
-          orgWrapped,
-          deviceKey,
-        });
-        rememberedCompanyPassword = companyPassword;
+        const password = saved || companyPassword;
+        let code: string;
+        try {
+          code = await api.issueSignupCode({
+            orgId: props.state.orgId,
+            branchId: admin ? null : target,
+            role: admin ? 'owner' : 'technik',
+            companyPassword: password,
+            orgWrapped,
+            deviceKey,
+          });
+        } catch (error) {
+          if (saved && /hasło firmy/i.test(error instanceof Error ? error.message : '')) {
+            // Zapamiętane hasło jest stare (np. po zmianie hasła szyfrowania na innym urządzeniu).
+            await saveAdminSecret('company', '');
+            setSaved(null);
+            throw new Error('Zapamiętane hasło szyfrowania jest nieaktualne. Wpisz je raz ponownie.');
+          }
+          throw error;
+        }
+        if (!saved) {
+          await saveAdminSecret('company', password);
+          setSaved(password);
+          setCompanyPassword('');
+        }
         const where = admin ? 'admin (wszystkie regiony)' : `region ${region?.name ?? ''}`;
         setResult({
           title: `Kod: ${where}`,
@@ -607,9 +623,26 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
           </select>
         </Field>
         )}
-        <Field label="Hasło firmy (szyfrowania)" hint="Nie trafia na serwer. Aplikacja pamięta je do zamknięcia.">
-          <input type="password" autoComplete="off" value={companyPassword} onChange={(e) => setCompanyPassword(e.target.value)} />
-        </Field>
+        {saved === null && (
+          <Field
+            label="Hasło szyfrowania firmy (tylko pierwszy raz)"
+            hint="Telefon zapamięta je i więcej nie zapyta. Nie trafia na serwer. To nie jest hasło do panelu."
+          >
+            {/* Pole tekstowe z kropkami: iPhone nie wpisuje tu wtedy sam hasła do panelu. */}
+            <input
+              className="input-secret"
+              type="text"
+              name="haslo-szyfrowania-firmy"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={companyPassword}
+              onChange={(e) => setCompanyPassword(e.target.value)}
+              onInput={(e) => setCompanyPassword((e.target as HTMLInputElement).value)}
+            />
+          </Field>
+        )}
         <button type="button" className="btn btn-primary btn-block" disabled={!ready || busy} onClick={() => void generate()}>
           <Icon name="plus" /> {busy ? 'Generuję…' : 'Wygeneruj kod'}
         </button>
@@ -672,7 +705,7 @@ function SecretRow(props: { label: string; value: string | undefined; verify: (v
           }}
         >
           <Field label={`Wpisz ${props.label.toLowerCase()}`}>
-            <input type="password" autoComplete="off" value={draft} onChange={(e) => setDraft(e.target.value)} />
+            <input className="input-secret" type="text" autoComplete="off" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={draft} onChange={(e) => setDraft(e.target.value)} />
           </Field>
           <button type="submit" className="btn btn-block" disabled={!draft || busy}>
             {busy ? 'Sprawdzam…' : 'Sprawdź i zapamiętaj'}
