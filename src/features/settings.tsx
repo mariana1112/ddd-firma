@@ -20,18 +20,21 @@ import {
   saveCompany,
   getLastBackupAt,
   getProfile,
+  getMyPhone,
   getRegion,
   getSyncState,
   ownedBy,
   localOrderCounter,
   saveAppSettings,
   saveProfile,
+  saveMyPhone,
   saveRegion,
   setOrderCounter,
   type AppSettings,
 } from '../data/settings';
 import type { CompanySettings } from '../data/types';
-import { formatPostalInput, isValidNip } from '../lib/validators';
+import { formatPhoneInput, formatPostalInput, isValidNip } from '../lib/validators';
+import { formatAccount, isValidAccount } from '../data/card';
 import { isSyncConfigured } from '../data/sync/config';
 import { BUILDINGS, INVOICES, orderAddress, PAY_NAMES, pestName } from '../data/texts';
 import type { BaseRecord } from '../data/types';
@@ -51,6 +54,7 @@ export function MorePage() {
   return (
     <Page title="Więcej">
       <Group title="Praca">
+        <Row to="/wizytowka" icon="wallet" title="Wizytówka" sub="Dane do przelewu, numer do BLIK-a i Twój numer do skopiowania" />
         <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />
         <Row to="/kilometry" icon="car" title="Kilometry" sub="Przejazdy służbowe i prywatne, wydruk" />
         <Row to="/raporty" icon="chart" title="Raporty" sub="Dzień, tydzień, miesiąc, rozliczenie gotówki" />
@@ -176,27 +180,31 @@ function SettingsForm(props: {
   prefix: string;
   regionLocked: boolean;
   regionName: string;
+  myPhone: string;
 }) {
+  const [myPhone, setMyPhone] = useState(props.myPhone);
   const { confirm, run, toast } = useFeedback();
   const [prefix, setPrefix] = useState(props.prefix);
   const [s, setS] = useState(props.settings);
   const [company, setCompany] = useState(props.company);
   const setC = (patch: Partial<CompanySettings>) => setCompany((prev) => ({ ...prev, ...patch }));
   const nipError = company.nip.trim() && !isValidNip(company.nip) ? 'NIP jest niepoprawny' : undefined;
+  const accountError = company.bankAccount.trim() && !isValidAccount(company.bankAccount) ? 'Numer konta jest niepoprawny (26 cyfr)' : undefined;
   const [name, setName] = useState(props.name);
   const [bonus, setBonus] = useState(moneyToInput(props.settings.thirdVisitBonus));
   const [next, setNext] = useState(String(props.counter + 1));
   const set = (patch: Partial<AppSettings>) => setS((prev) => ({ ...prev, ...patch }));
   const bonusValue = parseMoney(bonus);
   const nextValue = Number(next);
-  const valid = bonusValue !== null && Number.isInteger(nextValue) && nextValue > 0 && s.vatRate >= 0 && !nipError;
+  const valid = bonusValue !== null && Number.isInteger(nextValue) && nextValue > 0 && s.vatRate >= 0 && !nipError && !accountError;
 
   const save = () =>
     run(async () => {
+      await saveMyPhone(myPhone);
       if (!props.regionLocked) await saveRegion({ prefix });
       if (prefix) await offerPrefixForOldOrders(prefix);
       if (props.readOnly) {
-        toast('Zapisano prefiks regionu');
+        toast('Zapisano');
         return;
       }
       if (!props.synced) await saveProfile({ ...(await getProfile()), name: name.trim() });
@@ -204,6 +212,8 @@ function SettingsForm(props: {
       await saveCompany({
         ...company,
         taxpayerName: (company.taxpayerName ?? '').trim(),
+        bankAccount: formatAccount(company.bankAccount),
+        blikPhone: (company.blikPhone ?? '').trim(),
         nip: company.nip.trim(),
         street: company.street.trim(),
         postalCode: company.postalCode.trim(),
@@ -237,6 +247,9 @@ function SettingsForm(props: {
     >
       <fieldset>
         <legend>Region i kody zleceń</legend>
+        <Field label="Mój numer telefonu" hint="Numer, na którym teraz jesteś. Pokazuje się na wizytówce. Ustawienie tego urządzenia.">
+          <input type="tel" inputMode="tel" placeholder="500 600 700" value={myPhone} onChange={(e) => setMyPhone(formatPhoneInput(e.target.value))} />
+        </Field>
         {props.regionLocked ? (
           <p className="field-hint">
             Region <strong>{props.regionName || 'tego konta'}</strong>, prefiks <strong>{prefix}</strong>: nowe zlecenia dostaną kod{' '}
@@ -276,8 +289,8 @@ function SettingsForm(props: {
       </fieldset>
 
       <fieldset disabled={props.readOnly}>
-        <legend>Dane firmy do kilometrówki</legend>
-        <p className="field-hint">Nagłówek „Dane podatnika” w ewidencji przebiegu pojazdu dla celów VAT.</p>
+        <legend>Dane firmy: kilometrówka i płatności</legend>
+        <p className="field-hint">Nagłówek „Dane podatnika” w ewidencji przebiegu pojazdu dla celów VAT oraz dane do przelewu i BLIK-a na wizytówce.</p>
         <Field label="Nazwa podatnika" hint="Np. P.H.U. Nazwa Imię Nazwisko. Gdy puste, na wydruku jest Pogromcy Insektów.">
           <input value={company.taxpayerName ?? ''} autoComplete="organization" onChange={(e) => setC({ taxpayerName: e.target.value })} />
         </Field>
@@ -294,6 +307,17 @@ function SettingsForm(props: {
         </div>
         <Field label="NIP" error={nipError}>
           <input value={company.nip} inputMode="numeric" onChange={(e) => setC({ nip: e.target.value })} />
+        </Field>
+        <Field label="Numer konta do przelewów" error={accountError} hint="Pojawia się na wizytówce i przy płatności przelewem.">
+          <input
+            value={company.bankAccount}
+            inputMode="numeric"
+            placeholder="00 0000 0000 0000 0000 0000 0000"
+            onChange={(e) => setC({ bankAccount: formatAccount(e.target.value) })}
+          />
+        </Field>
+        <Field label="Telefon do BLIK-a" hint="Numer, na który klient wysyła BLIK na telefon.">
+          <input type="tel" inputMode="tel" placeholder="+48 500 600 700" value={company.blikPhone ?? ''} onChange={(e) => setC({ blikPhone: formatPhoneInput(e.target.value) })} />
         </Field>
       </fieldset>
 
@@ -332,6 +356,7 @@ export function SettingsPage() {
     prefix: string;
     regionLocked: boolean;
     regionName: string;
+    myPhone: string;
   }>();
   // Formularz startuje z jednego odczytu, żeby synchronizacja nie resetowała pól w trakcie edycji.
   useEffect(() => {
@@ -345,6 +370,7 @@ export function SettingsPage() {
         // Ustawienia firmy na serwerze zmienia tylko szef, więc technik ich nie edytuje.
         readOnly: Boolean(sync && sync.role && sync.role !== 'owner'),
         counter: await localOrderCounter(),
+        myPhone: await getMyPhone(),
         ...(await (async () => {
           const region = await getRegion();
           return { prefix: region.prefix, regionLocked: region.locked, regionName: region.name };

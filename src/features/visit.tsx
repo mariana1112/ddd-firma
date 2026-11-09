@@ -5,7 +5,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { cancelVisit, finishVisit, normalizeInterview, orderVisits, restoreOrder, startVisit, type NextVisit } from '../data/orders';
 import { paymentMissing } from '../data/order-list';
 import { orders, visits } from '../data/repo';
-import { getAppSettings, type AppSettings } from '../data/settings';
+import { getAppSettings, getCompany, type AppSettings } from '../data/settings';
+import { formatAccount } from '../data/card';
+import { CopyRow } from './card';
 import {
   accessDetails,
   finishSms,
@@ -323,12 +325,12 @@ export function VisitPage() {
     if (!visit || visit.deletedAt) return null;
     const order = await orders.get(visit.orderId);
     if (!order) return null;
-    return { visit, order, list: await orderVisits(order.id), settings: await getAppSettings() };
+    return { visit, order, list: await orderVisits(order.id), settings: await getAppSettings(), company: await getCompany() };
   }, [id]);
 
   if (data === undefined) return <Loading />;
   if (data === null) return <NotFound back="/zlecenia" />;
-  const { visit, order, list, settings } = data;
+  const { visit, order, list, settings, company } = data;
   const later = list.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany');
   const phone = order.phones[0];
   // Cena i zakres tego zabiegu; zabiegi sprzed tej opcji mają widełki zlecenia i całe mieszkanie.
@@ -570,6 +572,16 @@ export function VisitPage() {
                 </button>
               ))}
             </div>
+            {visit.payMethod === 'przelew' && company.bankAccount.trim() && (
+              <div className="pay-details">
+                <CopyRow label="Numer konta do przelewu" value={formatAccount(company.bankAccount)} copyValue={company.bankAccount.replace(/\s/g, '')} />
+              </div>
+            )}
+            {visit.payMethod === 'blik' && company.blikPhone?.trim() && (
+              <div className="pay-details">
+                <CopyRow label="BLIK na telefon" value={company.blikPhone.trim()} copyValue={company.blikPhone.replace(/\s/g, '')} />
+              </div>
+            )}
             <AmountField value={visit.amount} missing={payAlert && !visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
             <div className="choice">
               {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([value, label]) => (

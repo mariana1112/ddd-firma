@@ -409,6 +409,8 @@ export interface CompanySettings {
   protocolFooter: string;
   /** Podatnik w nagłówku kilometrówki, np. „P.H.U. … Imię Nazwisko”. Puste: nazwa firmy. */
   taxpayerName?: string;
+  /** Numer telefonu do płatności BLIK na telefon, np. „+48 505 724 090”. */
+  blikPhone?: string;
 }
 
 export interface MetaRow {

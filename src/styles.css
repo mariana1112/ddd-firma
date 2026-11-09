@@ -2285,3 +2285,68 @@ a.btn.disabled {
 .pay-choice .pay-option.pay-opt-gotowka.active { color: #fff; background: #1d7a44; border-color: #1d7a44; box-shadow: 0 0 0 3px rgb(29 122 68 / 35%); }
 .pay-choice .pay-option.pay-opt-blik.active { color: #fff; background: #6b3fb8; border-color: #6b3fb8; box-shadow: 0 0 0 3px rgb(107 63 184 / 35%); }
 .pay-choice .pay-option.pay-opt-przelew.active { color: #fff; background: #1f5fa8; border-color: #1f5fa8; box-shadow: 0 0 0 3px rgb(31 95 168 / 35%); }
+
+/* Pulpit: cztery kafelki w dwóch rzędach na telefonie, w jednym na komputerze */
+.tiles {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (min-width: 900px) {
+  .tiles {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Wizytówka */
+.card-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px;
+  border-radius: var(--radius);
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.card-hero h2 {
+  font-size: 1.3rem;
+}
+
+.card-phone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: inherit;
+}
+
+.copy-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.copy-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.copy-row-value {
+  font-size: 1.02rem;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dane do przelewu albo BLIK-a przy wybranej płatności */
+.pay-details {
+  margin-top: 8px;
+  border-radius: 12px;
+  background: var(--surface);
+}

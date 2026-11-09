@@ -23,6 +23,10 @@ zaszyfrowane.
 - **Nawigacja**: „Nawiguj” daje wybór mapy (na iPhonie aplikacja Google Maps, Apple Mapy, Waze), z pełnym adresem,
   kodem i krajem. Przy adresie można sprawdzić adres w Google Maps i wkleić link do miejsca; wtedy nawigacja prowadzi
   dokładnie tam. Formularz (także edycja) zapamiętuje dane, więc wyjście do map ich nie gubi.
+- **Wizytówka** (kafelek na Pulpicie i Więcej): dane do przelewu (odbiorca, NIP, numer konta), numer do BLIK-a i numer
+  technika na tym telefonie, każde z „Kopiuj”, oraz „Wyślij wizytówkę klientowi”. Przy płatności przelewem albo BLIK-iem
+  na ekranie zabiegu od razu widać numer do skopiowania. Dane firmy ustawia admin w Ustawieniach, a swój numer każdy
+  u siebie.
 - **Gdy dzwoni klient**: pole „Kto dzwoni?” na Pulpicie szuka we wszystkich zleceniach, także zakończonych, po numerze
   telefonu w dowolnym zapisie (+48, spacje, myślniki, fragment), nazwisku, adresie albo kodzie. Telefon klienta jest widoczny
   na liście zleceń, na Pulpicie i w kalendarzu.

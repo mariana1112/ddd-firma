@@ -205,6 +205,10 @@ export function DashboardPage() {
           <Icon name="car" size={26} />
           <span>Przejazd</span>
         </Link>
+        <Link to="/wizytowka" className="tile">
+          <Icon name="wallet" size={26} />
+          <span>Wizytówka</span>
+        </Link>
       </div>
 
       <Link to="/kilometry" className="km-card">

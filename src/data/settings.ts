@@ -263,6 +263,15 @@ export async function saveRegion(region: RegionSettings): Promise<void> {
   await db.meta.put({ key: 'region', value: region, updatedAt: new Date().toISOString() });
 }
 
+/** Numer telefonu technika na tym urządzeniu, do wizytówki. Nie synchronizowany: każdy telefon ma swój. */
+export async function getMyPhone(): Promise<string> {
+  return (await getMeta<string>('myPhone')) ?? '';
+}
+
+export async function saveMyPhone(phone: string): Promise<void> {
+  await db.meta.put({ key: 'myPhone', value: phone.trim(), updatedAt: new Date().toISOString() });
+}
+
 export const ORDER_NUMBERS_KEY = 'numbers:order';
 
 /** Numer, od którego zaczyna się numeracja, np. żeby kontynuować dotychczasową (#210). */

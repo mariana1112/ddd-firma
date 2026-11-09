@@ -14,6 +14,7 @@ import { OrderDetailPage, OrdersPage } from './features/orders';
 import { ReportsPage } from './features/reports';
 import { BackupPage, MorePage, SettingsPage, TrashPage } from './features/settings';
 import { TripsPage } from './features/trips';
+import { CardPage } from './features/card';
 import { VisitPage } from './features/visit';
 import { FeedbackProvider } from './ui/feedback';
 import { Icon, type IconName } from './ui/icons';
@@ -102,6 +103,7 @@ function AppRoutes() {
       <Route path="/zabieg/:id" element={<VisitPage />} />
       <Route path="/raporty" element={<ReportsPage />} />
       <Route path="/koszty" element={<CostsPage />} />
+      <Route path="/wizytowka" element={<CardPage />} />
       <Route path="/kilometry" element={<TripsPage />} />
       <Route path="/wiecej" element={<MorePage />} />
       <Route path="/ustawienia" element={<SettingsPage />} />
