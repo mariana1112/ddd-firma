@@ -213,7 +213,7 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
 }
 
 /** Kolejny zabieg: termin, czas trwania, co pryskamy i cena (propozycja z poprzedniego zabiegu). */
-function ScheduleNext(props: {
+export function ScheduleNext(props: {
   durationMin: number;
   initial: VisitTerms;
   invoice: InvoiceType;

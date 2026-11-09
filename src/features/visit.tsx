@@ -2,7 +2,9 @@ import { roman, visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { cancelVisit, finishVisit, normalizeInterview, orderVisits, restoreOrder, startVisit, type NextVisit } from '../data/orders';
+import { cancelVisit, finishVisit, normalizeInterview, orderVisits, restoreOrder, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
+import { googleCalendarUrl } from '../data/calendar';
+import { ScheduleNext } from './orders';
 import { paymentMissing } from '../data/order-list';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getCompany, type AppSettings } from '../data/settings';
@@ -21,7 +23,7 @@ import {
   workSummary,
 } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
-import { addMinutes, formatDate, formatTerm } from '../lib/dates';
+import { formatDate, formatTerm } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
@@ -140,33 +142,6 @@ function ToggleChips(props: { options: string[]; selected: string[]; onChange: (
       </form>
     </>
   );
-}
-
-function icsFile(order: Order, visit: Visit): Blob {
-  const stamp = (term: string) => term.replace(/[-:]/g, '').replace('T', 'T') + '00';
-  const end = addMinutes(visit.start!, visit.durationMin);
-  const escape = (text: string) => text.replace(/[\\,;]/g, (c) => `\\${c}`).replace(/\n/g, '\\n');
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Pogromcy Insektow//Aplikacja//PL',
-    'BEGIN:VEVENT',
-    `UID:${visit.id}@ddd-firma`,
-    `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
-    `DTSTART;TZID=Europe/Warsaw:${stamp(visit.start!)}`,
-    `DTEND;TZID=Europe/Warsaw:${stamp(end)}`,
-    `SUMMARY:${escape(`${visitCode(order, visit.seq)} ${pestName(order)}, ${order.clientName}`)}`,
-    `LOCATION:${escape(orderAddress(order))}`,
-    `DESCRIPTION:${escape(`Zabieg ${roman(visit.seq)}. Tel. ${order.phones[0]?.number ?? ''}`)}`,
-    'BEGIN:VALARM',
-    'TRIGGER:-PT1H',
-    'ACTION:DISPLAY',
-    'DESCRIPTION:Zabieg za godzinę',
-    'END:VALARM',
-    'END:VEVENT',
-    'END:VCALENDAR',
-  ];
-  return new Blob([lines.join('\r\n')], { type: 'text/calendar' });
 }
 
 function History({ list, current, order, vatRate }: { list: Visit[]; current: Visit; order: Order; vatRate: number }) {
@@ -303,11 +278,12 @@ function FinishSheet(props: {
 
 export function VisitPage() {
   const { id = '' } = useParams();
-  const { confirm, deliverFile, run, toast } = useFeedback();
+  const { confirm, run, toast } = useFeedback();
   const { sms } = useContactActions();
   const navigate = useNavigate();
   const [finishing, setFinishing] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
+  const [planningNext, setPlanningNext] = useState(false);
   const [editingTerms, setEditingTerms] = useState(false);
   // Próba zakończenia bez płatności: sekcja płatności świeci na czerwono, ekran przewija się do niej.
   const [payAlert, setPayAlert] = useState(false);
@@ -496,14 +472,39 @@ export function VisitPage() {
               <Icon name="calendar" /> {visit.start ? 'Zmień termin' : 'Umów termin'}
             </button>
             {visit.start && (
-              <button type="button" className="btn" onClick={() => deliverFile(icsFile(order, visit), `zabieg-${visitCode(order, visit.seq).replace('/', '-')}.ics`)}>
-                <Icon name="calendar" /> Dodaj do kalendarza iPhone'a
+              <a className="btn" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer">
+                <Icon name="calendar" /> Dodaj do Kalendarza Google
+              </a>
+            )}
+            {later?.start ? (
+              <button type="button" className="btn" onClick={() => navigate(`/zabieg/${later.id}`)}>
+                <Icon name="calendar" /> Kolejny zabieg {roman(later.seq)}: {formatTerm(later.start)}
+              </button>
+            ) : (
+              <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
+                <Icon name="calendar" /> Umów kolejny zabieg
               </button>
             )}
             <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
               <Icon name="close" /> Odwołaj zabieg
             </button>
           </div>
+          <Sheet open={planningNext} title={`Umów kolejny zabieg · ${visitCode(order, later?.seq ?? Math.max(...list.map((v) => v.seq)) + 1)}`} onClose={() => setPlanningNext(false)}>
+            {planningNext && (
+              <ScheduleNext
+                durationMin={visit.durationMin || 60}
+                initial={proposeTerms(list, order)}
+                invoice={order.invoice}
+                onSave={(start, durationMin, nextTerms) =>
+                  void run(async () => {
+                    const next = await scheduleNextVisit(order.id, { start, durationMin, terms: nextTerms });
+                    setPlanningNext(false);
+                    toast(`Zabieg ${roman(next.seq)} umówiony: ${formatTerm(start)}`);
+                  })
+                }
+              />
+            )}
+          </Sheet>
           <Group title="Zlecenie">
             {order.description && <Info label="Opis">{order.description}</Info>}
             {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
