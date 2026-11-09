@@ -2209,3 +2209,24 @@ a.btn.disabled {
   margin-right: 6px;
   color: var(--muted);
 }
+
+.shell-locked {
+  display: block;
+}
+
+.shell-locked .content {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.region-actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 2px;
+}
+
+.invite-code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+}

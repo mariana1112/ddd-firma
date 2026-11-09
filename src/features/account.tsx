@@ -18,11 +18,26 @@ import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Field, Group, Info, Loading, Page, Row, Sheet } from '../ui/kit';
 
+import { RegionSwitcher } from './regions';
+
 const supabaseApi = () => import('../data/sync/supabase');
 const engineApi = () => import('../data/sync/engine');
 
 export function useSyncRunning(): boolean {
   return useSyncExternalStore(subscribeSyncStatus, getSyncStatus).running;
+}
+
+/**
+ * Ekran logowania przed użyciem aplikacji: bez konta firmy nie widać zleceń ani menu. Po zalogowaniu i połączeniu
+ * z firmą (kod, hasło szyfrowania, zgoda admina) urządzenie zostaje zalogowane na stałe.
+ */
+export function LoginGate() {
+  return (
+    <Page title="Zaloguj się">
+      <p className="field-hint">Aplikacja Pogromców Insektów działa po zalogowaniu do konta firmy.</p>
+      <Connect />
+    </Page>
+  );
 }
 
 export function AccountPage() {
@@ -700,6 +715,7 @@ function SyncStatus({ state }: { state: SyncState }) {
               </button>
             </div>
           )}
+          <RegionSwitcher state={state} />
           <button type="button" className="btn btn-primary btn-block" disabled={running} onClick={() => void syncNow()}>
             {running ? 'Synchronizuję…' : 'Synchronizuj teraz'}
           </button>

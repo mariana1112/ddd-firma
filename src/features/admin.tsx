@@ -8,12 +8,13 @@ import { companyText, regionRanking, regionData, type RegionRef } from '../data/
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
-import { getRegions, getSyncState, saveRegions, setSyncState, type RegionInfo } from '../data/settings';
+import { COMPANY_NAME, getDataKey, getRegions, getSyncState, saveRegions, setSyncState, type RegionInfo } from '../data/settings';
+import { enterRegion, RegionSwitcher } from './regions';
 import type { SyncState } from '../data/types';
 import { todayWarsaw } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Empty, Field, Group, Info, Loading, Page, Row, ScopeBannerContext, Stat } from '../ui/kit';
+import { Badge, Empty, Field, Group, Info, Loading, Page, Row, ScopeBannerContext, Sheet, Stat } from '../ui/kit';
 import { useContactActions } from './common';
 
 const supabaseApi = () => import('../data/sync/supabase');
@@ -243,10 +244,17 @@ function useRegions(state: SyncState | null | undefined) {
   const load = async () => {
     if (!state?.orgId) return;
     const api = await supabaseApi();
-    const [branches, people] = await Promise.all([api.listBranches(state.orgId), api.listMembers(state.orgId)]);
+    const [branches, people, access] = await Promise.all([
+      api.listBranches(state.orgId),
+      api.listMembers(state.orgId),
+      api.listMemberBranches(state.orgId),
+    ]);
     setServer(branches);
+    // Konta z dostępem do regionu (jeden e-mail może być w kilku regionach); bez migracji: aktywny region konta.
+    const approved = new Set(people.filter((m) => m.approved).map((m) => m.userId));
+    const pairs = access.length ? access : people.filter((m) => m.branchId).map((m) => ({ userId: m.userId, branchId: m.branchId! }));
     const count: Record<string, number> = {};
-    for (const m of people) if (m.branchId && m.approved) count[m.branchId] = (count[m.branchId] ?? 0) + 1;
+    for (const { userId, branchId } of pairs) if (approved.has(userId)) count[branchId] = (count[branchId] ?? 0) + 1;
     setMembers(count);
   };
 
@@ -274,12 +282,38 @@ function useRegions(state: SyncState | null | undefined) {
       toast(prefix ? `Region ${name}: prefiks ${prefix}` : `Region ${name}: bez prefiksu`);
     });
 
-  const addRegion = (name: string) =>
+  /** Nowy kod weryfikacyjny do regionu (jednorazowy, ważny 14 dni). Wymaga klucza firmy na tym urządzeniu. */
+  const newCode = async (branchId: string): Promise<string> => {
+    if (!state?.orgId) throw new Error('Brak konta firmy.');
+    const key = await getDataKey();
+    if (!key) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
+    return (await supabaseApi()).createInvite(state.orgId, branchId, key);
+  };
+
+  /** Tworzy region: nazwa i prefiks w panelu, region na serwerze i kod do dołączenia. */
+  const createRegion = async (name: string, prefix: string): Promise<{ id: string; name: string; code: string }> => {
+    if (!state?.orgId) throw new Error('Brak konta firmy.');
+    const all = await getRegions();
+    const taken = Object.entries(all).find(([, r]) => prefix && r.prefix === prefix);
+    if (taken) throw new Error(`Prefiks ${prefix} ma już region ${taken[1].name}.`);
+    const id = await (await supabaseApi()).createBranch(state.orgId, name);
+    await saveRegions({ ...(await getRegions()), [id]: { name, prefix } });
+    const code = await newCode(id);
+    await load();
+    return { id, name, code };
+  };
+
+  const deleteRegion = (id: string) =>
     run(async () => {
-      if (!state?.orgId) return;
-      await (await supabaseApi()).createBranch(state.orgId, name);
+      await (await supabaseApi()).deleteBranch(id);
+      const all = await getRegions();
+      delete all[id];
+      await saveRegions(all);
       await load();
-      toast(`Dodano region ${name}`);
+      // Aktywny region tego urządzenia mógł zniknąć.
+      const latest = await getSyncState();
+      if (latest?.branchId === id) await setSyncState({ ...latest, branchId: null, branchName: '', regionsTagged: false });
+      toast('Region usunięty');
     });
 
   // Nazwy regionów z serwera trafiają też do ustawień firmy, żeby urządzenia znały je bez internetu.
@@ -292,17 +326,34 @@ function useRegions(state: SyncState | null | undefined) {
     void saveRegions(next);
   }, [server, saved]);
 
-  return { regions, members, loaded: saved !== undefined, online: server !== null, savePrefix, addRegion };
+  return { regions, members, loaded: saved !== undefined, online: server !== null, savePrefix, createRegion, newCode, deleteRegion };
 }
 
-function PrefixEditor(props: { region: RegionRef; members: number; onSave: (prefix: string) => void }) {
+function PrefixEditor(props: {
+  region: RegionRef;
+  members: number;
+  active: boolean;
+  onSave: (prefix: string) => void;
+  onCode: () => void;
+  onDelete: () => void;
+}) {
   const [prefix, setPrefix] = useState(props.region.prefix);
   useEffect(() => setPrefix(props.region.prefix), [props.region.prefix]);
   return (
     <div className="region-edit">
       <div className="region-edit-name">
-        <strong>{props.region.name}</strong>
-        <span className="row-sub">Technicy: {props.members}</span>
+        <strong>
+          {props.region.name} {props.active && <Badge tone="ok">Twój aktywny</Badge>}
+        </strong>
+        <span className="row-sub">Konta: {props.members}</span>
+        <span className="region-actions">
+          <button type="button" className="link" onClick={props.onCode}>
+            Nowy kod
+          </button>
+          <button type="button" className="link link-danger" onClick={props.onDelete}>
+            Usuń region
+          </button>
+        </span>
       </div>
       <input
         className="input-short"
@@ -317,6 +368,84 @@ function PrefixEditor(props: { region: RegionRef; members: number; onSave: (pref
         Zapisz
       </button>
     </div>
+  );
+}
+
+/** Dane do dołączenia do regionu: login, hasło, kod weryfikacyjny. */
+function JoinDetails(props: { regionName: string; code: string; onEnter?: () => void; onClose: () => void }) {
+  const { share } = useContactActions();
+  const text = [
+    `Dołączenie do aplikacji ${COMPANY_NAME}, region ${props.regionName}.`,
+    '1. Otwórz https://mariana1112.github.io/ddd-firma/ (na iPhonie w Safari) i dodaj do ekranu początkowego.',
+    '2. Login: załóż konto swoim e-mailem i hasłem albo zaloguj się istniejącym (jeden e-mail może być w kilku regionach).',
+    `3. Kod weryfikacyjny: ${props.code} (jednorazowy, ważny 14 dni).`,
+    '4. Hasło firmy podam osobiście.',
+  ].join('\n');
+  return (
+    <div className="form">
+      <Group>
+        <Info label="Login">E-mail osoby z regionu: zakłada konto przy pierwszym logowaniu albo loguje się istniejącym</Info>
+        <Info label="Hasło">Hasło firmy (szyfrowania): przekaż osobiście, nigdy razem z kodem</Info>
+        <Info label="Kod weryfikacyjny">
+          <strong className="invite-code">{props.code}</strong>
+        </Info>
+        <Info label="Ważność">Jednorazowy, 14 dni; po 5 złych hasłach przestaje działać</Info>
+      </Group>
+      <button type="button" className="btn btn-primary btn-block" onClick={() => void share(text, `Region ${props.regionName}`)}>
+        <Icon name="share" /> Wyślij instrukcję i kod (bez hasła)
+      </button>
+      {props.onEnter && (
+        <button type="button" className="btn btn-block" onClick={props.onEnter}>
+          <Icon name="building" /> Wejdź do tego regionu na tym telefonie
+        </button>
+      )}
+      <button type="button" className="btn btn-block" onClick={props.onClose}>
+        Gotowe
+      </button>
+    </div>
+  );
+}
+
+function NewRegionForm(props: { disabled: boolean; onCreate: (name: string, prefix: string) => Promise<unknown> }) {
+  const [name, setName] = useState('');
+  const [prefix, setPrefix] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="form group-pad"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        setBusy(true);
+        try {
+          await props.onCreate(name.trim(), prefix);
+          setName('');
+          setPrefix('');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <div className="form-row">
+        <Field label="Nowy region">
+          <input value={name} placeholder="Np. Pomorskie" onChange={(e) => setName(e.target.value)} disabled={props.disabled} />
+        </Field>
+        <Field label="Prefiks">
+          <input
+            className="input-short"
+            value={prefix}
+            maxLength={PREFIX_MAX}
+            placeholder="GDA"
+            autoCapitalize="characters"
+            onChange={(e) => setPrefix(normalizePrefix(e.target.value))}
+            disabled={props.disabled}
+          />
+        </Field>
+      </div>
+      <button type="submit" className="btn btn-primary btn-block" disabled={busy || props.disabled || !name.trim()}>
+        <Icon name="plus" /> {busy ? 'Tworzę…' : 'Utwórz region i dane do dołączenia'}
+      </button>
+    </form>
   );
 }
 
@@ -336,7 +465,8 @@ export function AdminPage() {
   const region = params.get('region') ?? 'all';
   const [kind, setKind] = useState<PeriodKind>('tydzien');
   const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
-  const [newRegion, setNewRegion] = useState('');
+  const [joinInfo, setJoinInfo] = useState<{ id: string; name: string; code: string } | null>(null);
+  const { confirm, run, toast } = useFeedback();
   const regionsApi = useRegions(gate.state);
   // Dane całej firmy, bez filtra regionu z ekranów technika.
   const data = useLiveQuery(async () => ({
@@ -449,23 +579,55 @@ export function AdminPage() {
 
       <Group title="Regiony i prefiksy">
         {!regionsApi.online && <p className="field-hint group-pad">Bez internetu: lista z ostatniego połączenia, dodawanie regionów niedostępne.</p>}
+        {regionsApi.regions.length === 0 && <p className="field-hint group-pad">Nie ma jeszcze żadnego regionu.</p>}
         {regionsApi.regions.map((r) => (
-          <PrefixEditor key={r.id} region={r} members={regionsApi.members[r.id] ?? 0} onSave={(prefix) => void regionsApi.savePrefix(r.id, r.name, prefix)} />
+          <PrefixEditor
+            key={r.id}
+            region={r}
+            members={regionsApi.members[r.id] ?? 0}
+            active={gate.state?.branchId === r.id}
+            onSave={(prefix) => void regionsApi.savePrefix(r.id, r.name, prefix)}
+            onCode={() => void run(async () => setJoinInfo({ id: r.id, name: r.name, code: await regionsApi.newCode(r.id) }))}
+            onDelete={async () => {
+              const ok = await confirm({
+                title: `Usunąć region ${r.name}?`,
+                message:
+                  'Konta stracą dostęp do tego regionu, a kody do niego przestaną działać. Zlecenia regionu zostaną bez regionu i będzie je widział tylko admin.',
+                confirmLabel: 'Usuń region',
+                danger: true,
+              });
+              if (ok) await regionsApi.deleteRegion(r.id);
+            }}
+          />
         ))}
-        <form
-          className="inline-add group-pad"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (newRegion.trim()) void regionsApi.addRegion(newRegion.trim()).then(() => setNewRegion(''));
-          }}
-        >
-          <input value={newRegion} placeholder="Nowy region, np. Pomorskie" onChange={(e) => setNewRegion(e.target.value)} disabled={!regionsApi.online} />
-          <button type="submit" className="btn btn-sm" disabled={!newRegion.trim() || !regionsApi.online}>
-            Dodaj
-          </button>
-        </form>
+        <NewRegionForm
+          disabled={!regionsApi.online}
+          onCreate={(name, prefix) => run(async () => setJoinInfo(await regionsApi.createRegion(name, prefix)))}
+        />
         <Row to="/oddzialy" icon="users" title="Technicy i zaproszenia" sub="Zatwierdzanie, przenoszenie między regionami, kody dołączenia" />
       </Group>
+
+      {gate.state && <RegionSwitcher state={gate.state} />}
+
+      <Sheet open={Boolean(joinInfo)} title={joinInfo ? `Region ${joinInfo.name}: dane do dołączenia` : ''} onClose={() => setJoinInfo(null)}>
+        {joinInfo && (
+          <JoinDetails
+            regionName={joinInfo.name}
+            code={joinInfo.code}
+            onClose={() => setJoinInfo(null)}
+            onEnter={
+              gate.state?.branchId === joinInfo.id
+                ? undefined
+                : () =>
+                    void run(async () => {
+                      await enterRegion(gate.state!, joinInfo);
+                      setJoinInfo(null);
+                      toast(`Jesteś w regionie ${joinInfo.name}`);
+                    })
+            }
+          />
+        )}
+      </Sheet>
 
       <Group title="Firma">
         <Row to="/ustawienia" icon="gear" title="Ustawienia firmy" sub="Premia, zalecenia, SMS, dane do kilometrówki" />

@@ -349,6 +349,39 @@ export async function setMemberBranch(orgId: string, userId: string, branchId: s
  * Jednorazowy kod, którym nowy technik dołącza do oddziału. Ważny 14 dni. Działa tylko razem z hasłem
  * szyfrowania: serwer dostaje skrót dowodu wyliczonego kluczem firmy z tego urządzenia.
  */
+/** Przełącza aktywny region konta (technik: tylko swoje regiony, admin: każdy). */
+export async function switchBranch(orgId: string, branchId: string): Promise<void> {
+  const { error } = await supabase().rpc('switch_branch', { p_org: orgId, p_branch: branchId });
+  if (error) fail(error);
+}
+
+/** Admin usuwa region. Rekordy regionu zostają bez regionu i widzi je tylko admin. */
+export async function deleteBranch(branchId: string): Promise<void> {
+  const { error } = await supabase().rpc('delete_branch', { p_branch: branchId });
+  if (error) fail(error);
+}
+
+/** Admin odbiera kontu dostęp do jednego regionu. */
+export async function removeMemberBranch(orgId: string, userId: string, branchId: string): Promise<void> {
+  const { error } = await supabase().rpc('remove_member_branch', { p_org: orgId, p_user: userId, p_branch: branchId });
+  if (error) fail(error);
+}
+
+/** Regiony każdego konta firmy (dla admina) albo własne (dla technika). */
+export async function listMemberBranches(orgId: string): Promise<Array<{ userId: string; branchId: string }>> {
+  const { data, error } = await supabase().from('member_branches').select('user_id, branch_id').eq('org_id', orgId);
+  if (error && /member_branches/.test(error.message ?? '')) return [];
+  if (error) fail(error);
+  return (data ?? []).map((r) => ({ userId: r.user_id as string, branchId: r.branch_id as string }));
+}
+
+/** Członek firmy dołącza do kolejnego regionu samym kodem: dowód hasła liczy z klucza firmy na urządzeniu. */
+export async function joinAnotherRegion(code: string, dataKey: CryptoKey): Promise<boolean> {
+  const normalized = code.trim().toUpperCase();
+  const org = await joinWithInvite(normalized, '', await inviteProof(dataKey, normalized));
+  return org !== null;
+}
+
 export async function createInvite(orgId: string, branchId: string, dataKey: CryptoKey): Promise<string> {
   const code = newInviteCode();
   const proofHash = await sha256Hex(await inviteProof(dataKey, code));

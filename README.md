@@ -117,6 +117,15 @@ otwiera w aplikacji ekran: najpierw pytania pomocnicze, potem nowe hasło. Pytan
 o reset konto traci uprawnienia admina (widzi tylko swój region), dopóki ktoś nie odpowie poprawnie; po 5 błędnych
 odpowiedziach pytania blokują się na godzinę. Wymaga migracji `20261109000000_odzyskiwanie_admina.sql`.
 
+**Logowanie przed użyciem**: bez konta firmy aplikacja pokazuje tylko ekran logowania.
+
+**Regiony w panelu admina**: „Utwórz region i dane do dołączenia” tworzy region z prefiksem i jednorazowy kod
+weryfikacyjny (14 dni). Dołączenie: login (e-mail osoby, konto zakładane przy pierwszym logowaniu albo istniejące),
+hasło firmy (przekazywane osobiście) i kod. Jeden e-mail może należeć do kilku regionów: członek firmy dołącza do
+kolejnego regionu samym kodem w „Konto → Regiony tego konta” i tam przełącza aktywny region. Admin może wejść do
+każdego regionu, wygenerować nowy kod albo usunąć region (jego zlecenia widzi wtedy tylko admin). Wymaga migracji
+`20261110000000_regiony.sql`.
+
 **Stałe logowanie**: urządzenie technika po dołączeniu zostaje zalogowane do swojego regionu i przy każdym uruchomieniu
 wchodzi od razu do niego. Technik nie ma przycisku wylogowania; region zmienia albo konto odłącza admin.
 

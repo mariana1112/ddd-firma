@@ -2,7 +2,10 @@ import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { watchForUpdates } from './lib/updates';
-import { AccountPage, BranchesPage } from './features/account';
+import { AccountPage, BranchesPage, LoginGate } from './features/account';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { getSyncState } from './data/settings';
+import { isSyncConfigured } from './data/sync/config';
 import { AdminPage, AdminRecoveryPage, AdminScoped, AdminSecurityPage } from './features/admin';
 import { CostsPage } from './features/costs';
 import { DashboardPage } from './features/dashboard';
@@ -87,46 +90,76 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<DashboardPage />} />
+      <Route path="/kalendarz" element={<CalendarPage />} />
+      <Route path="/zlecenia" element={<OrdersPage />} />
+      <Route path="/zlecenia/nowe" element={<OrderNewPage />} />
+      <Route path="/zlecenia/:id" element={<OrderDetailPage />} />
+      <Route path="/zlecenia/:id/edycja" element={<OrderEditPage />} />
+      <Route path="/zabieg/:id" element={<VisitPage />} />
+      <Route path="/raporty" element={<ReportsPage />} />
+      <Route path="/koszty" element={<CostsPage />} />
+      <Route path="/kilometry" element={<TripsPage />} />
+      <Route path="/wiecej" element={<MorePage />} />
+      <Route path="/ustawienia" element={<SettingsPage />} />
+      <Route path="/kopie" element={<BackupPage />} />
+      <Route path="/kosz" element={<TrashPage />} />
+      <Route path="/konto" element={<AccountPage />} />
+      <Route path="/oddzialy" element={<BranchesPage />} />
+      <Route path="/admin" element={<AdminPage />} />
+      <Route path="/admin/bezpieczenstwo" element={<AdminSecurityPage />} />
+      <Route path="/admin/odzyskiwanie" element={<AdminRecoveryPage />} />
+      <Route path="/admin/zlecenia" element={<AdminScoped><OrdersPage /></AdminScoped>} />
+      <Route path="/admin/kalendarz" element={<AdminScoped><CalendarPage /></AdminScoped>} />
+      <Route path="/admin/raporty" element={<AdminScoped><ReportsPage /></AdminScoped>} />
+      <Route path="/admin/kilometry" element={<AdminScoped><TripsPage /></AdminScoped>} />
+      <Route path="/admin/koszty" element={<AdminScoped><CostsPage /></AdminScoped>} />
+      <Route path="*" element={<DashboardPage />} />
+    </Routes>
+  );
+}
+
+/** Ekrany dostępne bez zalogowania: ustawienie nowego hasła z linku w e-mailu. */
+const PUBLIC_PATHS = ['/admin/odzyskiwanie'];
+
+/** Bez konta firmy aplikacja pokazuje tylko logowanie (przy skonfigurowanym serwerze). */
+function Shell() {
+  const { pathname } = useLocation();
+  const state = useLiveQuery(async () => (await getSyncState()) ?? null);
+  if (isSyncConfigured && state === undefined) return <Loading />;
+  const locked = isSyncConfigured && state === null && !PUBLIC_PATHS.includes(pathname);
+  if (locked) {
+    return (
+      <div className="shell shell-locked">
+        <div className="content">
+          <UpdatePrompt />
+          <LoginGate />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="shell">
+      <Navigation />
+      <div className="content">
+        <UpdatePrompt />
+        <Suspense fallback={<Loading />}>
+          <AppRoutes />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   return (
     <ErrorBoundary>
       <FeedbackProvider>
         <HashRouter>
-          <div className="shell">
-            <Navigation />
-            <div className="content">
-              <UpdatePrompt />
-              <Suspense fallback={<Loading />}>
-                <Routes>
-                  <Route path="/" element={<DashboardPage />} />
-                  <Route path="/kalendarz" element={<CalendarPage />} />
-                  <Route path="/zlecenia" element={<OrdersPage />} />
-                  <Route path="/zlecenia/nowe" element={<OrderNewPage />} />
-                  <Route path="/zlecenia/:id" element={<OrderDetailPage />} />
-                  <Route path="/zlecenia/:id/edycja" element={<OrderEditPage />} />
-                  <Route path="/zabieg/:id" element={<VisitPage />} />
-                  <Route path="/raporty" element={<ReportsPage />} />
-                  <Route path="/koszty" element={<CostsPage />} />
-                  <Route path="/kilometry" element={<TripsPage />} />
-                  <Route path="/wiecej" element={<MorePage />} />
-                  <Route path="/ustawienia" element={<SettingsPage />} />
-                  <Route path="/kopie" element={<BackupPage />} />
-                  <Route path="/kosz" element={<TrashPage />} />
-                  <Route path="/konto" element={<AccountPage />} />
-                  <Route path="/oddzialy" element={<BranchesPage />} />
-                  <Route path="/admin" element={<AdminPage />} />
-                  <Route path="/admin/bezpieczenstwo" element={<AdminSecurityPage />} />
-                  <Route path="/admin/odzyskiwanie" element={<AdminRecoveryPage />} />
-                  <Route path="/admin/zlecenia" element={<AdminScoped><OrdersPage /></AdminScoped>} />
-                  <Route path="/admin/kalendarz" element={<AdminScoped><CalendarPage /></AdminScoped>} />
-                  <Route path="/admin/raporty" element={<AdminScoped><ReportsPage /></AdminScoped>} />
-                  <Route path="/admin/kilometry" element={<AdminScoped><TripsPage /></AdminScoped>} />
-                  <Route path="/admin/koszty" element={<AdminScoped><CostsPage /></AdminScoped>} />
-                  <Route path="*" element={<DashboardPage />} />
-                </Routes>
-              </Suspense>
-            </div>
-          </div>
+          <Shell />
         </HashRouter>
       </FeedbackProvider>
     </ErrorBoundary>
