@@ -2276,3 +2276,12 @@ a.btn.disabled {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* Każda forma płatności ma swój kolor: niewybrana szara z kolorowym znakiem, wybrana świeci pełnym kolorem. */
+.pay-choice .pay-option.pay-opt-gotowka { color: var(--cash); box-shadow: inset 0 -4px 0 var(--cash); }
+.pay-choice .pay-option.pay-opt-blik { color: var(--blik); box-shadow: inset 0 -4px 0 var(--blik); }
+.pay-choice .pay-option.pay-opt-przelew { color: var(--transfer); box-shadow: inset 0 -4px 0 var(--transfer); }
+
+.pay-choice .pay-option.pay-opt-gotowka.active { color: #fff; background: #1d7a44; border-color: #1d7a44; box-shadow: 0 0 0 3px rgb(29 122 68 / 35%); }
+.pay-choice .pay-option.pay-opt-blik.active { color: #fff; background: #6b3fb8; border-color: #6b3fb8; box-shadow: 0 0 0 3px rgb(107 63 184 / 35%); }
+.pay-choice .pay-option.pay-opt-przelew.active { color: #fff; background: #1f5fa8; border-color: #1f5fa8; box-shadow: 0 0 0 3px rgb(31 95 168 / 35%); }

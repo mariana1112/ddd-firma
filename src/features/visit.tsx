@@ -562,7 +562,7 @@ export function VisitPage() {
                 <button
                   key={m}
                   type="button"
-                  className={`pay-option${visit.payMethod === m ? ' active' : ''}${payAlert && !visit.payMethod ? ' missing' : ''}`}
+                  className={`pay-option pay-opt-${m}${visit.payMethod === m ? ' active' : ''}${payAlert && !visit.payMethod ? ' missing' : ''}`}
                   aria-pressed={visit.payMethod === m}
                   onClick={() => save({ payMethod: visit.payMethod === m ? null : m })}
                 >
