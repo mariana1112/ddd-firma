@@ -353,7 +353,7 @@ export function OrderDetailPage() {
           <Row
             key={v.id}
             to={`/zabieg/${v.id}`}
-            className={v.id === current?.id ? 'row-current' : undefined}
+            className={v.id === current?.id ? 'row-current' : v.status === 'zaplanowany' && !v.start && v.seq > 1 ? 'row-pending' : undefined}
             title={
               <>
                 {v.id === current?.id && <span className="current-label">{currentOpen ? 'Aktualny zabieg' : 'Ostatni zabieg'}</span>}
@@ -372,9 +372,10 @@ export function OrderDetailPage() {
         ))}
         {next.kind === 'nieumowiony' && (
           <Row
+            className="row-pending"
             title={`Zabieg ${roman(next.seq)} · ${visitCode(order, next.seq)}`}
-            sub={`Jeszcze nie umówiony. Termin ustalisz przy zakończeniu zabiegu ${roman(next.afterSeq)}.`}
-            trailing={<Badge tone="warn">Nieumówiony</Badge>}
+            sub="Jeszcze nieumówiony. Jeśli będzie potrzebny, umówisz go przy zakończeniu zabiegu albo przyciskiem niżej."
+            trailing={<Badge tone="muted">Nieumówiony</Badge>}
           />
         )}
       </Group>

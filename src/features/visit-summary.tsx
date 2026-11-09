@@ -19,7 +19,7 @@ function whenDone(visit: Visit): string {
 function nextLabel(next: Visit): string {
   if (next.status === 'wykonany') return `Wykonany ${formatDate(next.doneOn ?? next.start)}`;
   if (next.status === 'w_trakcie') return 'W trakcie';
-  return next.start ? `Umówiony: ${formatTerm(next.start)}` : 'Do umówienia';
+  return next.start ? `Umówiony: ${formatTerm(next.start)}` : 'Jeszcze nieumówiony';
 }
 
 /**

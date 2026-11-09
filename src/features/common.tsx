@@ -23,12 +23,14 @@ export function VisitBadge({ visit }: { visit: Visit }) {
   if (visit.status === 'wykonany') return <Badge tone="ok">Wykonany</Badge>;
   if (visit.status === 'w_trakcie') return <Badge tone="warn">W trakcie</Badge>;
   if (visit.status === 'odwolany') return <Badge tone="muted">Odwołany</Badge>;
-  return visit.start ? <Badge tone="primary">Umówiony</Badge> : <Badge tone="warn">Do umówienia</Badge>;
+  if (visit.start) return <Badge tone="primary">Umówiony</Badge>;
+  // Nie każde zlecenie ma kolejny zabieg: zabieg II bez terminu jest tylko szarą informacją, nie zadaniem.
+  return visit.seq > 1 ? <Badge tone="muted">Nieumówiony</Badge> : <Badge tone="warn">Do umówienia</Badge>;
 }
 
 /** Krótko o kolejnym zabiegu: czy jest już umówiony. */
 export function NextVisitPill({ state }: { state: NextVisitState }) {
-  const tone = state.kind === 'umowiony' ? 'ok' : state.kind === 'brak' ? 'muted' : 'warn';
+  const tone = state.kind === 'umowiony' ? 'ok' : 'muted';
   return <span className={`next-pill next-pill-${tone}`}>{nextVisitText(state)}</span>;
 }
 
@@ -37,16 +39,16 @@ export function nextVisitText(state: NextVisitState): string {
     case 'umowiony':
       return `Zabieg ${roman(state.seq)} umówiony: ${formatDate(state.start).slice(0, 5)}, ${state.start.slice(11, 16)}`;
     case 'do_umowienia':
-      return `Zabieg ${roman(state.seq)} do umówienia`;
     case 'nieumowiony':
-      return `Zabieg ${roman(state.seq)} nieumówiony`;
+      return `Zabieg ${roman(state.seq)}: jeszcze nieumówiony`;
     case 'brak':
       return 'Bez kolejnego zabiegu';
   }
 }
 
 export function visitWhen(visit: Visit): string {
-  return visit.start ? formatTerm(visit.start) : 'Termin do umówienia';
+  if (visit.start) return formatTerm(visit.start);
+  return visit.seq > 1 ? 'Jeszcze nieumówiony' : 'Termin do umówienia';
 }
 
 export function orderLabel(order: Order): string {

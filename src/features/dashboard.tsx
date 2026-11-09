@@ -271,7 +271,7 @@ export function DashboardPage() {
       </Group>
 
       {toSchedule.length > 0 && (
-        <Group title={`Do umówienia z klientem (${toSchedule.length})`}>
+        <Group title={`Kolejne zabiegi bez terminu (${toSchedule.length})`}>
           {toSchedule.map(({ visit, order }) => (
             <ToScheduleRow key={visit.id} visit={visit} order={order} />
           ))}

@@ -2230,3 +2230,19 @@ a.btn.disabled {
   font-size: 1.15rem;
   letter-spacing: 0.08em;
 }
+
+/* Kolejny zabieg jeszcze nieumówiony: szary i mniejszy, bo nie każde zlecenie go potrzebuje */
+.row.row-pending {
+  min-height: 40px;
+  padding-block: 6px;
+  opacity: 0.6;
+}
+
+.row.row-pending .row-title {
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.row.row-pending .row-sub {
+  font-size: 0.8rem;
+}
