@@ -129,6 +129,20 @@ prawdziwym kodzie, usuniętym po teście.
   z zakresem regionu z adresu. `data/company.ts` liczy raport każdego regionu, ranking (obrót, potem wynik gotówki)
   i tekst podsumowania firmy.
 
+### Konto admina: zmiana danych i odzyskiwanie
+
+- Login i hasło admina obsługuje Supabase Auth; aplikacja ich nie przechowuje. Zmiana hasła wymaga obecnego hasła
+  (ponowne `signInWithPassword`), zmiana e-maila idzie przez link potwierdzający.
+- „Nie pamiętam hasła”: `resetPasswordForEmail` z powrotem na adres aplikacji. `lib/auth-link.ts` przechwytuje link
+  (`#access_token=…&type=recovery`) przed routerem, przenosi tokeny do `sessionStorage` i otwiera
+  `/admin/odzyskiwanie`. Link innego konta niż zalogowane na urządzeniu jest odrzucany przed użyciem tokenu.
+- Pytania pomocnicze (migracja `20261109000000_odzyskiwanie_admina.sql`): skróty bcrypt w `private.recovery_answers`,
+  dostęp tylko przez `recovery_status`, `set_recovery_answers`, `verify_recovery_answers`. `private.has_role` nie
+  uznaje roli owner, gdy `auth.users.recovery_sent_at` jest późniejsze niż ostatnie potwierdzenie pytaniami, więc
+  przejęta skrzynka e-mail nie daje dostępu do całej firmy. Pytań nie da się zmienić w czasie takiej blokady.
+  Po potwierdzeniu urządzenie pobiera dane od nowa (w czasie blokady widziało tylko swój region).
+- Aplikacja działa też przed wykonaniem migracji: brak funkcji na serwerze znaczy „pytania nieustawione”.
+
 ## 5. Synchronizacja
 
 ```

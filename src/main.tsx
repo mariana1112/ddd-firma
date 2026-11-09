@@ -2,8 +2,12 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { initViewScope } from './data/scope';
+import { captureAuthLink } from './lib/auth-link';
 import { startSyncRunner } from './data/sync/runner';
 import './styles.css';
+
+// Link z e-maila (reset hasła, zmiana adresu) przechwytujemy przed routerem.
+captureAuthLink();
 
 // Region konta musi być znany przed pierwszym wyświetleniem list (konto admina widzi tam tylko swój region).
 void initViewScope()

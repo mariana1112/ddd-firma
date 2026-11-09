@@ -23,6 +23,8 @@ const MESSAGES: Record<string, string> = {
   ORG_EXISTS: 'To konto ma już firmę.',
   NOT_AUTHENTICATED: 'Sesja wygasła. Zaloguj się ponownie.',
   NOT_PENDING: 'Ta prośba została już rozpatrzona.',
+  RECOVERY_PENDING: 'Najpierw odpowiedz na pytania pomocnicze (konto czeka na potwierdzenie po resecie hasła).',
+  BAD_ANSWERS: 'Każda odpowiedź musi mieć co najmniej 2 znaki.',
 };
 
 /** Komunikat po polsku dla błędu sieci, serwera lub logowania. */
@@ -31,6 +33,7 @@ export function describeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message ?? error);
   for (const [code, text] of Object.entries(MESSAGES)) if (message.includes(code)) return text;
   if (/invalid login credentials/i.test(message)) return 'Nieprawidłowy e-mail lub hasło.';
+  if (/could not find the function|PGRST202/i.test(message)) return 'Serwer nie ma jeszcze tej funkcji: trzeba wykonać migrację odzyskiwania konta admina.';
   if (/email not confirmed/i.test(message)) return 'Najpierw potwierdź adres linkiem z wiadomości e-mail, potem zaloguj się tutaj.';
   if (/already registered|already exists/i.test(message)) return 'Konto z tym adresem już istnieje. Zaloguj się.';
   if (/duplicate key/i.test(message)) return 'Taka nazwa już istnieje.';
@@ -152,6 +155,70 @@ export async function signIn(email: string, password: string): Promise<SignedIn>
   const { data, error } = await supabase().auth.signInWithPassword({ email, password });
   if (error || !data.user) fail(error ?? 'Brak użytkownika');
   return { userId: data.user.id, email: data.user.email ?? email, name: (data.user.user_metadata?.name as string | undefined) ?? '' };
+}
+
+// ---------- Konto admina: hasło, e-mail, odzyskiwanie ----------
+
+/** Zmiana hasła: najpierw sprawdzenie obecnego (ponowne logowanie tym samym kontem), potem nowe hasło. */
+export async function changePassword(email: string, current: string, next: string): Promise<void> {
+  await signIn(email, current);
+  const { error } = await supabase().auth.updateUser({ password: next });
+  if (error) fail(error);
+}
+
+/** Zmiana e-maila (loginu). Serwer wysyła link potwierdzający; do tego czasu działa dotychczasowy adres. */
+export async function changeEmail(email: string, redirectTo: string): Promise<void> {
+  const { error } = await supabase().auth.updateUser({ email }, { emailRedirectTo: redirectTo });
+  if (error) fail(error);
+}
+
+/** Wysyła link do ustawienia nowego hasła na adres konta. */
+export async function requestPasswordReset(email: string, redirectTo: string): Promise<void> {
+  const { error } = await supabase().auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) fail(error);
+}
+
+/** Sesja z linku do resetu hasła (tokeny z adresu). */
+export async function startRecoverySession(accessToken: string, refreshToken: string): Promise<SignedIn> {
+  const { data, error } = await supabase().auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+  if (error || !data.user) fail(error ?? 'Brak użytkownika');
+  return { userId: data.user.id, email: data.user.email ?? '', name: (data.user.user_metadata?.name as string | undefined) ?? '' };
+}
+
+export async function setNewPassword(password: string): Promise<void> {
+  const { error } = await supabase().auth.updateUser({ password });
+  if (error) fail(error);
+}
+
+export interface RecoveryStatus {
+  configured: boolean;
+  /** Ktoś prosił o reset hasła po ostatnim potwierdzeniu pytaniami: uprawnienia admina czekają na odpowiedzi. */
+  pending: boolean;
+  lockedUntil: string | null;
+}
+
+/** Serwer bez migracji odzyskiwania (funkcji jeszcze nie ma): pytania nieustawione, nic nie blokuje logowania. */
+function missingFunction(error: { message?: string; code?: string }): boolean {
+  return error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '');
+}
+
+export async function recoveryStatus(): Promise<RecoveryStatus> {
+  const { data, error } = await supabase().rpc('recovery_status');
+  if (error && missingFunction(error)) return { configured: false, pending: false, lockedUntil: null };
+  if (error) fail(error);
+  const row = data as { configured: boolean; pending: boolean; locked_until: string | null };
+  return { configured: row.configured, pending: row.pending, lockedUntil: row.locked_until };
+}
+
+export async function setRecoveryAnswers(answers: [string, string, string]): Promise<void> {
+  const { error } = await supabase().rpc('set_recovery_answers', { p_answers: answers });
+  if (error) fail(error);
+}
+
+export async function verifyRecoveryAnswers(answers: [string, string, string]): Promise<'ok' | 'zle' | 'blokada' | 'brak'> {
+  const { data, error } = await supabase().rpc('verify_recovery_answers', { p_answers: answers });
+  if (error) fail(error);
+  return data as 'ok' | 'zle' | 'blokada' | 'brak';
 }
 
 export async function currentUser(): Promise<SignedIn | null> {

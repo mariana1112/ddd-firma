@@ -99,6 +99,16 @@ admina** dodaje regiony i nadaje im prefiksy (np. GDA dla pomorskiego), a w „T
 usuwa ich z firmy i tworzy kod zaproszenia do wybranego regionu. Prefiks regionu trafia sam do każdego nowego zlecenia
 technika z tego regionu.
 
+**Login i hasło admina** nie są zapisane w aplikacji ani w repozytorium: sprawdza je Supabase Auth (hasło tylko jako
+skrót). W panelu admina, w „Login, hasło i pytania pomocnicze”, admin zmienia e-mail (z linkiem potwierdzającym), hasło
+(z podaniem obecnego, co najmniej 12 znaków) i odpowiedzi na trzy pytania pomocnicze (ulubiona gra, nazwisko panieńskie
+matki, imię pierwszego psa; wielkość liter bez znaczenia, na serwerze tylko skróty bcrypt).
+
+**Odzyskiwanie hasła admina**: „Nie pamiętam hasła” na ekranie logowania do panelu wysyła link na e-mail admina. Link
+otwiera w aplikacji ekran: najpierw pytania pomocnicze, potem nowe hasło. Pytania pilnuje serwer: po każdej prośbie
+o reset konto traci uprawnienia admina (widzi tylko swój region), dopóki ktoś nie odpowie poprawnie; po 5 błędnych
+odpowiedziach pytania blokują się na godzinę. Wymaga migracji `20261109000000_odzyskiwanie_admina.sql`.
+
 **Stałe logowanie**: urządzenie technika po dołączeniu zostaje zalogowane do swojego regionu i przy każdym uruchomieniu
 wchodzi od razu do niego. Technik nie ma przycisku wylogowania; region zmienia albo konto odłącza admin.
 
