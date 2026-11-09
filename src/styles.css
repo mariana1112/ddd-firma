@@ -2350,3 +2350,18 @@ a.btn.disabled {
   border-radius: 12px;
   background: var(--surface);
 }
+
+.copy-row .info-label {
+  flex: none;
+  font-size: 0.78rem;
+}
+
+.copy-hint {
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.card-hero .link {
+  color: inherit;
+  text-decoration: underline;
+}

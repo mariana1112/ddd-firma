@@ -60,7 +60,7 @@ export function CardPage() {
             <CopyRow label="Numer konta" value={formatAccount(company.bankAccount)} copyValue={company.bankAccount.replace(/\s/g, '')} />
           </>
         ) : (
-          <p className="field-hint group-pad">Brak numeru konta. Admin wpisuje go w Ustawieniach, w danych firmy.</p>
+          <p className="field-hint copy-hint">Brak numeru konta. Admin wpisuje go w Ustawieniach, w danych firmy.</p>
         )}
       </Group>
       {hasTransfer && (
@@ -73,7 +73,7 @@ export function CardPage() {
         {blik ? (
           <CopyRow label="Numer do BLIK-a" value={blik} copyValue={blik.replace(/\s/g, '')} />
         ) : (
-          <p className="field-hint group-pad">Brak numeru do BLIK-a. Admin wpisuje go w Ustawieniach.</p>
+          <p className="field-hint copy-hint">Brak numeru do BLIK-a. Admin wpisuje go w Ustawieniach.</p>
         )}
       </Group>
 
@@ -81,7 +81,7 @@ export function CardPage() {
         {phone ? (
           <CopyRow label="Numer technika" value={phone} copyValue={phone.replace(/\s/g, '')} />
         ) : (
-          <p className="field-hint group-pad">
+          <p className="field-hint copy-hint">
             Ustaw swój numer w <Link to="/ustawienia">Ustawieniach</Link>, w sekcji „Region i kody zleceń”.
           </p>
         )}
