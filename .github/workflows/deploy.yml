@@ -27,6 +27,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # Bez prawdziwego adresu serwera aplikacja nie zaloguje nikogo: zatrzymaj publikację z wartościami przykładowymi.
+      - name: Sprawdzenie konfiguracji serwera
+        run: |
+          case "$VITE_SUPABASE_URL" in
+            https://*.supabase.co) ;;
+            *) echo "VITE_SUPABASE_URL nie jest adresem projektu Supabase"; exit 1 ;;
+          esac
+          case "$VITE_SUPABASE_URL$VITE_SUPABASE_ANON_KEY" in
+            *TWOJ-PROJEKT*|*KLUCZ_PUBLISHABLE*|"") echo "Zmienne repozytorium mają wartości przykładowe"; exit 1 ;;
+          esac
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
       - run: npm run build
         env:
           # Zmienne repozytorium (Settings → Variables). Bez nich aplikacja działa tylko lokalnie.
