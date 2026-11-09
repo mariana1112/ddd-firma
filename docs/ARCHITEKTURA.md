@@ -129,6 +129,16 @@ prawdziwym kodzie, usuniętym po teście.
   z zakresem regionu z adresu. `data/company.ts` liczy raport każdego regionu, ranking (obrót, potem wynik gotówki)
   i tekst podsumowania firmy.
 
+### Kilka regionów na konto (migracja `20261110000000_regiony.sql`)
+
+- `member_branches`: regiony, do których konto ma dostęp; aktywny region to `memberships.branch_id`. `switch_branch`
+  przełącza aktywny region (technik tylko na swoje, admin na każdy), `join_with_invite` dodaje członkowi firmy kolejny
+  region kodem bez ponownej zgody admina, `delete_branch` i `remove_member_branch` są tylko dla admina.
+- Rekordy bez regionu (poza `meta`) widzi tylko admin (`private.can_see_record`).
+- Test SQL (cofany, 3 konta, 2 regiony): złe hasło przy kodzie odrzucone; technik z kodem do drugiego regionu ma 2 regiony,
+  widzi rekordy tylko aktywnego; technik bez dostępu nie przełączy się (FORBIDDEN) i nie usunie regionu; po usunięciu
+  regionu jego rekordy widzi tylko admin, a konta z tym aktywnym regionem przechodzą na inny swój albo żaden.
+
 ### Konto admina: zmiana danych i odzyskiwanie
 
 - Login i hasło admina obsługuje Supabase Auth; aplikacja ich nie przechowuje. Zmiana hasła wymaga obecnego hasła
