@@ -217,36 +217,48 @@ export function monthWeeks(r: Report): WeekPart[] {
   return weeks;
 }
 
+/**
+ * Wspólne nazwy we wszystkich rozliczeniach (dzień, tydzień, miesiąc), żeby nie było raz „Bliki”, raz „Blik”:
+ * formy płatności „Gotówka”, „Blik”, „Przelew”, premia „Premia”, sekcje „Dane szczegółowe … w tym:”.
+ */
+const LABEL: Record<PayMethod, string> = { gotowka: 'Gotówka', blik: 'Blik', przelew: 'Przelew' };
+
+/** „Gotówka - 1 100 zł”, „Blik - 800 zł”, „Przelew - 350 zł”. */
+const methodLines = (r: Report): string[] => PAY_METHODS.map((m) => `${LABEL[m]} - ${textPln(r.byMethod[m])}`);
+
+/** „Dane szczegółowe blik 800 zł w tym:”. */
+const detailTitle = (r: Report, m: PayMethod) => `Dane szczegółowe ${METHOD_NAMES[m]} ${textPln(r.byMethod[m])} w tym:`;
+
 /** Koszty razem z premią, każdy wiersz „Nazwa: kwota”. */
-function costBlock(r: Report, bonusLabel: string): string[] {
+function costBlock(r: Report): string[] {
   const total = r.costs + r.bonus;
   if (total === 0) return ['Koszty: brak'];
   const lines = [`Koszty ${textPln(total)} w tym:`];
-  if (r.bonus > 0) lines.push(`${bonusLabel}: ${textPln(r.bonus)}`);
+  if (r.bonus > 0) lines.push(`Premia: ${textPln(r.bonus)}`);
   for (const c of r.costLines) lines.push(`${c.name}: ${textPln(c.amount)}`);
   return lines;
 }
 
-function dailyText(r: Report): string[] {
-  const [y, m, d] = r.period.from.split('-');
+const resultLine = (r: Report, bossGenitive: string) => `Wynik gotówka dla ${bossGenitive} - ${textPln(r.cashForBoss)}`;
+
+function dailyText(r: Report, bossGenitive: string): string[] {
   const deductions = [
     ...(r.bonus > 0 ? [`-${textPln(r.bonus)} premia`] : []),
     ...r.costLines.map((c) => `-${textPln(c.amount)} ${c.name.toLowerCase()}`),
   ];
+  const [cash, ...others] = methodLines(r);
   const lines = [
-    `${d}.${m}.${y.slice(2)} i kwotę - ${textPln(r.turnover)}`,
-    `Gotówka ${textPln(r.byMethod.gotowka)}${deductions.length ? ` (${deductions.join(', ')}, czyli gotówki wychodzi ${textPln(r.cashForBoss)})` : ''}`,
+    `Obrót ${periodTitle(r)} - ${textPln(r.turnover)}`,
+    `${cash}${deductions.length ? ` (${deductions.join(', ')}, czyli gotówki wychodzi ${textPln(r.cashForBoss)})` : ''}`,
+    ...others,
+    '',
+    ...costBlock(r),
+    '',
+    resultLine(r, bossGenitive),
   ];
-  if (r.byMethod.blik > 0) lines.push(`Blik ${textPln(r.byMethod.blik)}`);
-  if (r.byMethod.przelew > 0) lines.push(`Przelew ${textPln(r.byMethod.przelew)}`);
-  const sections: Array<[PayMethod, string]> = [
-    ['gotowka', 'Dane szczegółowe gotówka w tym :'],
-    ['blik', 'Bliki w tym:'],
-    ['przelew', 'Przelewy w tym :'],
-  ];
-  for (const [method, title] of sections) {
+  for (const method of PAY_METHODS) {
     const paid = r.visits.filter(({ visit }) => visit.payMethod === method && visit.amount);
-    lines.push('', title);
+    lines.push('', detailTitle(r, method));
     if (paid.length === 0) lines.push('Brak');
     paid.forEach(({ visit, order }, i) => {
       const gross = order?.invoice === 'vat' ? ' brutto' : '';
@@ -257,20 +269,12 @@ function dailyText(r: Report): string[] {
 }
 
 function weeklyText(r: Report, bossGenitive: string): string[] {
-  const lines = [
-    `Obrót ${periodTitle(r)} - ${textPln(r.turnover)}`,
-    `Gotówka - ${textPln(r.byMethod.gotowka)}`,
-    `Blik - ${textPln(r.byMethod.blik)}`,
-    `Przelew - ${textPln(r.byMethod.przelew)}`,
-    '',
-    ...costBlock(r, 'Premia'),
-    '',
-    `Wynik gotówka dla ${bossGenitive} - ${textPln(r.cashForBoss)}`,
-  ];
+  const lines = [`Obrót ${periodTitle(r)} - ${textPln(r.turnover)}`, ...methodLines(r), '', ...costBlock(r), '', resultLine(r, bossGenitive)];
   for (const method of PAY_METHODS) {
-    if (r.byMethod[method] === 0) continue;
-    lines.push('', `Dane szczegółowe ${METHOD_NAMES[method]} ${textPln(r.byMethod[method])} w tym :`);
-    for (const day of r.days) if (day[method] > 0) lines.push(`${WEEKDAYS[weekday(day.date)]} - ${textPln(day[method])}`);
+    lines.push('', detailTitle(r, method));
+    const days = r.days.filter((day) => day[method] > 0);
+    if (days.length === 0) lines.push('Brak');
+    for (const day of days) lines.push(`${WEEKDAYS[weekday(day.date)]} - ${textPln(day[method])}`);
   }
   return lines;
 }
@@ -278,24 +282,17 @@ function weeklyText(r: Report, bossGenitive: string): string[] {
 function monthlyText(r: Report, bossGenitive: string): string[] {
   const month = formatMonth(monthOf(r.period.from));
   const lines = [
-    `Obrót miesiąca: ${month.charAt(0).toUpperCase()}${month.slice(1)} - ${textPln(r.turnover)}`,
-    `Gotówka ${textPln(r.byMethod.gotowka)}`,
-    `Bliki ${textPln(r.byMethod.blik)}`,
-    `Przelewy ${textPln(r.byMethod.przelew)}`,
+    `Obrót miesiąca ${month.charAt(0).toUpperCase()}${month.slice(1)} - ${textPln(r.turnover)}`,
+    ...methodLines(r),
     '',
-    ...costBlock(r, 'Premie'),
+    ...costBlock(r),
     '',
-    `Wynik gotówka dla ${bossGenitive} (gotówka minus koszty) ${textPln(r.cashForBoss)}`,
+    resultLine(r, bossGenitive),
   ];
   const weeks = monthWeeks(r);
-  const sections: Array<[PayMethod, string]> = [
-    ['gotowka', `Dane szczegółowe gotówka ${textPln(r.byMethod.gotowka)} w tym :`],
-    ['blik', `Bliki ${textPln(r.byMethod.blik)} w tym :`],
-    ['przelew', `Przelewy ${textPln(r.byMethod.przelew)} w tym :`],
-  ];
-  for (const [method, title] of sections) {
-    lines.push('', title);
-    weeks.forEach((w, i) => lines.push(`Tydzień ${i + 1} (${shortDate(w.from)} - ${shortDate(w.to)}) kwota ${textPln(w.byMethod[method])}`));
+  for (const method of PAY_METHODS) {
+    lines.push('', detailTitle(r, method));
+    weeks.forEach((w, i) => lines.push(`Tydzień ${i + 1} (${shortDate(w.from)} - ${shortDate(w.to)}) - ${textPln(w.byMethod[method])}`));
   }
   return lines;
 }
@@ -308,7 +305,7 @@ function monthlyText(r: Report, bossGenitive: string): string[] {
 export function reportText(r: Report, names: { technician: string; bossGenitive: string }): string {
   const lines =
     r.period.kind === 'dzien'
-      ? dailyText(r)
+      ? dailyText(r, names.bossGenitive)
       : r.period.kind === 'tydzien'
         ? weeklyText(r, names.bossGenitive)
         : monthlyText(r, names.bossGenitive);

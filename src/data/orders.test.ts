@@ -298,18 +298,18 @@ describe('raporty', () => {
       '',
       'Wynik gotówka dla Piotrka - 2 240 zł',
       '',
-      'Dane szczegółowe gotówka 2 300 zł w tym :',
+      'Dane szczegółowe gotówka 2 300 zł w tym:',
       'Pn - 350 zł',
       'Wt - 1 300 zł',
       'Śr - 400 zł',
       'Cz - 250 zł',
       '',
-      'Dane szczegółowe blik 2 010 zł w tym :',
+      'Dane szczegółowe blik 2 010 zł w tym:',
       'Pn - 850 zł',
       'Śr - 810 zł',
       'Cz - 350 zł',
       '',
-      'Dane szczegółowe przelew 1 038 zł w tym :',
+      'Dane szczegółowe przelew 1 038 zł w tym:',
       'Pn - 738 zł',
       'Śr - 300 zł',
     ]);
@@ -338,20 +338,25 @@ describe('raporty', () => {
 
     const report = buildReport(periodOf('dzien', '2026-10-14'), await all());
     expect(reportText(report, names).split('\n')).toEqual([
-      '14.10.26 i kwotę - 2 250 zł',
-      'Gotówka 1 100 zł (-51 zł paliwo, czyli gotówki wychodzi 1 049 zł)',
-      'Blik 800 zł',
-      'Przelew 350 zł',
+      'Obrót dnia 14.10.26r. - 2 250 zł',
+      'Gotówka - 1 100 zł (-51 zł paliwo, czyli gotówki wychodzi 1 049 zł)',
+      'Blik - 800 zł',
+      'Przelew - 350 zł',
       '',
-      'Dane szczegółowe gotówka w tym :',
+      'Koszty 51 zł w tym:',
+      'Paliwo: 51 zł',
+      '',
+      'Wynik gotówka dla Piotrka - 1 049 zł',
+      '',
+      'Dane szczegółowe gotówka 1 100 zł w tym:',
       '1. 700 zł, Janusza Korczaka 11, 82-500 Kwidzyn',
       '2. 400 zł, aleja Rzeczypospolitej 4C, 80-369 Gdańsk',
       '',
-      'Bliki w tym:',
+      'Dane szczegółowe blik 800 zł w tym:',
       '1. 400 zł, Konrada Guderskiego 55, 80-180 Gdańsk',
       '2. 400 zł, Lubomira Szopińskiego 3A, 80-766 Gdańsk',
       '',
-      'Przelewy w tym :',
+      'Dane szczegółowe przelew 350 zł w tym:',
       '1. 350 zł, Aleja Generała Józefa Hallera 115, 80-416 Gdańsk',
     ]);
   });
@@ -360,8 +365,8 @@ describe('raporty', () => {
     await paid('2026-10-12', '09:00', 'gotowka', 40000, { street: 'Morska', houseNo: '176', postalCode: '81-222', city: 'Gdynia' });
     await paid('2026-10-12', '12:00', 'przelew', 55350, { street: 'Morenowe Wzgórze', houseNo: '18', postalCode: '80-283', city: 'Gdańsk', invoice: 'vat' });
     const lines = reportText(buildReport(periodOf('dzien', '2026-10-12'), await all()), names).split('\n');
-    expect(lines.slice(0, 3)).toEqual(['12.10.26 i kwotę - 953,5 zł', 'Gotówka 400 zł', 'Przelew 553,5 zł']);
-    expect(lines[lines.indexOf('Bliki w tym:') + 1]).toBe('Brak');
+    expect(lines.slice(0, 4)).toEqual(['Obrót dnia 12.10.26r. - 953,5 zł', 'Gotówka - 400 zł', 'Blik - 0 zł', 'Przelew - 553,5 zł']);
+    expect(lines[lines.indexOf('Dane szczegółowe blik 0 zł w tym:') + 1]).toBe('Brak');
     expect(lines.at(-1)).toBe('1. 553,5 zł brutto, Morenowe Wzgórze 18, 80-283 Gdańsk');
   });
 
@@ -383,39 +388,39 @@ describe('raporty', () => {
     const report = buildReport(periodOf('miesiac', '2026-10-15'), await all());
     expect(report.cashForBoss).toBe(40000 + 380000 + 310000 + 365000 - 120000 - 5100 - 10050 - 20000);
     expect(reportText(report, names).split('\n')).toEqual([
-      'Obrót miesiąca: Październik 2026 - 14 952 zł',
-      'Gotówka 10 950 zł',
-      'Bliki 3 510 zł',
-      'Przelewy 492 zł',
+      'Obrót miesiąca Październik 2026 - 14 952 zł',
+      'Gotówka - 10 950 zł',
+      'Blik - 3 510 zł',
+      'Przelew - 492 zł',
       '',
       'Koszty 1 551,5 zł w tym:',
-      'Premie: 200 zł',
+      'Premia: 200 zł',
       'Zaliczka: 1 200 zł',
       'Paliwo: 51 zł',
       'Utrzymanie auta: 100,5 zł',
       '',
-      'Wynik gotówka dla Piotrka (gotówka minus koszty) 9 398,5 zł',
+      'Wynik gotówka dla Piotrka - 9 398,5 zł',
       '',
-      'Dane szczegółowe gotówka 10 950 zł w tym :',
-      'Tydzień 1 (01.10.26r. - 02.10.26r.) kwota 400 zł',
-      'Tydzień 2 (05.10.26r. - 07.10.26r.) kwota 3 800 zł',
-      'Tydzień 3 (14.10.26r. - 14.10.26r.) kwota 3 100 zł',
-      'Tydzień 4 (20.10.26r. - 21.10.26r.) kwota 0 zł',
-      'Tydzień 5 (27.10.26r. - 29.10.26r.) kwota 3 650 zł',
+      'Dane szczegółowe gotówka 10 950 zł w tym:',
+      'Tydzień 1 (01.10.26r. - 02.10.26r.) - 400 zł',
+      'Tydzień 2 (05.10.26r. - 07.10.26r.) - 3 800 zł',
+      'Tydzień 3 (14.10.26r. - 14.10.26r.) - 3 100 zł',
+      'Tydzień 4 (20.10.26r. - 21.10.26r.) - 0 zł',
+      'Tydzień 5 (27.10.26r. - 29.10.26r.) - 3 650 zł',
       '',
-      'Bliki 3 510 zł w tym :',
-      'Tydzień 1 (01.10.26r. - 02.10.26r.) kwota 0 zł',
-      'Tydzień 2 (05.10.26r. - 07.10.26r.) kwota 1 500 zł',
-      'Tydzień 3 (14.10.26r. - 14.10.26r.) kwota 0 zł',
-      'Tydzień 4 (20.10.26r. - 21.10.26r.) kwota 0 zł',
-      'Tydzień 5 (27.10.26r. - 29.10.26r.) kwota 2 010 zł',
+      'Dane szczegółowe blik 3 510 zł w tym:',
+      'Tydzień 1 (01.10.26r. - 02.10.26r.) - 0 zł',
+      'Tydzień 2 (05.10.26r. - 07.10.26r.) - 1 500 zł',
+      'Tydzień 3 (14.10.26r. - 14.10.26r.) - 0 zł',
+      'Tydzień 4 (20.10.26r. - 21.10.26r.) - 0 zł',
+      'Tydzień 5 (27.10.26r. - 29.10.26r.) - 2 010 zł',
       '',
-      'Przelewy 492 zł w tym :',
-      'Tydzień 1 (01.10.26r. - 02.10.26r.) kwota 492 zł',
-      'Tydzień 2 (05.10.26r. - 07.10.26r.) kwota 0 zł',
-      'Tydzień 3 (14.10.26r. - 14.10.26r.) kwota 0 zł',
-      'Tydzień 4 (20.10.26r. - 21.10.26r.) kwota 0 zł',
-      'Tydzień 5 (27.10.26r. - 29.10.26r.) kwota 0 zł',
+      'Dane szczegółowe przelew 492 zł w tym:',
+      'Tydzień 1 (01.10.26r. - 02.10.26r.) - 492 zł',
+      'Tydzień 2 (05.10.26r. - 07.10.26r.) - 0 zł',
+      'Tydzień 3 (14.10.26r. - 14.10.26r.) - 0 zł',
+      'Tydzień 4 (20.10.26r. - 21.10.26r.) - 0 zł',
+      'Tydzień 5 (27.10.26r. - 29.10.26r.) - 0 zł',
     ]);
   });
 

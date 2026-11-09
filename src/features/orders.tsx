@@ -349,7 +349,10 @@ export function OrderDetailPage() {
       )}
 
       <Group title="Zabiegi" action={<NextVisitPill state={next} />}>
-        {data.visits.map((v) => (
+        {/* Tylko zabiegi poprzednie i aktualny; nieumówione kolejne pokazuje skrót przy nagłówku. */}
+        {data.visits
+          .filter((v) => v.id === current?.id || !(v.status === 'zaplanowany' && !v.start && v.seq > 1))
+          .map((v) => (
           <Row
             key={v.id}
             to={`/zabieg/${v.id}`}
@@ -370,14 +373,6 @@ export function OrderDetailPage() {
             }
           />
         ))}
-        {next.kind === 'nieumowiony' && (
-          <Row
-            className="row-pending"
-            title={`Zabieg ${roman(next.seq)} · ${visitCode(order, next.seq)}`}
-            sub="Jeszcze nieumówiony. Jeśli będzie potrzebny, umówisz go przy zakończeniu zabiegu albo przyciskiem niżej."
-            trailing={<Badge tone="muted">Nieumówiony</Badge>}
-          />
-        )}
       </Group>
       <button type="button" className="btn btn-block" onClick={() => setScheduling(true)}>
         <Icon name="calendar" /> Umów kolejny zabieg
