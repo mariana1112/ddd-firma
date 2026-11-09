@@ -20,7 +20,7 @@ zaszyfrowane.
   i wrzuca go do **Pilnych** (Pulpit i filtr na liście zleceń), dopóki płatność nie zostanie uzupełniona.
 - **Odwołanie**: zabieg („Odwołaj zabieg”) albo całe zlecenie („Odwołaj zlecenie”) trafia do **archiwum** (filtr na
   liście zleceń), skąd można je przywrócić; trwałe usunięcie idzie dalej przez kosz.
-- **Nawigacja**: „Nawiguj” daje wybór mapy (na iPhonie aplikacja Google Maps, Apple Mapy, Waze), z pełnym adresem,
+- **Nawigacja**: „Nawiguj” daje wybór mapy (na iPhonie aplikacja Google Maps i Apple Mapy), z pełnym adresem,
   kodem i krajem. Przy adresie można sprawdzić adres w Google Maps i wkleić link do miejsca; wtedy nawigacja prowadzi
   dokładnie tam. Formularz (także edycja) zapamiętuje dane, więc wyjście do map ich nie gubi.
 - **Wizytówka** (kafelek na Pulpicie i Więcej): dane do przelewu (odbiorca, NIP, numer konta), numer do BLIK-a i numer
