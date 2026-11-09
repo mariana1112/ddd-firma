@@ -9,7 +9,7 @@ import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type Period
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
 import { COMPANY_NAME, getDataKey, getRegions, getSyncState, saveRegions, setSyncState, type RegionInfo } from '../data/settings';
-import { RegionSwitcher } from './regions';
+import { enterRegion } from './regions';
 import type { SyncState } from '../data/types';
 import { todayWarsaw } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
@@ -336,48 +336,6 @@ function useRegions(state: SyncState | null | undefined) {
   return { regions, members, loaded: saved !== undefined, online: server !== null, savePrefix, createRegion, deleteRegion };
 }
 
-function PrefixEditor(props: {
-  region: RegionRef;
-  members: number;
-  active: boolean;
-  onSave: (prefix: string) => void;
-  onCode: () => void;
-  onDelete: () => void;
-}) {
-  const [prefix, setPrefix] = useState(props.region.prefix);
-  useEffect(() => setPrefix(props.region.prefix), [props.region.prefix]);
-  return (
-    <div className="region-edit">
-      <div className="region-edit-name">
-        <strong>
-          {props.region.name} {props.active && <Badge tone="ok">Twój aktywny</Badge>}
-        </strong>
-        <span className="row-sub">Konta: {props.members}</span>
-        <span className="region-actions">
-          <button type="button" className="link" onClick={props.onCode}>
-            Kod dla osoby
-          </button>
-          <button type="button" className="link link-danger" onClick={props.onDelete}>
-            Usuń region
-          </button>
-        </span>
-      </div>
-      <input
-        className="input-short"
-        value={prefix}
-        maxLength={PREFIX_MAX}
-        placeholder="Prefiks"
-        aria-label={`Prefiks regionu ${props.region.name}`}
-        autoCapitalize="characters"
-        onChange={(e) => setPrefix(normalizePrefix(e.target.value))}
-      />
-      <button type="button" className="btn btn-sm" disabled={prefix === props.region.prefix} onClick={() => props.onSave(prefix)}>
-        Zapisz
-      </button>
-    </div>
-  );
-}
-
 function NewRegionForm(props: { disabled: boolean; onCreate: (name: string, prefix: string) => Promise<unknown> }) {
   const [name, setName] = useState('');
   const [prefix, setPrefix] = useState('');
@@ -437,7 +395,7 @@ type MemberRow = {
  * Wszystkie konta firmy: kto czeka na zgodę, kto pracuje, kto jest zawieszony. Admin przyjmuje, zawiesza (konto zostaje,
  * ale nie widzi danych), przywraca i usuwa konta. Siebie zawiesić ani usunąć nie można.
  */
-function MembersSection(props: { state: SyncState; regions: RegionRef[] }) {
+function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionId?: string }) {
   const { confirm, run, toast } = useFeedback();
   const [members, setMembers] = useState<MemberRow[] | null>(null);
   const [access, setAccess] = useState<Array<{ userId: string; branchId: string }>>([]);
@@ -492,13 +450,16 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[] }) {
     await act(async () => (await supabaseApi()).suspendMember(props.state.orgId, m.userId, on), on ? 'Konto zawieszone' : 'Konto przywrócone');
   };
 
-  const sorted = [...(members ?? [])].sort(
+  const inRegion = (m: MemberRow) =>
+    !props.regionId || m.branchId === props.regionId || access.some((a) => a.userId === m.userId && a.branchId === props.regionId);
+  const sorted = [...(members ?? [])].filter(inRegion).sort(
     (a, b) => Number(a.approved) - Number(b.approved) || Number(Boolean(b.suspended)) - Number(Boolean(a.suspended)) || label(a).localeCompare(label(b), 'pl'),
   );
 
   return (
-    <Group title={`Zarejestrowane konta${members ? ` (${members.length})` : ''}`}>
+    <Group title={`${props.regionId ? 'Konta w regionie' : 'Wszystkie konta'}${members ? ` (${sorted.length})` : ''}`}>
       {members === null && <p className="field-hint group-pad">Lista kont wymaga internetu.</p>}
+      {members && sorted.length === 0 && <p className="field-hint group-pad">Nikogo tu jeszcze nie ma. Wygeneruj kod poniżej.</p>}
       {sorted.map((m) => {
         const self = m.userId === props.state.userId;
         return (
@@ -575,16 +536,13 @@ let rememberedCompanyPassword = '';
  * i wpisuje kod; ten sam kod działa też na nowym telefonie osoby, która już ma konto. Hasło firmy jest potrzebne,
  * bo kod niesie klucz szyfrowania firmy; nie trafia na serwer.
  */
-function CodesSection(props: { state: SyncState; regions: RegionRef[]; preset: string | null }) {
+function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegion?: RegionRef }) {
   const { run } = useFeedback();
-  const [target, setTarget] = useState('');
+  const [target, setTarget] = useState(props.fixedRegion?.id ?? '');
   const [companyPassword, setCompanyPassword] = useState(rememberedCompanyPassword);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CodeResult | null>(null);
 
-  useEffect(() => {
-    if (props.preset) setTarget(props.preset);
-  }, [props.preset]);
 
   useEffect(() => {
     void getAdminSecrets().then((saved) => {
@@ -626,16 +584,17 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; preset: s
             'Działa raz, ważny 14 dni.',
           ].join('\n'),
         });
-        setTarget('');
+        if (!props.fixedRegion) setTarget('');
       } finally {
         setBusy(false);
       }
     });
 
   return (
-    <Group title="Kody dla nowych osób">
+    <Group title={props.fixedRegion ? 'Kod dla nowej osoby w regionie' : 'Kody dla nowych osób'}>
       <div className="form group-pad" id="kody">
         <p className="field-hint">Osoba sama zakłada konto swoim e-mailem i hasłem i wpisuje kod. Bez kodu konta nie założy.</p>
+        {!props.fixedRegion && (
         <Field label="Region">
           <select value={target} onChange={(e) => setTarget(e.target.value)}>
             <option value="">Wybierz</option>
@@ -647,6 +606,7 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; preset: s
             <option value={ADMIN_TARGET}>Admin (wszystkie regiony)</option>
           </select>
         </Field>
+        )}
         <Field label="Hasło firmy (szyfrowania)" hint="Nie trafia na serwer. Aplikacja pamięta je do zamknięcia.">
           <input type="password" autoComplete="off" value={companyPassword} onChange={(e) => setCompanyPassword(e.target.value)} />
         </Field>
@@ -776,18 +736,56 @@ const periodName = (p: Period) => {
   return `${d(p.from)} – ${d(p.to)}`;
 };
 
+/** Ustawienia jednego regionu: prefiks, wejście na tym telefonie, usunięcie. */
+function RegionSettings(props: {
+  region: RegionRef;
+  active: boolean;
+  onSavePrefix: (prefix: string) => void;
+  onEnter: () => void;
+  onDelete: () => void;
+}) {
+  const [prefix, setPrefix] = useState(props.region.prefix);
+  useEffect(() => setPrefix(props.region.prefix), [props.region.prefix]);
+  return (
+    <Group title="Ustawienia regionu">
+      <form
+        className="form group-pad"
+        onSubmit={(e) => {
+          e.preventDefault();
+          props.onSavePrefix(prefix);
+        }}
+      >
+        <Field label="Prefiks numerów zleceń" hint={`Np. ${prefix || 'GDA'}-0042. Litery, do ${PREFIX_MAX} znaków.`}>
+          <input
+            value={prefix}
+            maxLength={PREFIX_MAX}
+            placeholder="GDA"
+            autoCapitalize="characters"
+            onChange={(e) => setPrefix(normalizePrefix(e.target.value))}
+          />
+        </Field>
+        <button type="submit" className="btn btn-block" disabled={prefix === props.region.prefix}>
+          Zapisz prefiks
+        </button>
+      </form>
+      {props.active ? (
+        <p className="field-hint group-pad">Ten telefon pracuje w tym regionie.</p>
+      ) : (
+        <Row icon="building" title="Pracuj w tym regionie na tym telefonie" sub="Zlecenia, kalendarz i raporty pokażą ten region" onClick={props.onEnter} />
+      )}
+      <Row icon="close" title="Usuń region" sub="Zlecenia zostaną bez regionu, widoczne tylko dla admina" onClick={props.onDelete} />
+    </Group>
+  );
+}
+
 export function AdminPage() {
   const gate = useAdminGate();
   const { share } = useContactActions();
-  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
   const region = params.get('region') ?? 'all';
   const [kind, setKind] = useState<PeriodKind>('tydzien');
   const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
-  const [codeFor, setCodeFor] = useState<string | null>(null);
-  const showCodes = (branchId: string) => {
-    setCodeFor(branchId);
-    window.setTimeout(() => document.getElementById('kody')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-  };
   const { confirm, run, toast } = useFeedback();
   const regionsApi = useRegions(gate.state);
   // Dane całej firmy, bez filtra regionu z ekranów technika.
@@ -811,31 +809,22 @@ export function AdminPage() {
   }
   if (!data || !regionsApi.loaded) return <Loading />;
 
+  const state = gate.state;
   const own = getOwnBranch();
   const ranking = regionRanking(period, data, regionsApi.regions, own);
   const total = buildReport(period, data);
   const selected = regionsApi.regions.find((r) => r.id === region);
   const report = selected ? buildReport(period, regionData(data, selected.id, own)) : total;
-  const setRegion = (id: string) => setParams(id === 'all' ? {} : { region: id }, { replace: true });
-  const scoped = (path: string) => `/admin/${path}${region === 'all' ? '' : `?region=${region}`}`;
+  // Wejście do regionu dodaje krok w historii, więc „wstecz” wraca do listy regionów.
+  const openRegion = (id: string) => navigate(`/admin?region=${id}`);
+  const scoped = (path: string) => `/admin/${path}${selected ? `?region=${selected.id}` : ''}`;
   const changeKind = (k: PeriodKind) => {
     setKind(k);
     setPeriod(periodOf(k, todayWarsaw()));
   };
 
-  return (
-    <Page title="Panel admina" back="/wiecej">
-      <div className="chips" role="group" aria-label="Region">
-        <button type="button" className={region === 'all' ? 'chip active' : 'chip'} aria-pressed={region === 'all'} onClick={() => setRegion('all')}>
-          Cała firma
-        </button>
-        {regionsApi.regions.map((r) => (
-          <button key={r.id} type="button" className={region === r.id ? 'chip active' : 'chip'} aria-pressed={region === r.id} onClick={() => setRegion(r.id)}>
-            {regionLabel(r)}
-          </button>
-        ))}
-      </div>
-
+  const periodBlock = (
+    <>
       <div className="chips" role="group" aria-label="Okres">
         {(
           [
@@ -857,7 +846,6 @@ export function AdminPage() {
           <Icon name="chevron" />
         </button>
       </div>
-
       <div className="stats">
         <Stat label="Obrót" value={formatPln(report.turnover)} />
         <Stat label="Zabiegi" value={String(report.visits.length)} />
@@ -866,60 +854,86 @@ export function AdminPage() {
         <Stat label="Km służbowo" value={`${report.km.sluzbowy} km`} />
         <Stat label="Km prywatnie" value={`${report.km.prywatny} km`} />
       </div>
+    </>
+  );
 
-      {region === 'all' && (
-        <Group
-          title="Ranking regionów (obrót)"
-          action={
+  const screens = (
+    <Group title={selected ? 'Praca w regionie' : 'Cała firma'}>
+      <Row to={scoped('zlecenia')} icon="clipboard" title="Zlecenia" sub="Lista, wyszukiwanie, szczegóły" />
+      <Row to={scoped('kalendarz')} icon="calendar" title="Kalendarz" sub="Zabiegi wszystkich techników" />
+      <Row to={scoped('raporty')} icon="chart" title="Raporty" sub="Dzień, tydzień, miesiąc, PDF" />
+      <Row to={scoped('kilometry')} icon="car" title="Kilometrówka" sub="Przejazdy i wydruk ewidencji" />
+      <Row to={scoped('koszty')} icon="receipt" title="Koszty" sub={selected ? 'Koszty techników z regionu' : 'Koszty wszystkich techników'} />
+    </Group>
+  );
+
+  // ---------- Jeden region: wszystko o nim w jednym miejscu ----------
+  if (selected) {
+    return (
+      <Page title={`Region ${regionLabel(selected)}`} back="/admin">
+        <button type="button" className="btn btn-block" onClick={() => navigate('/admin')}>
+          <Icon name="back" /> Wszystkie regiony
+        </button>
+        {periodBlock}
+        {screens}
+        <MembersSection state={state} regions={regionsApi.regions} regionId={selected.id} />
+        <CodesSection state={state} regions={regionsApi.regions} fixedRegion={selected} />
+        <RegionSettings
+          region={selected}
+          active={state.branchId === selected.id}
+          onSavePrefix={(prefix) => void regionsApi.savePrefix(selected.id, selected.name, prefix)}
+          onEnter={() =>
+            void run(async () => {
+              await enterRegion(state, selected);
+              toast(`Ten telefon pracuje teraz w regionie ${selected.name}`);
+            })
+          }
+          onDelete={async () => {
+            const ok = await confirm({
+              title: `Usunąć region ${selected.name}?`,
+              message:
+                'Konta stracą dostęp do tego regionu, a kody do niego przestaną działać. Zlecenia regionu zostaną bez regionu i będzie je widział tylko admin.',
+              confirmLabel: 'Usuń region',
+              danger: true,
+            });
+            if (!ok) return;
+            await regionsApi.deleteRegion(selected.id);
+            navigate('/admin', { replace: true });
+          }}
+        />
+      </Page>
+    );
+  }
+
+  // ---------- Cała firma: lista regionów ----------
+  return (
+    <Page title="Panel admina" back="/wiecej">
+      {periodBlock}
+
+      <Group
+        title="Regiony"
+        action={
+          ranking.length > 0 ? (
             <button type="button" className="link" onClick={() => void share(companyText(total, ranking), 'Podsumowanie firmy')}>
               Wyślij podsumowanie
             </button>
-          }
-        >
-          {ranking.length === 0 && <Empty title="Brak regionów" />}
-          {ranking.map((r, i) => (
-            <Row
-              key={r.id || 'bez'}
-              onClick={r.id ? () => setRegion(r.id) : undefined}
-              lead={<span className={`rank rank-${Math.min(i + 1, 4)}`}>{i + 1}</span>}
-              title={regionLabel(r)}
-              sub={`Zabiegi: ${r.visits} · koszty ${formatPln(r.report.costs + r.report.bonus)} · ${r.report.km.sluzbowy + r.report.km.prywatny} km`}
-              meta={`Wynik gotówka ${formatPln(r.report.cashForBoss)}`}
-              trailing={<strong className="num">{formatPln(r.report.turnover)}</strong>}
-            />
-          ))}
-        </Group>
-      )}
-
-      <Group title={selected ? `Region ${regionLabel(selected)}` : 'Cała firma'}>
-        <Row to={scoped('zlecenia')} icon="clipboard" title="Zlecenia" sub="Lista, wyszukiwanie, szczegóły" />
-        <Row to={scoped('kalendarz')} icon="calendar" title="Kalendarz" sub="Zabiegi wszystkich techników" />
-        <Row to={scoped('raporty')} icon="chart" title="Raporty" sub="Dzień, tydzień, miesiąc w formacie technika, PDF" />
-        <Row to={scoped('kilometry')} icon="car" title="Kilometrówka" sub="Przejazdy i wydruk ewidencji" />
-        <Row to={scoped('koszty')} icon="receipt" title="Koszty" sub="Koszty techników z regionu" />
-      </Group>
-
-      <Group title="Regiony i prefiksy">
+          ) : undefined
+        }
+      >
         {!regionsApi.online && <p className="field-hint group-pad">Bez internetu: lista z ostatniego połączenia, dodawanie regionów niedostępne.</p>}
-        {regionsApi.regions.length === 0 && <p className="field-hint group-pad">Nie ma jeszcze żadnego regionu.</p>}
-        {regionsApi.regions.map((r) => (
-          <PrefixEditor
-            key={r.id}
-            region={r}
-            members={regionsApi.members[r.id] ?? 0}
-            active={gate.state?.branchId === r.id}
-            onSave={(prefix) => void regionsApi.savePrefix(r.id, r.name, prefix)}
-            onCode={() => showCodes(r.id)}
-            onDelete={async () => {
-              const ok = await confirm({
-                title: `Usunąć region ${r.name}?`,
-                message:
-                  'Konta stracą dostęp do tego regionu, a kody do niego przestaną działać. Zlecenia regionu zostaną bez regionu i będzie je widział tylko admin.',
-                confirmLabel: 'Usuń region',
-                danger: true,
-              });
-              if (ok) await regionsApi.deleteRegion(r.id);
-            }}
+        {ranking.length === 0 && <Empty title="Nie ma jeszcze żadnego regionu" />}
+        {ranking.map((r, i) => (
+          <Row
+            key={r.id || 'bez'}
+            onClick={r.id ? () => openRegion(r.id) : undefined}
+            lead={<span className={`rank rank-${Math.min(i + 1, 4)}`}>{i + 1}</span>}
+            title={
+              <>
+                {regionLabel(r)} {state.branchId === r.id && <Badge tone="ok">Ten telefon</Badge>}
+              </>
+            }
+            sub={`Konta: ${regionsApi.members[r.id] ?? 0} · zabiegi: ${r.visits} · wynik gotówka ${formatPln(r.report.cashForBoss)}`}
+            trailing={<strong className="num">{formatPln(r.report.turnover)}</strong>}
           />
         ))}
         <NewRegionForm
@@ -927,26 +941,25 @@ export function AdminPage() {
           onCreate={(name, prefix) =>
             run(async () => {
               const created = await regionsApi.createRegion(name, prefix);
-              toast(`Region ${created.name} utworzony. Wygeneruj kod dla osoby z regionu.`);
-              showCodes(created.id);
+              toast(`Region ${created.name} utworzony. Wygeneruj w nim kod dla nowej osoby.`);
+              openRegion(created.id);
             })
           }
         />
-        <Row to="/oddzialy" icon="users" title="Technicy" sub="Przenoszenie między regionami, obrót techników" />
       </Group>
 
-      {gate.state && <MembersSection state={gate.state} regions={regionsApi.regions} />}
+      {screens}
 
-      {gate.state && <CodesSection state={gate.state} regions={regionsApi.regions} preset={codeFor} />}
+      <MembersSection state={state} regions={regionsApi.regions} />
 
-      {gate.state && <SavedPasswordsSection state={gate.state} />}
+      <CodesSection state={state} regions={regionsApi.regions} />
 
-      {gate.state && <RegionSwitcher state={gate.state} />}
+      <SavedPasswordsSection state={state} />
 
       <Group title="Firma">
         <Row to="/ustawienia" icon="gear" title="Ustawienia firmy" sub="Premia, zalecenia, SMS, dane do kilometrówki" />
         <Row to="/admin/bezpieczenstwo" icon="gear" title="Login, hasło i pytania pomocnicze" sub="Zmiana danych logowania do panelu i odzyskiwania" />
-        <Row to="/konto" icon="users" title="Konto admina" sub="Synchronizacja i wylogowanie" />
+        <Row to="/konto" icon="users" title="Konto admina" sub="Synchronizacja i regiony tego telefonu" />
       </Group>
     </Page>
   );

@@ -137,8 +137,7 @@ działa dla osoby, która już ma konto: na nowym telefonie (logowanie i kod) al
 kodu zna serwer, kolejne 8 odwija klucz firmy tylko na telefonie, więc szyfrowanie end-to-end zostaje. Wymaga migracji
 `20261114000000_kody_rejestracji.sql` i funkcji serwera `supabase/functions/konta` (akcja `register`).
 
-**Regiony w panelu admina**: „Utwórz region” tworzy region z prefiksem, a „Kod dla osoby” przy regionie przygotowuje
-kod do niego. Jeden e-mail może należeć do kilku regionów: członek firmy dołącza do kolejnego regionu samym kodem
+**Regiony w panelu admina**: panel zaczyna się listą regionów (ranking obrotu). Kliknięcie w region otwiera jego ekran ze wszystkim w jednym miejscu: wyniki, zlecenia, kalendarz, raporty, konta w regionie, kod dla nowej osoby, prefiks, praca w regionie na tym telefonie i usunięcie regionu. „Wszystkie regiony” albo strzałka wstecz wraca do listy. Jeden e-mail może należeć do kilku regionów: członek firmy dołącza do kolejnego regionu samym kodem
 w „Konto → Regiony tego konta” i tam przełącza aktywny region. Admin może wejść do
 każdego regionu, wygenerować nowy kod albo usunąć region (jego zlecenia widzi wtedy tylko admin). Wymaga migracji
 `20261110000000_regiony.sql`.
