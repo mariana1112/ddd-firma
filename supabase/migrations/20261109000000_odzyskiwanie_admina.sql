@@ -19,6 +19,7 @@ create table private.recovery_answers (
   locked_until timestamptz
 );
 
+alter table private.recovery_answers enable row level security;
 revoke all on private.recovery_answers from public, anon, authenticated;
 
 create function private.norm_answer(p_answer text)

@@ -142,6 +142,9 @@ prawdziwym kodzie, usuniętym po teście.
   przejęta skrzynka e-mail nie daje dostępu do całej firmy. Pytań nie da się zmienić w czasie takiej blokady.
   Po potwierdzeniu urządzenie pobiera dane od nowa (w czasie blokady widziało tylko swój region).
 - Aplikacja działa też przed wykonaniem migracji: brak funkcji na serwerze znaczy „pytania nieustawione”.
+- Test SQL z tymczasowymi kontami (cofany): za krótka odpowiedź odrzucona; odpowiedź z inną wielkością liter i spacjami
+  przyjęta; po prośbie o reset konto traci rolę admina (zostaje członkiem), nie może podmienić pytań, a po poprawnej
+  odpowiedzi rolę odzyskuje; po 5 złych odpowiedziach nawet dobra jest blokowana; inne konto nie czyta tabeli odpowiedzi.
 
 ## 5. Synchronizacja
 
