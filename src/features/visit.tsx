@@ -193,21 +193,19 @@ function FinishSheet(props: {
   visit: Visit;
   later: Visit | undefined;
   settings: AppSettings;
-  /** Propozycja zakresu i ceny kolejnego zabiegu. */
+  /** Zakres i cena kolejnego zabiegu: przechodzą z tego zabiegu, zmienia się je potem przy kolejnym zabiegu („Zmień”). */
   initialTerms: VisitTerms;
   invoice: Order['invoice'];
   onFinish: (input: { recommendations: string[]; next: NextVisit }) => Promise<void>;
 }) {
   const { visit, later, settings } = props;
-  const [terms, setTerms] = useState(() => termsDraft(props.initialTerms));
-  const parsedTerms = termsFromDraft(terms);
   const [recommendations, setRecommendations] = useState<string[]>(visit.recommendations);
   const [mode, setMode] = useState<NextVisit['mode']>(later ? (later.start ? 'umowiony' : 'technik') : visit.seq === 1 ? 'technik' : 'brak');
   const [date, setDate] = useState(later?.start?.slice(0, 10) ?? '');
   const [time, setTime] = useState(later?.start?.slice(11, 16) ?? visit.start?.slice(11, 16) ?? '10:00');
   const [busy, setBusy] = useState(false);
   const nextSeq = visit.seq + 1;
-  const ready = (mode !== 'umowiony' || Boolean(date && time)) && (mode === 'brak' || parsedTerms !== null);
+  const ready = mode !== 'umowiony' || Boolean(date && time);
 
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
@@ -253,16 +251,13 @@ function FinishSheet(props: {
             </Field>
           </div>
         )}
-        {mode !== 'brak' && (
-          <TermsFields value={terms} onChange={setTerms} invoice={props.invoice} proposedFrom={`Podpowiedź z zabiegu ${roman(visit.seq)}. Zmień, jeśli klient chce inaczej.`} />
-        )}
         <button
           type="button"
           className="btn btn-primary btn-block"
           disabled={!ready || busy}
           onClick={async () => {
             setBusy(true);
-            const t = parsedTerms ?? undefined;
+            const t = props.initialTerms;
             const next: NextVisit =
               mode === 'umowiony' ? { mode, start: `${date}T${time}`, durationMin: visit.durationMin, terms: t } : mode === 'technik' ? { mode, terms: t } : { mode };
             await props.onFinish({ recommendations, next });
