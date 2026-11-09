@@ -108,6 +108,7 @@ function Connect() {
   if (step.kind === 'signin' || step.kind === 'signup') {
     const signup = step.kind === 'signup';
     return (
+      <>
       <PasswordForm
         signup={signup}
         onSwitch={() => setStep({ kind: signup ? 'signin' : 'admin' })}
@@ -122,6 +123,8 @@ function Connect() {
           })
         }
       />
+      {!signup && <ForgotPassword />}
+      </>
     );
   }
 
@@ -270,6 +273,52 @@ function UnlockForm(props: { busyLabel: string; onUnlock: (passphrase: string) =
       </Field>
       <button type="submit" className="btn btn-primary btn-block" disabled={!passphrase || busy}>
         {busy ? props.busyLabel : 'Odblokuj'}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * „Nie pamiętam hasła” na ekranie logowania: link na e-mail konta. Link otwiera w aplikacji ekran nowego hasła;
+ * konto admina z ustawionymi pytaniami pomocniczymi odpowiada na nie przed ustawieniem hasła.
+ */
+function ForgotPassword() {
+  const { run, toast } = useFeedback();
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const valid = /^\S+@\S+\.\S+$/.test(email.trim());
+  if (!open) {
+    return (
+      <button type="button" className="link" onClick={() => setOpen(true)}>
+        Nie pamiętam hasła
+      </button>
+    );
+  }
+  return (
+    <form
+      className="form card"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!valid) return;
+        setBusy(true);
+        await run(async () => {
+          await (await supabaseApi()).requestPasswordReset(email.trim(), `${window.location.origin}${window.location.pathname}`);
+          toast(`Wysłano link na ${email.trim()}. Otwórz go na tym urządzeniu.`);
+          setOpen(false);
+        });
+        setBusy(false);
+      }}
+    >
+      <p className="field-hint">Wyślemy link do ustawienia nowego hasła. Otwórz go na tym urządzeniu. Sprawdź też folder spam.</p>
+      <Field label="Adres e-mail konta">
+        <input type="email" inputMode="email" autoCapitalize="none" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </Field>
+      <button type="submit" className="btn btn-primary btn-block" disabled={!valid || busy}>
+        {busy ? 'Wysyłam…' : 'Wyślij link'}
+      </button>
+      <button type="button" className="link" onClick={() => setOpen(false)}>
+        Anuluj
       </button>
     </form>
   );

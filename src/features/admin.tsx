@@ -1132,7 +1132,7 @@ export function AdminRecoveryPage() {
   const passwordError = next && next.length < 12 ? 'Co najmniej 12 znaków' : undefined;
 
   return (
-    <Page title="Nowe hasło admina" back="/admin">
+    <Page title="Nowe hasło" back="/">
       {step === 'start' && <Loading />}
       {step === 'error' && (
         <Empty icon="alert" title={message}>
@@ -1169,7 +1169,9 @@ export function AdminRecoveryPage() {
               await refetchAfterRecovery();
               unlockedUntil = Date.now() + UNLOCK_MS;
               toast('Ustawiono nowe hasło.');
-              navigate('/admin', { replace: true });
+              // Admin wraca do panelu; inne konta do aplikacji (urządzenie bez konta firmy pokaże logowanie do firmy).
+              const device = await getSyncState();
+              navigate(device?.role === 'owner' ? '/admin' : '/', { replace: true });
             }).finally(() => setBusy(false));
           }}
         >
