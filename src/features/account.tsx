@@ -290,6 +290,70 @@ function UnlockForm(props: { busyLabel: string; onUnlock: (passphrase: string) =
  * „Nie pamiętam hasła” na ekranie logowania: link na e-mail konta. Link otwiera w aplikacji ekran nowego hasła;
  * konto admina z ustawionymi pytaniami pomocniczymi odpowiada na nie przed ustawieniem hasła.
  */
+/**
+ * Zmiana hasła szyfrowania przez admina na urządzeniu, które ma klucz. Nowe hasło wpisuje admin; aplikacja wysyła
+ * wszystkie dane ponownie, zaszyfrowane nowym kluczem. Inne urządzenia trzeba potem odblokować nowym hasłem.
+ */
+function ChangePassphrase() {
+  const { confirm, run, toast } = useFeedback();
+  const [open, setOpen] = useState(false);
+  const [pass, setPass] = useState('');
+  const [repeat, setRepeat] = useState('');
+  const [step, setStep] = useState<string | null>(null);
+  const ready = pass.length >= MIN_PASSPHRASE && pass === repeat && !step;
+  if (!open) {
+    return (
+      <button type="button" className="btn btn-block" onClick={() => setOpen(true)}>
+        Zmień hasło szyfrowania
+      </button>
+    );
+  }
+  const submit = async () => {
+    const ok = await confirm({
+      title: 'Zmienić hasło szyfrowania?',
+      message:
+        'Aplikacja pobierze wszystkie dane, utworzy nowy klucz i wyśle wszystko ponownie, zaszyfrowane nowym hasłem. Nie zamykaj aplikacji do końca. Inne telefony i komputery trzeba potem odblokować nowym hasłem, a niewykorzystane kody dołączenia przestaną działać.',
+      confirmLabel: 'Zmień hasło',
+    });
+    if (!ok) return;
+    await run(async () => {
+      try {
+        const [{ rotateDataKey }, server, api] = await Promise.all([engineApi(), loadServer(), supabaseApi()]);
+        const { photosMissing } = await rotateDataKey(server, pass, api.replaceOrgKey, setStep);
+        setPass('');
+        setRepeat('');
+        setOpen(false);
+        toast(photosMissing ? `Hasło zmienione. Zdjęć niedostępnych na serwerze: ${photosMissing}.` : 'Hasło szyfrowania zmienione. Zapamiętaj je.');
+      } finally {
+        setStep(null);
+      }
+    });
+  };
+  return (
+    <div className="form card">
+      <p className="field-hint">
+        Nowe hasło firmy do odblokowania danych na nowych urządzeniach. Co najmniej {MIN_PASSPHRASE} znaków. Zapisz je w bezpiecznym miejscu:
+        bez niego nowe urządzenie nie odczyta danych.
+      </p>
+      <Field label="Nowe hasło szyfrowania">
+        <input type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} disabled={Boolean(step)} />
+      </Field>
+      <Field label="Powtórz hasło" error={repeat && repeat !== pass ? 'Hasła się różnią' : undefined}>
+        <input type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} disabled={Boolean(step)} />
+      </Field>
+      {step && <p className="notice notice-info">{step}</p>}
+      <button type="button" className="btn btn-primary btn-block" disabled={!ready} onClick={() => void submit()}>
+        {step ? 'Zmieniam…' : 'Zmień hasło szyfrowania'}
+      </button>
+      {!step && (
+        <button type="button" className="link" onClick={() => setOpen(false)}>
+          Anuluj
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Test połączenia z serwerem na ekranie logowania, z podpowiedzią, co zrobić przy blokadzie. */
 function ConnectionCheck() {
   const [result, setResult] = useState<string | null>(null);
@@ -954,6 +1018,7 @@ function SyncStatus({ state }: { state: SyncState }) {
             </div>
           )}
           <RegionSwitcher state={state} />
+          {state.role === 'owner' && <ChangePassphrase />}
           <button type="button" className="btn btn-primary btn-block" disabled={running} onClick={() => void syncNow()}>
             {running ? 'Synchronizuję…' : 'Synchronizuj teraz'}
           </button>

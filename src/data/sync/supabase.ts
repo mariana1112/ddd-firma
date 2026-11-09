@@ -295,6 +295,12 @@ export async function setOrgKey(orgId: string, dataKey: WrappedKey): Promise<voi
   if (error) fail(error);
 }
 
+/** Admin zapisuje nowy klucz firmy (zawinięty nowym hasłem szyfrowania). */
+export async function replaceOrgKey(orgId: string, dataKey: WrappedKey): Promise<void> {
+  const { error } = await supabase().rpc('replace_org_key', { p_org: orgId, p_data_key: dataKey });
+  if (error) fail(error);
+}
+
 export interface InvitePreview {
   orgName: string;
   branchName: string;

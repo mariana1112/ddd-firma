@@ -493,3 +493,32 @@ describe('wylogowanie', () => {
     expect((await getCompany()).name).not.toBe('Żółta Pszczółka');
   });
 });
+
+describe('zmiana hasła szyfrowania przez admina', () => {
+  it('po wymianie klucza nowe urządzenie odczytuje dane nowym hasłem, a stary klucz już nie', async () => {
+    const { rotateDataKey } = await import('./sync/engine');
+    const { unwrapDataKey } = await import('./sync/crypto');
+    const owner: Account = { ...account, role: 'owner' };
+    const { client } = await (async () => {
+      await useDevice('telefon');
+      const c = await clients.create(clientData('Bar Alfa'));
+      await enableSync(server, owner);
+      return { client: c };
+    })();
+    let stored: unknown = null;
+    const steps: string[] = [];
+    await rotateDataKey(server, 'nowe hasło firmy 2026', async (_org, wrapped) => void (stored = wrapped), (s) => steps.push(s));
+    expect(steps.length).toBe(4);
+
+    // Nowe urządzenie z kluczem odwiniętym nowym hasłem odczytuje wszystko.
+    await useDevice('nowy-telefon');
+    await setDataKey(await unwrapDataKey('nowe hasło firmy 2026', stored as Parameters<typeof unwrapDataKey>[1]));
+    await enableSync(server, account);
+    expect((await clients.get(client.id))?.name).toBe('Bar Alfa');
+
+    // Urządzenie ze starym kluczem nie odczyta już rekordu klienta z serwera.
+    await useDevice('stary-komputer');
+    await expect(enableSync(server, account)).rejects.toThrow(SyncError);
+    expect(await clients.get(client.id)).toBeUndefined();
+  });
+});

@@ -16,7 +16,7 @@ import {
   SYNCED_META_KEYS,
 } from '../settings';
 import type { Attachment, ChangeOp, MetaRow, NumberBlock, SyncState, SyncTable } from '../types';
-import { decryptFields, decryptFile, encryptFields, encryptFile } from './crypto';
+import { createDataKey, decryptFields, decryptFile, encryptFields, encryptFile, type WrappedKey } from './crypto';
 
 export interface PushChange {
   id: string;
@@ -92,6 +92,60 @@ export async function enableSync(server: SyncServer, account: Account): Promise<
     await saveProfile({ name: account.displayName ?? '', userId: account.userId });
   });
   await syncNow(server);
+}
+
+/**
+ * Zmiana hasła szyfrowania na urządzeniu admina, które ma klucz i komplet danych (np. gdy nikt nie pamięta hasła).
+ * 1. Pełna synchronizacja starym kluczem: urządzenie dostaje wszystkie rekordy firmy.
+ * 2. Pobranie i odszyfrowanie zdjęć, których plików jeszcze tu nie ma.
+ * 3. Nowy klucz z nowego hasła, zapisany na serwerze i na urządzeniu.
+ * 4. Wysłanie wszystkich rekordów i zdjęć ponownie, zaszyfrowanych nowym kluczem.
+ * Gdy coś przerwie krok 4, ponowna synchronizacja z tego urządzenia go dokończy (dane są tu w całości).
+ */
+export async function rotateDataKey(
+  server: SyncServer,
+  newPassphrase: string,
+  saveOrgKey: (orgId: string, wrapped: WrappedKey) => Promise<void>,
+  onStep: (text: string) => void = () => undefined,
+): Promise<{ photosMissing: number }> {
+  const state = await getSyncState();
+  if (!state) throw new SyncError('Synchronizacja nie jest włączona na tym urządzeniu.');
+  if (state.role !== 'owner') throw new SyncError('Hasło szyfrowania zmienia tylko admin.');
+  await requireKey();
+
+  onStep('Pobieram wszystkie dane firmy…');
+  await setSyncState({ ...state, regionsTagged: false });
+  await syncNow(server);
+
+  onStep('Pobieram zdjęcia…');
+  let photosMissing = 0;
+  for (const photo of await db.attachments.toArray()) {
+    if (photo.blob || !photo.remotePath || photo.deletedAt) continue;
+    try {
+      if (!(await ensurePhoto(server, photo))) photosMissing++;
+    } catch {
+      photosMissing++;
+    }
+  }
+
+  onStep('Tworzę nowy klucz…');
+  const { key, wrapped } = await createDataKey(newPassphrase);
+  await saveOrgKey(state.orgId, wrapped);
+  await setDataKey(key);
+
+  onStep('Wysyłam dane zaszyfrowane nowym kluczem…');
+  const latest = (await getSyncState()) ?? state;
+  await enableSync(server, {
+    orgId: latest.orgId,
+    orgName: latest.orgName,
+    userId: latest.userId,
+    email: latest.email,
+    role: latest.role,
+    displayName: latest.displayName,
+    branchId: latest.branchId,
+    branchName: latest.branchName,
+  });
+  return { photosMissing };
 }
 
 /** Wyłącza synchronizację i usuwa klucz. Z wipe usuwa też dane firmy z urządzenia. */
