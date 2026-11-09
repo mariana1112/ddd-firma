@@ -34,7 +34,7 @@ export function mapsSearchUrl(query: string): string {
 }
 
 export interface NavTarget {
-  id: 'google' | 'google-app' | 'apple' | 'waze';
+  id: 'google' | 'google-app' | 'apple';
   label: string;
   url: string;
   /** Link do aplikacji (schemat), otwierany w tej samej karcie. */
@@ -60,14 +60,6 @@ export function navigationTargets(order: AddressParts & Pick<Order, 'mapsLink'>,
   if (ios && dest) targets.push({ id: 'google-app', label: 'Google Maps (aplikacja)', url: `comgooglemaps://?daddr=${enc}&directionsmode=driving`, app: true });
   targets.push({ id: 'google', label: ios ? 'Google Maps (przeglądarka)' : 'Google Maps', url: google, app: false });
   if (ios && dest) targets.push({ id: 'apple', label: 'Apple Mapy', url: `https://maps.apple.com/?daddr=${enc}&dirflg=d`, app: true });
-  if (dest) {
-    targets.push({
-      id: 'waze',
-      label: 'Waze',
-      url: coords ? `https://waze.com/ul?ll=${coords.lat},${coords.lng}&navigate=yes` : `https://waze.com/ul?q=${enc}&navigate=yes`,
-      app: false,
-    });
-  }
   return targets;
 }
 

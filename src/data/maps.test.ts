@@ -15,18 +15,17 @@ describe('nawigacja do adresu zlecenia', () => {
     expect(coordsFromLink('https://maps.app.goo.gl/AbC123')).toBeNull();
   });
 
-  it('na iPhonie aplikacja Google Maps, Apple Mapy i Waze; zapisany link ma pierwszeństwo', () => {
+  it('na iPhonie aplikacja Google Maps i Apple Mapy; zapisany link ma pierwszeństwo', () => {
     const ios = navigationTargets({ ...addr, mapsLink: undefined }, true);
-    expect(ios.map((t) => t.id)).toEqual(['google-app', 'google', 'apple', 'waze']);
+    expect(ios.map((t) => t.id)).toEqual(['google-app', 'google', 'apple']);
     expect(ios[0].url).toBe('comgooglemaps://?daddr=Piotrkowska%2012%2C%2090-001%20%C5%81%C3%B3d%C5%BA%2C%20Polska&directionsmode=driving');
     expect(ios.find((t) => t.id === 'apple')!.url).toContain('maps.apple.com/?daddr=Piotrkowska');
 
     const android = navigationTargets({ ...addr, mapsLink: 'https://maps.app.goo.gl/AbC123' }, false);
-    expect(android.map((t) => t.id)).toEqual(['google', 'waze']);
+    expect(android.map((t) => t.id)).toEqual(['google']);
     expect(android[0].url).toBe('https://maps.app.goo.gl/AbC123');
 
     const withCoords = navigationTargets({ ...addr, mapsLink: 'https://www.google.com/maps/@51.75,19.45,17z' }, false);
     expect(withCoords[0].url).toBe('https://www.google.com/maps/dir/?api=1&destination=51.75%2C19.45&travelmode=driving');
-    expect(withCoords[1].url).toBe('https://waze.com/ul?ll=51.75,19.45&navigate=yes');
   });
 });

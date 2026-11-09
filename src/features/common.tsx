@@ -7,7 +7,7 @@ import { PAY_NAMES, smsUrl, telUrl } from '../data/texts';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Sheet } from '../ui/kit';
-import { isIos, mapsQuery, mapsSearchUrl, navigationTargets } from '../data/maps';
+import { isIos, mapsQuery, navigationTargets } from '../data/maps';
 import { orderAddress } from '../data/texts';
 import { useState } from 'react';
 
@@ -110,7 +110,7 @@ export function useContactActions() {
 
 /**
  * Wybór mapy do nawigacji. Aplikacja z ekranu początkowego iPhone'a otwiera google.com w przeglądarce, która nie
- * prowadzi trasy, dlatego na iPhonie są też aplikacja Google Maps, Apple Mapy i Waze.
+ * prowadzi trasy, dlatego na iPhonie są też aplikacja Google Maps i Apple Mapy.
  */
 export function NavigateSheet(props: { order: Order; open: boolean; onClose: () => void }) {
   const { copy } = useContactActions();
@@ -139,11 +139,6 @@ export function NavigateSheet(props: { order: Order; open: boolean; onClose: () 
               <Icon name="nav" /> {t.label}
             </a>
           ))}
-          {query && (
-            <a className="btn" href={mapsSearchUrl(query)} target="_blank" rel="noreferrer">
-              <Icon name="search" /> Pokaż adres w Google Maps
-            </a>
-          )}
           {query && (
             <button type="button" className="btn" onClick={() => void copy(query)}>
               <Icon name="copy" /> Kopiuj adres
