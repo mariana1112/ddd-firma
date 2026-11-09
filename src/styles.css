@@ -2365,3 +2365,10 @@ a.btn.disabled {
   color: inherit;
   text-decoration: underline;
 }
+
+.connection-check {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}

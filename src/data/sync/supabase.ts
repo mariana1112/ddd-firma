@@ -55,7 +55,11 @@ export function describeError(error: unknown): string {
   if (/duplicate key/i.test(message)) return 'Taka nazwa już istnieje.';
   if (/signups? not allowed|signup is disabled/i.test(message)) return 'Zakładanie nowych kont jest wyłączone. Zaloguj się istniejącym kontem.';
   if (/password should|weak password/i.test(message)) return 'Hasło jest za słabe. Użyj co najmniej 12 znaków.';
-  if (/fetch|network|load failed/i.test(message)) return 'Brak połączenia z serwerem. Zmiany wyślą się później.';
+  if (/fetch|network|load failed/i.test(message)) {
+    return navigator.onLine === false
+      ? 'Brak internetu. Zmiany wyślą się później.'
+      : `Telefon nie łączy się z serwerem (${message}). Internet działa, więc połączenie może blokować sieć (np. filtr operatora) albo bloker w przeglądarce. Sprawdź połączenie na ekranie logowania.`;
+  }
   if (/jwt|token|session/i.test(message)) return MESSAGES.NOT_AUTHENTICATED;
   if (/rate limit|too many/i.test(message)) return 'Za dużo prób. Odczekaj kilka minut.';
   return `Błąd serwera: ${message}`;

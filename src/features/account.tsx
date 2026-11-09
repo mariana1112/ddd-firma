@@ -4,7 +4,7 @@ import { createSnapshot } from '../data/backup';
 import { pendingCount } from '../data/changes';
 import { db } from '../data/db';
 import { COMPANY_NAME, getDataKey, getSyncState, ownedBy, saveProfile, setDataKey, setSyncState } from '../data/settings';
-import { isSyncConfigured } from '../data/sync/config';
+import { checkServerConnection, isSyncConfigured } from '../data/sync/config';
 import { createDataKey, CryptoError, INVITE_LENGTH, inviteProof, MIN_PASSPHRASE, unwrapDataKey } from '../data/sync/crypto';
 import type { Account } from '../data/sync/engine';
 import { getSyncStatus, loadServer, subscribeSyncStatus, syncInBackground } from '../data/sync/runner';
@@ -86,7 +86,14 @@ function Connect() {
 
   if (step.kind === 'checking') return <Loading />;
 
-  if (step.kind === 'admin') return <AdminDataForm onOwnAccount={() => setStep({ kind: 'signin' })} />;
+  if (step.kind === 'admin') {
+    return (
+      <>
+        <AdminDataForm onOwnAccount={() => setStep({ kind: 'signin' })} />
+        <ConnectionCheck />
+      </>
+    );
+  }
 
   if (step.kind === 'confirm') {
     return (
@@ -124,6 +131,7 @@ function Connect() {
         }
       />
       {!signup && <ForgotPassword />}
+      <ConnectionCheck />
       </>
     );
   }
@@ -282,6 +290,32 @@ function UnlockForm(props: { busyLabel: string; onUnlock: (passphrase: string) =
  * „Nie pamiętam hasła” na ekranie logowania: link na e-mail konta. Link otwiera w aplikacji ekran nowego hasła;
  * konto admina z ustawionymi pytaniami pomocniczymi odpowiada na nie przed ustawieniem hasła.
  */
+/** Test połączenia z serwerem na ekranie logowania, z podpowiedzią, co zrobić przy blokadzie. */
+function ConnectionCheck() {
+  const [result, setResult] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const check = async () => {
+    setBusy(true);
+    const r = await checkServerConnection();
+    setBusy(false);
+    setResult(
+      r.ok
+        ? `Serwer odpowiada (${r.ms} ms). Połączenie działa.`
+        : navigator.onLine === false
+          ? 'Brak internetu na tym urządzeniu.'
+          : `Telefon nie łączy się z serwerem: ${r.error}. Spróbuj przez Wi-Fi zamiast danych komórkowych, wyłącz bloker reklam w Safari (Ustawienia → Safari → Rozszerzenia) i filtr operatora (np. CyberTarcza w Orange, „Bezpieczny Internet” w Play, „Ochrona” w T-Mobile), potem sprawdź ponownie.`,
+    );
+  };
+  return (
+    <div className="connection-check">
+      <button type="button" className="link" disabled={busy} onClick={() => void check()}>
+        {busy ? 'Sprawdzam połączenie…' : 'Sprawdź połączenie z serwerem'}
+      </button>
+      {result && <p className="field-hint">{result}</p>}
+    </div>
+  );
+}
+
 function ForgotPassword() {
   const { run, toast } = useFeedback();
   const [open, setOpen] = useState(false);
