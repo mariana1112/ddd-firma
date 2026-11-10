@@ -4,7 +4,7 @@ import type { Order, Visit } from './types';
 import { addMinutes, formatTime } from '../lib/dates';
 
 /** Gotowe wiadomości do klienta z menu „SMS”. */
-export type SmsKind = 'przypomnienie' | 'spoznienie' | 'wczesniej' | 'wlasna';
+export type SmsKind = 'zalecenia' | 'przypomnienie' | 'spoznienie' | 'wczesniej' | 'wlasna';
 
 export const LATE_MINUTES = [10, 15, 20, 30, 45, 60];
 export const EARLY_MINUTES = [15, 30, 45, 60, 90];

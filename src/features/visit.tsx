@@ -12,7 +12,6 @@ import { formatAccount } from '../data/card';
 import { CopyRow } from './card';
 import {
   accessDetails,
-  finishSms,
   INVOICES,
   orderAddress,
   PAY_NAMES,
@@ -28,7 +27,7 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
-import { ContactBar, PinkBadge, UlvNotice, useContactActions, VisitBadge, visitWhen } from './common';
+import { ContactBar, PinkBadge, UlvNotice, VisitBadge, visitWhen } from './common';
 import { doneMethods, hasFogging, METHOD_LABEL, methodOf, orderMethods, recommendationsFor } from '../data/methods';
 import { Photos } from './photos';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
@@ -254,28 +253,20 @@ function FinishSheet(props: {
   onFinish: (input: { recommendations: string[]; next: NextVisit }) => Promise<void>;
 }) {
   const { visit, later, settings } = props;
-  // Zalecenia do wykonanych metod są zaznaczone od razu; zalecenia ULV są obowiązkowe.
+  // Zalecenia: najpierw proponowane do wykonanych metod, potem pozostałe. Nic nie zaznacza się samo: technik wybiera.
   const forMethods = recommendationsFor(doneMethods(visit.treatments, props.order), props.order.pest);
   const others = settings.recommendations.filter((r) => !forMethods.list.includes(r));
-  const [recommendations, setRecommendations] = useState<string[]>(() =>
-    visit.recommendations.length ? [...new Set([...forMethods.required, ...visit.recommendations])] : forMethods.list,
+  const [recommendations, setRecommendations] = useState<string[]>(() => visit.recommendations);
+  const recommendationRow = (r: string) => (
+    <label key={r} className="check">
+      <input
+        type="checkbox"
+        checked={recommendations.includes(r)}
+        onChange={(e) => setRecommendations(e.target.checked ? [...recommendations, r] : recommendations.filter((x) => x !== r))}
+      />
+      {r}
+    </label>
   );
-  // Inne zalecenia są zwinięte; rozwinięte od razu, gdy któreś było już wybrane.
-  const [showOthers, setShowOthers] = useState(() => visit.recommendations.some((r) => others.includes(r)));
-  const recommendationRow = (r: string) => {
-    const required = forMethods.required.includes(r);
-    return (
-      <label key={r} className={required ? 'check check-required' : 'check'}>
-        <input
-          type="checkbox"
-          checked={required || recommendations.includes(r)}
-          disabled={required}
-          onChange={(e) => setRecommendations(e.target.checked ? [...recommendations, r] : recommendations.filter((x) => x !== r))}
-        />
-        {r}
-      </label>
-    );
-  };
   const [mode, setMode] = useState<NextVisit['mode']>(later ? (later.start ? 'umowiony' : 'technik') : visit.seq === 1 ? 'technik' : 'brak');
   const [date, setDate] = useState(later?.start?.slice(0, 10) ?? '');
   const [time, setTime] = useState(later?.start?.slice(11, 16) ?? visit.start?.slice(11, 16) ?? '10:00');
@@ -289,22 +280,17 @@ function FinishSheet(props: {
         {hasFogging(doneMethods(visit.treatments, props.order)) && <UlvNotice />}
         <div className="field">
           <span className="field-label">
-            Zalecenia do wykonanych metod
-            {doneMethods(visit.treatments, props.order).length ? `: ${doneMethods(visit.treatments, props.order).map((m) => METHOD_LABEL[m]).join(', ')}` : ''}
+            Zalecenia proponowane
+            {doneMethods(visit.treatments, props.order).length ? ` (${doneMethods(visit.treatments, props.order).map((m) => METHOD_LABEL[m]).join(', ')})` : ''}: zaznacz wybrane
           </span>
           <div className="check-list">{forMethods.list.map(recommendationRow)}</div>
         </div>
-        {others.length > 0 &&
-          (showOthers ? (
-            <div className="field">
-              <span className="field-label">Inne zalecenia</span>
-              <div className="check-list">{others.map(recommendationRow)}</div>
-            </div>
-          ) : (
-            <button type="button" className="link" onClick={() => setShowOthers(true)}>
-              Pokaż inne zalecenia ({others.length})
-            </button>
-          ))}
+        {others.length > 0 && (
+          <div className="field">
+            <span className="field-label">Inne zalecenia</span>
+            <div className="check-list">{others.map(recommendationRow)}</div>
+          </div>
+        )}
         <div className="field">
           <span className="field-label">Zabieg {roman(nextSeq)}</span>
           <div className="choice">
@@ -354,7 +340,6 @@ function FinishSheet(props: {
 export function VisitPage() {
   const { id = '' } = useParams();
   const { confirm, run, toast } = useFeedback();
-  const { sms } = useContactActions();
   const navigate = useNavigate();
   const [finishing, setFinishing] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
@@ -404,10 +389,6 @@ export function VisitPage() {
   const interview = normalizeInterview(visit.interview);
   const summary = visit.status === 'wykonany' && !editing;
   const active = visit.status === 'w_trakcie' || (visit.status === 'wykonany' && editing);
-
-  const sendFinishSms = async (done: Visit, next: Visit | null) => {
-    if (phone) await sms(phone, finishSms(done, next, settings));
-  };
 
   const scrollToPay = () => setTimeout(() => payRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
 
@@ -484,7 +465,7 @@ export function VisitPage() {
       setFinishing(false);
       setEditingId(null);
       // SMS z zaleceniami wysyła się przyciskiem w podsumowaniu, bez wyskakującego okna.
-      toast(phone ? 'Zabieg zakończony. Wyślij klientowi SMS z zaleceniami.' : 'Zabieg zakończony');
+      toast(phone ? 'Zabieg zakończony. Zalecenia wyślesz przyciskiem „SMS” na górze.' : 'Zabieg zakończony');
     });
   };
 
@@ -615,9 +596,6 @@ export function VisitPage() {
           {visit.doneOn === todayWarsaw() && <TomorrowReminders afterLastToday />}
           <VisitSummary order={order} visit={visit} vatRate={settings.vatRate} later={later} photos={<Photos visitId={visit.id} readOnly />} />
           <div className="btn-stack">
-            <button type="button" className="btn btn-primary" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>
-              <Icon name="message" /> Wyślij klientowi SMS z zaleceniami
-            </button>
             <button type="button" className="btn" onClick={() => setEditingId(visit.id)}>
               <Icon name="edit" /> Edytuj zabieg
             </button>
@@ -784,9 +762,6 @@ export function VisitPage() {
               <div className="btn-stack">
                 <button type="button" className="btn btn-primary" onClick={() => { setEditingId(null); if (params.has('edycja')) navigate(`/zabieg/${visit.id}`, { replace: true }); }}>
                   <Icon name="check" /> Zapisz i wyjdź
-                </button>
-                <button type="button" className="btn" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>
-                  <Icon name="message" /> SMS do klienta z zaleceniami
                 </button>
                 <button type="button" className="btn" onClick={() => setFinishing(true)}>
                   Zmień zalecenia lub kolejny zabieg

@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { EARLY_MINUTES, earlierSms, LATE_MINUTES, lateSms, type SmsKind } from '../data/sms';
 import { getAppSettings, getProfile } from '../data/settings';
-import { reminderSms } from '../data/texts';
+import { finishSms, reminderSms } from '../data/texts';
 import { visits as visitRepo } from '../data/repo';
 
 export function PayBadge({ method }: { method: PayMethod }) {
@@ -166,7 +166,13 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
   const phones = order.phones.filter((p) => p.number.trim());
   const [phoneIdx, setPhoneIdx] = useState(0);
   const planned = visit && visit.status === 'zaplanowany' && visit.start ? visit : null;
-  const [kind, setKind] = useState<SmsKind>(props.initial ?? (planned ? 'przypomnienie' : 'wlasna'));
+  const done = visit && visit.status === 'wykonany' ? visit : null;
+  // Kolejny zabieg zlecenia: jego termin trafia do podsumowania po wykonanym zabiegu.
+  const next = useLiveQuery(
+    async () => (done ? ((await visitRepo.where('orderId', done.orderId)).find((v) => v.seq === done.seq + 1 && v.status !== 'odwolany') ?? null) : null),
+    [done?.id],
+  );
+  const [kind, setKind] = useState<SmsKind>(props.initial ?? (done ? 'zalecenia' : planned ? 'przypomnienie' : 'wlasna'));
   const [minutes, setMinutes] = useState(15);
   const [text, setText] = useState('');
 
@@ -175,15 +181,17 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
     if (!data || !props.open) return;
     const who = data.profile.name;
     const base = visit ?? { start: null, seq: 1 };
-    if (kind === 'przypomnienie' && planned) setText(reminderSms(order, planned, data.settings));
+    if (kind === 'zalecenia' && done) setText(finishSms(done, next ?? null, data.settings));
+    else if (kind === 'przypomnienie' && planned) setText(reminderSms(order, planned, data.settings));
     else if (kind === 'spoznienie') setText(lateSms(order, base, minutes, who));
     else if (kind === 'wczesniej') setText(earlierSms(order, base, minutes, who));
     else if (kind === 'wlasna') setText('');
-  }, [kind, minutes, data, props.open, order, visit, planned]);
+  }, [kind, minutes, data, props.open, order, visit, planned, done, next]);
 
   if (!props.open) return null;
   const phone = phones[phoneIdx];
   const options: Array<[SmsKind, string]> = [
+    ...(done ? ([['zalecenia', 'Podsumowanie zabiegu i zalecenia']] as Array<[SmsKind, string]>) : []),
     ...(planned ? ([['przypomnienie', 'Przypomnienie i prośba o potwierdzenie']] as Array<[SmsKind, string]>) : []),
     ['spoznienie', 'Spóźnię się'],
     ['wczesniej', 'Czy mogę przyjechać wcześniej?'],
