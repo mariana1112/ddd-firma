@@ -44,10 +44,37 @@ export interface OrderTerm {
   time: string | null;
 }
 
-/** Następny zabieg do zrobienia albo ostatni wykonany, do wyświetlenia na liście. */
+/** Następny zabieg do zrobienia albo ostatni wykonany (odwołane pomijamy), do wyświetlenia na liście. */
 export function currentVisit(list: Visit[]): Visit | undefined {
   const open = list.filter((v) => v.status === 'zaplanowany' || v.status === 'w_trakcie');
-  return [...open].sort((a, b) => (a.start ?? '9999').localeCompare(b.start ?? '9999'))[0] ?? list[list.length - 1];
+  const kept = list.filter((v) => v.status !== 'odwolany');
+  return [...open].sort((a, b) => (a.start ?? '9999').localeCompare(b.start ?? '9999'))[0] ?? kept[kept.length - 1] ?? list[list.length - 1];
+}
+
+/** Filtr listy zleceń. */
+export type ListFilter = 'wszystkie' | 'aktywne' | 'wykonane' | 'pilne' | 'archiwum';
+
+/** Dlaczego jeden zabieg jest pilny: niedokończony, bez płatności albo z zaległym terminem. */
+export function visitUrgent(order: Pick<Order, 'archived'>, visit: Visit, today: string): UrgentReason | null {
+  if (order.archived || visit.status === 'odwolany') return null;
+  if (visit.status === 'w_trakcie') return 'w_trakcie';
+  if (paymentMissing(visit)) return 'platnosc';
+  if (visit.status === 'zaplanowany' && visit.start && visit.start.slice(0, 10) < today) return 'zalegly';
+  return null;
+}
+
+/**
+ * Czy zabieg pasuje do filtra listy (widok „każdy zabieg osobno”). Odwołane zabiegi i zlecenia z archiwum są tylko
+ * w „Archiwum”, więc nie mieszają się z pracą do zrobienia.
+ */
+export function visitInFilter(order: Pick<Order, 'archived'>, visit: Visit, filter: ListFilter, today: string): boolean {
+  const archived = Boolean(order.archived) || visit.status === 'odwolany';
+  if (filter === 'archiwum') return archived;
+  if (archived) return false;
+  if (filter === 'aktywne') return visit.status === 'zaplanowany' || visit.status === 'w_trakcie';
+  if (filter === 'wykonane') return visit.status === 'wykonany';
+  if (filter === 'pilne') return visitUrgent(order, visit, today) !== null;
+  return true;
 }
 
 /** Termin zlecenia na liście: zabieg do zrobienia, a gdy wszystko zrobione, dzień ostatniego zabiegu. */

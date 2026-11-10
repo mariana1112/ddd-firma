@@ -207,6 +207,8 @@ function FinishSheet(props: {
   const [recommendations, setRecommendations] = useState<string[]>(() =>
     visit.recommendations.length ? [...new Set([...forMethods.required, ...visit.recommendations])] : forMethods.list,
   );
+  // Inne zalecenia są zwinięte; rozwinięte od razu, gdy któreś było już wybrane.
+  const [showOthers, setShowOthers] = useState(() => visit.recommendations.some((r) => others.includes(r)));
   const recommendationRow = (r: string) => {
     const required = forMethods.required.includes(r);
     return (
@@ -239,10 +241,17 @@ function FinishSheet(props: {
           </span>
           <div className="check-list">{forMethods.list.map(recommendationRow)}</div>
         </div>
-        <div className="field">
-          <span className="field-label">Inne zalecenia</span>
-          <div className="check-list">{others.map(recommendationRow)}</div>
-        </div>
+        {others.length > 0 &&
+          (showOthers ? (
+            <div className="field">
+              <span className="field-label">Inne zalecenia</span>
+              <div className="check-list">{others.map(recommendationRow)}</div>
+            </div>
+          ) : (
+            <button type="button" className="link" onClick={() => setShowOthers(true)}>
+              Pokaż inne zalecenia ({others.length})
+            </button>
+          ))}
         <div className="field">
           <span className="field-label">Zabieg {roman(nextSeq)}</span>
           <div className="choice">
@@ -508,22 +517,6 @@ export function VisitPage() {
               <Icon name="close" /> Odwołaj zabieg
             </button>
           </div>
-          <Sheet open={planningNext} title={`Umów kolejny zabieg · ${visitCode(order, later?.seq ?? Math.max(...list.map((v) => v.seq)) + 1)}`} onClose={() => setPlanningNext(false)}>
-            {planningNext && (
-              <ScheduleNext
-                durationMin={visit.durationMin || 60}
-                initial={proposeTerms(list, order)}
-                invoice={order.invoice}
-                onSave={(start, durationMin, nextTerms) =>
-                  void run(async () => {
-                    const next = await scheduleNextVisit(order.id, { start, durationMin, terms: nextTerms });
-                    setPlanningNext(false);
-                    toast(`Zabieg ${roman(next.seq)} umówiony: ${formatTerm(start)}`);
-                  })
-                }
-              />
-            )}
-          </Sheet>
           <Group title="Zlecenie">
             {order.description && <Info label="Opis">{order.description}</Info>}
             {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
@@ -563,12 +556,35 @@ export function VisitPage() {
             <button type="button" className="btn" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>
               <Icon name="message" /> SMS do klienta z zaleceniami
             </button>
+            {!later?.start && (
+              <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
+                <Icon name="calendar" /> Umów kolejny zabieg
+              </button>
+            )}
             <button type="button" className="btn" onClick={() => navigate(`/zlecenia/${order.id}`)}>
               Wróć do zlecenia
             </button>
           </div>
         </>
       )}
+
+      <Sheet open={planningNext} title={`Umów kolejny zabieg · ${visitCode(order, later?.seq ?? Math.max(...list.map((v) => v.seq)) + 1)}`} onClose={() => setPlanningNext(false)}>
+        {planningNext && (
+          <ScheduleNext
+            durationMin={visit.durationMin || 60}
+            initial={proposeTerms(list, order)}
+            invoice={order.invoice}
+            onSave={(start, durationMin, nextTerms) =>
+              void run(async () => {
+                const next = await scheduleNextVisit(order.id, { start, durationMin, terms: nextTerms });
+                setPlanningNext(false);
+                toast(`Zabieg ${roman(next.seq)} umówiony: ${formatTerm(start)}`);
+              })
+            }
+          />
+        )}
+      </Sheet>
+
 
       {active && (
         <>
@@ -652,7 +668,6 @@ export function VisitPage() {
               <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
               Klient chce protokół z zabiegu
             </label>
-            <p className="field-hint">Faktura: {INVOICES[order.invoice].toLowerCase()} (zmiana w edycji zlecenia).</p>
           </Group>
 
           <Group title="Zdjęcia" plain>

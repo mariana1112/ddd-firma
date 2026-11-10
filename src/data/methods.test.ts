@@ -79,3 +79,21 @@ describe('pilne zlecenia', () => {
     expect(urgentReason({ archived: true }, [visit({ status: 'w_trakcie' })], today)).toBeNull();
   });
 });
+
+describe('lista: każdy zabieg osobno', () => {
+  const v = (patch: Partial<Visit>) => ({ status: 'zaplanowany', start: '2026-11-12T10:00', payMethod: null, amount: null, ...patch }) as Visit;
+  it('odwołany zabieg tylko w archiwum; wykonany w zakończonych; płatność bez innych zabiegów', async () => {
+    const { visitInFilter, currentVisit } = await import('./order-list');
+    const today = '2026-11-10';
+    const cancelled = v({ status: 'odwolany' });
+    expect(visitInFilter({}, cancelled, 'wszystkie', today)).toBe(false);
+    expect(visitInFilter({}, cancelled, 'archiwum', today)).toBe(true);
+    const done = v({ status: 'wykonany', payMethod: 'blik', amount: 45000 });
+    expect(visitInFilter({}, done, 'wykonane', today)).toBe(true);
+    expect(visitInFilter({}, done, 'aktywne', today)).toBe(false);
+    expect(visitInFilter({}, v({ status: 'wykonany' }), 'pilne', today)).toBe(true);
+    expect(visitInFilter({ archived: true }, done, 'wykonane', today)).toBe(false);
+    // Połączony widok: odwołany zabieg II nie zasłania wykonanego zabiegu I.
+    expect(currentVisit([{ ...done, seq: 1 } as Visit, { ...cancelled, seq: 2 } as Visit])?.status).toBe('wykonany');
+  });
+});
