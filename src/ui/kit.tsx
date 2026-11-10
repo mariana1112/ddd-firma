@@ -191,6 +191,35 @@ export function Field(props: { label: string; error?: string; hint?: ReactNode; 
   );
 }
 
+/**
+ * Blokada przewijania strony pod otwartym oknem (SMS, szczegóły, potwierdzenia). iPhone przewija tło mimo okna
+ * modalnego, więc strona jest przypinana w miejscu, a po zamknięciu ostatniego okna wraca na to samo miejsce.
+ */
+let openSheets = 0;
+let lockedScroll = 0;
+
+function lockScroll() {
+  if (openSheets++ > 0) return;
+  lockedScroll = window.scrollY;
+  const body = document.body.style;
+  body.position = 'fixed';
+  body.top = `-${lockedScroll}px`;
+  body.left = '0';
+  body.right = '0';
+  body.overflow = 'hidden';
+}
+
+function unlockScroll() {
+  if (openSheets === 0 || --openSheets > 0) return;
+  const body = document.body.style;
+  body.position = '';
+  body.top = '';
+  body.left = '';
+  body.right = '';
+  body.overflow = '';
+  window.scrollTo(0, lockedScroll);
+}
+
 export function Sheet(props: { open: boolean; title: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -198,6 +227,12 @@ export function Sheet(props: { open: boolean; title: string; onClose: () => void
     if (!dialog) return;
     if (props.open && !dialog.open) dialog.showModal();
     if (!props.open && dialog.open) dialog.close();
+  }, [props.open]);
+  // Tło stoi w miejscu, dopóki okno jest otwarte (także gdy okno zniknie razem z ekranem).
+  useEffect(() => {
+    if (!props.open) return;
+    lockScroll();
+    return unlockScroll;
   }, [props.open]);
   return (
     <dialog

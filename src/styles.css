@@ -929,6 +929,7 @@ legend + * {
 /* ---------- Arkusz dolny ---------- */
 
 .sheet {
+  overscroll-behavior: contain;
   width: 100%;
   max-width: 560px;
   max-height: 90dvh;
@@ -971,6 +972,8 @@ legend + * {
   padding: 4px 16px calc(20px + env(safe-area-inset-bottom));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  /* Przewijanie zostaje w oknie: po dojściu do końca nie przechodzi na stronę pod spodem. */
+  overscroll-behavior: contain;
 }
 
 .sheet-text {
