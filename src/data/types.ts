@@ -308,6 +308,8 @@ export interface Visit extends BaseRecord {
   priceMax?: number | null;
   /** Kiedy wysłano klientowi przypomnienie z prośbą o potwierdzenie (SMS dzień przed). */
   remindedAt?: string | null;
+  /** Co trzeba uszczelnić (np. kratki wentylacyjne/piony, listwy przypodłogowe); pusty: nie trzeba. */
+  sealing?: string[];
 }
 
 export type ScopeKind = 'calosc' | 'pokoj' | 'inne';

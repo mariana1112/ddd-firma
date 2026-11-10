@@ -38,16 +38,16 @@ describe('metody zabiegu i zalecenia', () => {
   it('ULV: zalecenia o opuszczeniu lokalu i sprzątaniu są obowiązkowe; inne metody mają swoje', () => {
     const ulv = recommendationsFor(['ulv'], 'karaluchy');
     expect(ulv.required).toEqual(METHOD_RECOMMENDATIONS.ulv);
-    expect(ulv.list.some((r) => r.includes('Opuścić lokal'))).toBe(true);
-    expect(ulv.list.some((r) => r.includes('posprzątać'))).toBe(true);
+    expect(ulv.list.some((r) => r.startsWith('Opuszczenie lokalu'))).toBe(true);
+    expect(ulv.list.some((r) => r.startsWith('Sprzątanie'))).toBe(true);
     const fog = recommendationsFor(['zamglawianie'], 'karaluchy');
     expect(fog.required).toEqual(ulv.required);
-    expect(fog.list.some((r) => r.includes('Opuścić lokal'))).toBe(true);
+    expect(fog.list.some((r) => r.startsWith('Opuszczenie lokalu'))).toBe(true);
     const gel = recommendationsFor(['zelowanie'], 'pluskwy');
     expect(gel.required).toEqual([]);
     expect(gel.list).toContain('Nie odkurzać ani nie myć miejsc, w których jest żel.');
-    expect(gel.list).toContain('Pościel wyprać w 60°C i wysuszyć w suszarce.');
-    expect(gel.list.some((r) => r.includes('Opuścić lokal'))).toBe(false);
+    expect(gel.list.some((r) => r.startsWith('Pranie'))).toBe(true);
+    expect(gel.list.some((r) => r.startsWith('Opuszczenie lokalu'))).toBe(false);
   });
 
   it('oznaczenia dokumentów i szukanie po nich: fv23, fv, prot', () => {

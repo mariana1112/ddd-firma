@@ -255,7 +255,8 @@ function MoneyField(props: { label: string; value: number | null; onSave: (grosz
         onChange={(e) => setText(e.target.value)}
         onBlur={() => {
           const parsed = parseMoney(text);
-          if (parsed !== null && parsed !== props.value) void props.onSave(parsed);
+          // Nierealna kwota (np. numer telefonu) nie zapisuje się.
+          if (parsed !== null && parsed <= 3_000_000 && parsed !== props.value) void props.onSave(parsed);
         }}
       />
     </Field>

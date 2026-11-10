@@ -43,6 +43,7 @@ export function VisitSummary(props: { order: Order; visit: Visit; vatRate: numbe
         {order.invoice !== 'brak' && <Info label="Faktura">{INVOICES[order.invoice]}</Info>}
         {visit.bonus > 0 && <Info label="Premia">{`${moneyToInput(visit.bonus)} zł`}</Info>}
         <Info label="Zabieg">{workSummary(visit) || 'Nie zaznaczono'}</Info>
+        {visit.sealing && visit.sealing.length > 0 && <Info label="Do uszczelnienia">{visit.sealing.join(', ')}</Info>}
         {i.situation && <Info label="Sytuacja">{i.situation}</Info>}
         {i.bites && <Info label="Ugryzienia">{yes(i.bites)}</Info>}
         {i.seen && <Info label="Owady">{i.seen === 'tak' && i.seenCount ? `Tak, ${i.seenCount}` : yes(i.seen)}</Info>}

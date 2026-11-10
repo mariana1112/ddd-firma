@@ -28,7 +28,7 @@ import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
 import { ContactBar, PinkBadge, UlvNotice, VisitBadge, visitWhen } from './common';
-import { doneMethods, hasFogging, METHOD_LABEL, methodOf, orderMethods, recommendationsFor } from '../data/methods';
+import { doneMethods, EXTRA_TREATMENTS, hasFogging, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
 import { Photos } from './photos';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
 import { isValidNip } from '../lib/validators';
@@ -697,7 +697,7 @@ export function VisitPage() {
 
           <Group title="Wykonane" plain>
             <ToggleChips
-              options={[...Object.values(METHOD_LABEL), ...settings.treatments.filter((t) => !methodOf(t))]}
+              options={[...new Set([...Object.values(METHOD_LABEL), ...EXTRA_TREATMENTS, ...settings.treatments.filter((t) => !methodOf(t))])]}
               selected={visit.treatments}
               addLabel="Inny zabieg"
               onChange={(treatments) => save({ treatments })}
@@ -705,6 +705,11 @@ export function VisitPage() {
             <span className="field-label">Miejsca wykonywania oprysku/żelowania</span>
             <ToggleChips options={settings.places} selected={visit.places} addLabel="Inne miejsce" onChange={(places) => save({ places })} />
             {workSummary(visit) && <p className="field-hint">Do wiadomości: {workSummary(visit)}</p>}
+          </Group>
+
+          <Group title="Czy trzeba uszczelnić?" plain>
+            <p className="field-hint">Zaznacz, co klient powinien uszczelnić. Trafi do zaleceń w SMS-ie po zabiegu.</p>
+            <ToggleChips options={SEALING_OPTIONS} selected={visit.sealing ?? []} addLabel="Inne miejsce do uszczelnienia" onChange={(sealing) => save({ sealing })} />
           </Group>
 
           <Group title="Zdjęcia" plain>
@@ -829,24 +834,30 @@ function EditTerms(props: { initial: VisitTerms; invoice: Order['invoice']; onSa
   );
 }
 
+/** Najwyższa kwota jednego zabiegu (w groszach): 30 000 zł. Więcej to prawie na pewno pomyłka. */
+const MAX_VISIT_AMOUNT = 3_000_000;
+
 function AmountField(props: { value: number | null; hint?: string; missing?: boolean; onSave: (value: number | null) => void }) {
   const [text, setText] = useState(props.value !== null ? moneyToInput(props.value) : '');
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const invalid = text.trim() !== '' && parseMoney(text) === null;
+  // Nierealna kwota (np. wklejony numer telefonu) nie zapisuje się: zepsułaby raporty firmy.
+  const tooBig = (raw: string) => (parseMoney(raw) ?? 0) > MAX_VISIT_AMOUNT;
+  const invalid = text.trim() !== '' && (parseMoney(text) === null || tooBig(text));
   const commit = (raw: string) => {
     clearTimeout(timer.current);
-    if (raw.trim() !== '' && parseMoney(raw) === null) return;
+    if (raw.trim() !== '' && (parseMoney(raw) === null || tooBig(raw))) return;
     const value = raw.trim() ? parseMoney(raw) : null;
     if (value !== props.value) props.onSave(value);
   };
   return (
     <Field
       label="Kwota pobrana (zł)"
-      error={invalid ? 'Podaj kwotę, np. 350' : props.missing && !text.trim() ? 'Wpisz kwotę pobraną od klienta' : undefined}
+      error={invalid ? (tooBig(text) ? 'Kwota wygląda na pomyłkę (np. numer telefonu). Sprawdź.' : 'Podaj kwotę, np. 350') : props.missing && !text.trim() ? 'Wpisz kwotę pobraną od klienta' : undefined}
       hint={props.hint}
     >
       <input
         inputMode="decimal"
+        autoComplete="off"
         value={text}
         onChange={(e) => {
           setText(e.target.value);

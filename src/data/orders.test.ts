@@ -175,10 +175,19 @@ describe('teksty', () => {
     } as Visit;
     expect(workSummary(visit)).toBe('Oprysk ciśnieniowy (listwy, kratka, łóżka), Żel');
     const next = { seq: 2, start: '2026-11-24T10:00' } as Visit;
-    const sms = finishSms(visit, next, DEFAULT_APP);
-    expect(sms).toContain('Wykonano: Oprysk ciśnieniowy (listwy, kratka, łóżka), Żel.');
-    expect(sms).toContain('- Nie myć podłóg przez 14 dni.');
+    const sms = finishSms({ ...visit, treatments: [...visit.treatments, 'Zamgławianie ULV', 'Parowanie gorącą parą'], sealing: ['listwy przypodłogowe'], scope: { kind: 'calosc', note: '' } }, next, DEFAULT_APP, 'Maurycy');
+    const lines = sms.split('\n');
+    expect(lines[0]).toBe('Dzień dobry,');
+    expect(lines).toContain('Wykonane prace:');
+    expect(lines).toContain(' * Oprysk ciśnieniowy (listwy, kratka oraz łóżka).');
+    expect(lines).toContain(' * Żelowanie (listwy, kratka oraz łóżka).');
+    expect(lines).toContain(' * Zamgławianie ULV całego lokalu.');
+    expect(lines).toContain(' * Parowanie gorącą parą.');
+    expect(lines).toContain(' * Nie myć podłóg przez 14 dni.');
+    expect(lines).toContain(' * Uszczelnienie: listwy przypodłogowe w celu zablokowania drogi potencjalnej migracji ze szczelin lub podłogi.');
+    expect(lines).toContain(' * Obserwacja: wysyłaj SMS z raportem raz na 2 dni pod numer 666 741 317.');
     expect(sms).toContain('Drugi zabieg: 24.11.2026 o 10:00.');
+    expect(lines.slice(-3)).toEqual(['Pozdrawiam,', 'Maurycy', 'http://www.pogromcy-insektow.pl']);
     // Drugi zabieg bez umówionego trzeciego: wiadomość bez terminu.
     expect(finishSms({ ...visit, seq: 2 }, null, DEFAULT_APP)).not.toContain('zabieg:');
   });

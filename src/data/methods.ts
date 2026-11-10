@@ -50,24 +50,20 @@ export function doneMethods(treatments: string[], order: Pick<Order, 'methods'>)
 export const ULV_NOTICE =
   'ULV / zamgławianie: na czas zabiegu i co najmniej 4 godziny po nim w lokalu nie może być ludzi ani zwierząt. Przed zabiegiem schować żywność i naczynia, po powrocie wywietrzyć lokal i posprzątać (umyć blaty, stoły i podłogi).';
 
-const FOGGING_RECOMMENDATIONS = [
-  'Opuścić lokal na czas zabiegu i na co najmniej 4 godziny po nim (ludzie i zwierzęta).',
-  'Przed zabiegiem schować żywność, naczynia, sztućce, szczoteczki do zębów i kosmetyki.',
-  'Akwarium przykryć i wyłączyć napowietrzanie na czas zabiegu.',
-  'Po powrocie wietrzyć lokal co najmniej przez 1 godzinę.',
-  'Po wywietrzeniu umyć blaty, stoły i powierzchnie, z którymi styka się żywność, oraz posprzątać podłogi.',
-];
+/** Zalecenia z wzoru firmy (podsumowanie po zabiegu). */
+const LEAVE = 'Opuszczenie lokalu: na 4-5 godz. (dzieci, osoby starsze i zwierzęta: 6-8 godz).';
+const AIRING = 'Wietrzenie: po powrocie od razu otwórz wszystkie okna i opuść lokal na kolejne 1-2h.';
+const CLEANING = 'Sprzątanie: w maseczce i rękawiczkach umyj wodą z detergentem blaty, stoły, klamki, włączniki. Łóżka i fotele przetrzyj wilgotną szmatką.';
+const FLOORS = 'Podłogi: przez tydzień nie odkurzaj ani nie myj podłóg w odległości 20-30 cm od ścian i łóżek. (Przy małych dzieciach lub zwierzętach umyj całą podłogę).';
+const LAUNDRY = 'Pranie: pościel i ubrania wypierz w min. 60°C (przez min. 1h) lub zgodnie z metką.';
+
+const FOGGING_RECOMMENDATIONS = [LEAVE, AIRING, CLEANING, FLOORS];
 
 /** Zalecenia dla każdej metody. Zalecenia ULV i zamgławiania są obowiązkowe: nie da się ich odznaczyć. */
 export const METHOD_RECOMMENDATIONS: Record<TreatmentMethod, string[]> = {
   zamglawianie: FOGGING_RECOMMENDATIONS,
   ulv: FOGGING_RECOMMENDATIONS,
-  oprysk: [
-    'Nie przebywać w mieszkaniu przez 4 godziny od zabiegu.',
-    'Zwierzęta i dzieci poza mieszkaniem w trakcie zabiegu i 4 godziny po nim.',
-    'Wywietrzyć mieszkanie przez 2 godziny po powrocie.',
-    'Nie myć podłóg ani listew przez 14 dni.',
-  ],
+  oprysk: [LEAVE, AIRING, FLOORS],
   zelowanie: [
     'Nie odkurzać ani nie myć miejsc, w których jest żel.',
     'Nie używać sprayów owadobójczych, bo odstraszają owady od żelu.',
@@ -81,10 +77,17 @@ export const METHOD_RECOMMENDATIONS: Record<TreatmentMethod, string[]> = {
 };
 
 const PEST_RECOMMENDATIONS: Partial<Record<PestCategory, string[]>> = {
-  pluskwy: ['Pościel wyprać w 60°C i wysuszyć w suszarce.'],
+  pluskwy: [LAUNDRY],
 };
 
-const ALWAYS = ['Zgłosić obecność owadów przed kolejnym zabiegiem.'];
+/** Obserwacja z raportem jest zawsze w podsumowaniu (osobny wiersz), więc nie trzeba jej zaznaczać. */
+const ALWAYS: string[] = [];
+
+/** Zabiegi spoza metod zlecenia, zawsze do zaznaczenia przy wykonaniu. */
+export const EXTRA_TREATMENTS = ['Parowanie gorącą parą'];
+
+/** Co można zaznaczyć w „Czy trzeba uszczelnić?”. */
+export const SEALING_OPTIONS = ['kratki wentylacyjne/piony', 'szczeliny i dziury w podłodze', 'szczeliny i dziury w ścianie', 'listwy przypodłogowe'];
 
 /** Zalecenia dla wykonanych metod i szkodnika, bez powtórzeń; obowiązkowe to zalecenia ULV i zamgławiania. */
 export function recommendationsFor(methods: TreatmentMethod[], pest: PestCategory): { list: string[]; required: string[] } {

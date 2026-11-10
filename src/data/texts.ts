@@ -1,5 +1,5 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
-import { hasFogging, ULV_NOTICE } from './methods';
+import { hasFogging, methodOf, ULV_NOTICE } from './methods';
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
 import { roman, visitCode } from './codes';
 import { normalizeInterview } from './interview';
@@ -107,21 +107,64 @@ export function reminderSms(order: Order, visit: Visit, settings: AppSettings): 
  * Wiadomość po zabiegu: wykonane czynności, zalecenia i termin kolejnego zabiegu.
  * Termin dopisujemy, gdy kolejny zabieg jest umówiony na konkretny dzień.
  */
-export function finishSms(visit: Visit, next: Visit | null, settings: AppSettings): string {
-  const lines = [settings.finishGreeting];
-  const work = workSummary(visit);
-  if (work) lines.push(`Wykonano: ${work}.`);
-  if (visit.recommendations.length) {
-    lines.push('Zalecenia:');
-    for (const r of visit.recommendations) lines.push(`- ${r}`);
-  }
+/** „a, b oraz c”. */
+export function joinPl(items: string[]): string {
+  const list = items.map((x) => x.trim()).filter(Boolean);
+  return list.length <= 1 ? (list[0] ?? '') : `${list.slice(0, -1).join(', ')} oraz ${list[list.length - 1]}`;
+}
+
+/**
+ * Wykonane prace do podsumowania: oprysk i żel z miejscami („Oprysk ciśnieniowy (listwy, łóżka oraz szafki).”),
+ * zamgławianie z zakresem („Zamgławianie ULV całego lokalu.”), pozostałe zabiegi po nazwie.
+ */
+export function workLines(visit: Pick<Visit, 'treatments' | 'places' | 'scope'>): string[] {
+  const places = joinPl(visit.places);
+  const scope = visit.scope ?? { kind: 'calosc', note: '' };
+  const where = scope.kind === 'calosc' ? 'całego lokalu' : `(${scope.note.trim() || (scope.kind === 'pokoj' ? 'pokój' : 'wybrane miejsca')})`;
+  let placesUsed = false;
+  const lines = visit.treatments.map((name) => {
+    const method = methodOf(name);
+    if (method === 'oprysk' || method === 'zelowanie') {
+      placesUsed = true;
+      const label = method === 'oprysk' ? 'Oprysk ciśnieniowy' : 'Żelowanie';
+      return places ? `${label} (${places}).` : `${label}.`;
+    }
+    if (method === 'ulv') return `Zamgławianie ULV ${where}.`;
+    if (method === 'zamglawianie') return `Zamgławianie ${where}.`;
+    if (method === 'odplywy') return 'Zalanie odpływów.';
+    return `${name.trim()}.`;
+  });
+  // Miejsca bez oprysku i żelu dopisujemy do pierwszej pracy.
+  if (places && !placesUsed && lines.length) lines[0] = `${lines[0].slice(0, -1)} (${places}).`;
+  return lines;
+}
+
+/**
+ * SMS po zabiegu w formacie firmy: wstęp, wykonane prace, zalecenia (z uszczelnieniem i obserwacją), termin
+ * kolejnego zabiegu, kontakt i podpis technika ze stroną firmy.
+ */
+export function finishSms(visit: Visit, next: Visit | null, settings: AppSettings, technician = ''): string {
+  const bullet = (text: string) => ` * ${text}`;
+  const lines = [settings.summaryIntro, ''];
+  const work = workLines(visit);
+  if (work.length) lines.push('Wykonane prace:', ...work.map(bullet), '');
+  const recs = [...visit.recommendations];
+  if (visit.sealing?.length) recs.push(`Uszczelnienie: ${joinPl(visit.sealing)} w celu zablokowania drogi potencjalnej migracji ze szczelin lub podłogi.`);
+  recs.push(`Obserwacja: wysyłaj SMS z raportem raz na 2 dni pod numer ${settings.reportPhone}.`);
+  lines.push('Zalecenia po zabiegu:', ...recs.map(bullet), '');
   if (next?.start) {
     const ordinal = next.seq === 2 ? 'Drugi' : next.seq === 3 ? 'Trzeci' : `Kolejny (${next.seq})`;
-    lines.push(`${ordinal} zabieg: ${formatTerm(next.start).replace(', ', ' o ')}.`);
+    lines.push(`${ordinal} zabieg: ${formatTerm(next.start).replace(', ', ' o ')}.`, '');
   } else if (next) {
-    lines.push('Termin kolejnego zabiegu ustalimy telefonicznie.');
+    lines.push('Termin kolejnego zabiegu ustalimy telefonicznie.', '');
   }
-  lines.push('Pozdrawiamy, Pogromcy Insektów');
+  lines.push(
+    `W razie pytań lub ponownego pojawienia się insektów po 10-14 dniach, prosimy o kontakt pod numerem ${settings.reportPhone} (lub bezpośrednio na ten numer).`,
+    '',
+    'Pozdrawiam,',
+    technician.trim() || 'Pogromcy Insektów',
+  );
+  if (settings.website.trim()) lines.push(settings.website.trim());
   return lines.join('\n');
 }
 

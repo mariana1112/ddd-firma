@@ -181,7 +181,7 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
     if (!data || !props.open) return;
     const who = data.profile.name;
     const base = visit ?? { start: null, seq: 1 };
-    if (kind === 'zalecenia' && done) setText(finishSms(done, next ?? null, data.settings));
+    if (kind === 'zalecenia' && done) setText(finishSms(done, next ?? null, data.settings, data.profile.name));
     else if (kind === 'przypomnienie' && planned) setText(reminderSms(order, planned, data.settings));
     else if (kind === 'spoznienie') setText(lateSms(order, base, minutes, who));
     else if (kind === 'wczesniej') setText(earlierSms(order, base, minutes, who));

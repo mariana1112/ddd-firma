@@ -152,6 +152,12 @@ export interface AppSettings {
   recommendations: string[];
   reminderTemplate: string;
   finishGreeting: string;
+  /** Początek SMS-a po zabiegu (podsumowanie i zalecenia). */
+  summaryIntro: string;
+  /** Numer do raportów z obserwacji i kontaktu w SMS-ie po zabiegu. */
+  reportPhone: string;
+  /** Strona firmy pod podpisem. */
+  website: string;
 }
 
 export const DEFAULT_APP: AppSettings = {
@@ -175,6 +181,9 @@ export const DEFAULT_APP: AppSettings = {
   reminderTemplate:
     'Dzień dobry, przypominamy o zabiegu {data} o {godzina}, adres: {adres}. Prosimy o potwierdzenie, że termin jest aktualny. Pogromcy Insektów',
   finishGreeting: 'Dzień dobry, dziękujemy za skorzystanie z usług Pogromców Insektów.',
+  summaryIntro: 'Dzień dobry,\nPoniżej przesyłam skrócony opis zabiegu oraz najważniejsze zalecenia pozabiegowe.',
+  reportPhone: '666 741 317',
+  website: 'http://www.pogromcy-insektow.pl',
 };
 
 export async function getAppSettings(): Promise<AppSettings> {

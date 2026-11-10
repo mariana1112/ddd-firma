@@ -334,8 +334,14 @@ function SettingsForm(props: {
         <Field label="Przypomnienie o terminie" hint="Wstawki: {data}, {godzina}, {adres}, {numer}.">
           <textarea rows={4} value={s.reminderTemplate} onChange={(e) => set({ reminderTemplate: e.target.value })} />
         </Field>
-        <Field label="Początek wiadomości po zabiegu">
-          <textarea rows={2} value={s.finishGreeting} onChange={(e) => set({ finishGreeting: e.target.value })} />
+        <Field label="Początek podsumowania po zabiegu">
+          <textarea rows={3} value={s.summaryIntro} onChange={(e) => set({ summaryIntro: e.target.value })} />
+        </Field>
+        <Field label="Numer do raportów i kontaktu" hint="W podsumowaniu: obserwacja z raportem SMS co 2 dni i kontakt po 10-14 dniach.">
+          <input inputMode="tel" value={s.reportPhone} onChange={(e) => set({ reportPhone: e.target.value })} />
+        </Field>
+        <Field label="Strona firmy (pod podpisem)">
+          <input inputMode="url" value={s.website} onChange={(e) => set({ website: e.target.value })} />
         </Field>
       </fieldset>
 
