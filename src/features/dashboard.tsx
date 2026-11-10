@@ -15,6 +15,7 @@ import { addDays, formatDate, formatDateLong, formatTime, todayWarsaw } from '..
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Group, Loading, Page, Row } from '../ui/kit';
 import { SyncNotice } from './account';
+import { RegionLine } from './regions';
 import { PinkBadge, VisitBadge } from './common';
 
 const BACKUP_REMINDER_DAYS = 7;
@@ -161,6 +162,7 @@ export function DashboardPage() {
 
   return (
     <Page title={data.profile.name ? `Cześć, ${data.profile.name}` : 'Pulpit'}>
+      <RegionLine />
       <p className="page-date">{formatDateLong(today)}</p>
 
       <SyncNotice />

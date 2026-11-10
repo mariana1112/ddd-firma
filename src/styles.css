@@ -2514,3 +2514,26 @@ a.btn.disabled {
     transform: scale(1.015);
   }
 }
+
+/* Region pod powitaniem na Pulpicie (z szybkim przełączaniem przy kilku regionach) */
+.region-line {
+  margin: -10px 0 0;
+  color: var(--primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.region-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.region-switch select {
+  width: auto;
+  min-height: 34px;
+  padding: 4px 28px 4px 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--primary);
+}

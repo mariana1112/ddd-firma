@@ -22,6 +22,7 @@ zaszyfrowane.
   filtrów”. Filtry: Wszystkie, Do zrobienia, Zakończone, Pilne (na czerwono: niedokończony, bez płatności, zaległy
   termin), Archiwum (także odwołane zabiegi). Szukanie po „fv23” (faktura VAT), „fv” (imienna) i „prot” (protokół).
 - **Faktura**: przy fakturze VAT trzeba podać nazwę firmy, NIP i e-mail, przy imiennej imię i nazwisko oraz e-mail; bez faktury pola NIP nie ma. Gdy klient zmieni zdanie w trakcie zabiegu i wybierze fakturę, pola pojawiają się pod wyborem faktury, a zabiegu nie da się zakończyć bez tych danych.
+- **Region przy powitaniu**: pod „Cześć, imię” jest nazwa regionu; przy kilku regionach (albo u admina) lista do szybkiego przełączenia regionu na tym telefonie. Admin ma też panel **Księgowość** (panel admina i Więcej), a w kodach wybiera przyciskiem: technik w regionie, admin albo księgowa.
 - **Nowe zlecenie na dziś**: zlecenie na dziś albo jutro dodane przez kogoś innego (np. szefa) pokazuje się na górze Pulpitu, aż technik kliknie „Widzę, OK”. Pulpit nie pokazuje już wykonanych zabiegów.
 - **Kalendarz Google** (zabieg i karta zlecenia): wpis w formacie firmy, np. „II pluskwy 600 Netto full, +48 573 324 034”, z adresem, dniem i godziną, danymi do faktury i opisem.
 - **Płatność przy zabiegu jest wymagana**: przyciski formy płatności są szare, wybrany świeci na zielono. „Zakończ

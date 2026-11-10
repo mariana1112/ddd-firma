@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { getDataKey, getSyncState, setSyncState } from '../data/settings';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { getDataKey, getRegions, getSyncState, setSyncState } from '../data/settings';
 import { syncInBackground } from '../data/sync/runner';
 import type { SyncState } from '../data/types';
 import { useFeedback } from '../ui/feedback';
@@ -93,5 +94,55 @@ export function RegionSwitcher({ state }: { state: SyncState }) {
         </button>
       </form>
     </Group>
+  );
+}
+
+/**
+ * Region pod powitaniem na Pulpicie. Przy jednym regionie: jego nazwa małymi literami. Przy kilku regionach (albo
+ * u admina, który wchodzi do każdego) lista do szybkiego przełączenia regionu na tym telefonie.
+ */
+export function RegionLine() {
+  const { run, toast } = useFeedback();
+  const state = useLiveQuery(async () => (await getSyncState()) ?? null);
+  const saved = useLiveQuery(() => getRegions());
+  const [server, setServer] = useState<Array<{ id: string; name: string }> | null>(null);
+
+  useEffect(() => {
+    if (!state?.orgId) return;
+    // Z internetem lista z serwera (technik: swoje regiony, admin: wszystkie); bez niego zapisane nazwy.
+    void supabaseApi()
+      .then((api) => api.listBranches(state.orgId))
+      .then(setServer)
+      .catch(() => setServer(null));
+  }, [state?.orgId]);
+
+  if (!state || state.role === 'ksiegowosc') return null;
+  const fromSaved = Object.entries(saved ?? {}).map(([id, info]) => ({ id, name: info.name }));
+  const list = server ?? (state.role === 'owner' ? fromSaved : fromSaved.filter((b) => b.id === state.branchId));
+  const current = state.branchName || list.find((b) => b.id === state.branchId)?.name || '';
+  if (list.length <= 1) return current ? <p className="region-line">region {current.toLowerCase()}</p> : null;
+  return (
+    <label className="region-line region-switch">
+      <span>region</span>
+      <select
+        value={state.branchId ?? ''}
+        aria-label="Przełącz region"
+        onChange={(e) => {
+          const target = list.find((b) => b.id === e.target.value);
+          if (!target) return;
+          void run(async () => {
+            await enterRegion(state, target);
+            toast(`Jesteś w regionie ${target.name}`);
+          });
+        }}
+      >
+        {!state.branchId && <option value="">wybierz region</option>}
+        {list.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name.toLowerCase()}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

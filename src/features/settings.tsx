@@ -59,6 +59,7 @@ export function MorePage() {
         <Row to="/kilometry" icon="car" title="Kilometry" sub="Przejazdy służbowe i prywatne, wydruk" />
         <Row to="/raporty" icon="chart" title="Raporty" sub="Dzień, tydzień, miesiąc, rozliczenie gotówki" />
         {sync && sync.role === 'owner' && <Row to="/admin" icon="building" title="Panel admina" sub="Wszystkie regiony, raporty firmy, ranking, prefiksy" />}
+        {sync && sync.role === 'owner' && <Row to="/ksiegowosc" icon="receipt" title="Księgowość" sub="Faktury i protokoły, poprawki raportów" />}
         {sync && sync.role !== 'owner' && sync.branchName && <Row to="/konto" icon="building" title={`Region: ${sync.branchName}`} sub="Urządzenie zalogowane na stałe do regionu" />}
       </Group>
       <Group title="Aplikacja">

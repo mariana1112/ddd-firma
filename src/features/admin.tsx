@@ -637,18 +637,22 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
       <div className="form group-pad" id="kody">
         <p className="field-hint">Osoba sama zakłada konto swoim e-mailem i hasłem i wpisuje kod. Bez kodu konta nie założy.</p>
         {!props.fixedRegion && (
-        <Field label="Region">
-          <select value={target} onChange={(e) => setTarget(e.target.value)}>
-            <option value="">Wybierz</option>
-            {props.regions.map((r) => (
-              <option key={r.id} value={r.id}>
-                {regionLabel(r)}
-              </option>
-            ))}
-            <option value={ADMIN_TARGET}>Admin (wszystkie regiony)</option>
-            <option value={ACCOUNTANT_TARGET}>Księgowa (wszystkie regiony)</option>
-          </select>
-        </Field>
+          <div className="field">
+            <span className="field-label">Dla kogo</span>
+            <div className="choice">
+              {props.regions.map((r) => (
+                <button key={r.id} type="button" className={target === r.id ? 'choice-item active' : 'choice-item'} aria-pressed={target === r.id} onClick={() => setTarget(r.id)}>
+                  Technik: {regionLabel(r)}
+                </button>
+              ))}
+              <button type="button" className={target === ADMIN_TARGET ? 'choice-item active' : 'choice-item'} aria-pressed={target === ADMIN_TARGET} onClick={() => setTarget(ADMIN_TARGET)}>
+                Admin
+              </button>
+              <button type="button" className={target === ACCOUNTANT_TARGET ? 'choice-item active' : 'choice-item'} aria-pressed={target === ACCOUNTANT_TARGET} onClick={() => setTarget(ACCOUNTANT_TARGET)}>
+                Księgowa
+              </button>
+            </div>
+          </div>
         )}
         {saved === null && (
           <Field
@@ -1015,6 +1019,11 @@ export function AdminPage() {
       <CodesSection state={state} regions={regionsApi.regions} />
 
       <SavedPasswordsSection state={state} />
+
+      <Group title="Księgowość">
+        <Row to="/ksiegowosc" icon="receipt" title="Panel księgowej" sub="Faktury i protokoły do zrobienia, zamknięte zlecenia" />
+        <Row to="/ksiegowosc/poprawki" icon="edit" title="Poprawki raportów" sub="Kwoty zabiegów, koszty i kilometry techników" />
+      </Group>
 
       <Group title="Firma">
         <Row to="/ustawienia" icon="gear" title="Ustawienia firmy" sub="Premia, zalecenia, SMS, dane do kilometrówki" />

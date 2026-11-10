@@ -7,6 +7,7 @@ import { deleteExpense } from '../data/domain';
 import { orderMatches } from '../data/order-search';
 import { costName, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
+import { getRegions } from '../data/settings';
 import { INVOICES, orderAddress, PAY_NAMES, workSummary } from '../data/texts';
 import type { Order, PayMethod, Visit } from '../data/types';
 import { formatDate, todayWarsaw } from '../lib/dates';
@@ -23,9 +24,11 @@ type Tab = 'czeka' | 'zamkniete';
  * „Zrobione” to zamknięte przez księgową. Zlecenie trafia tu, gdy technik zaznaczy fakturę albo protokół.
  */
 export function AccountingPage() {
-  const data = useLiveQuery(async () => ({ orders: await orders.all(), visits: await visits.all() }));
+  const data = useLiveQuery(async () => ({ orders: await orders.all(), visits: await visits.all(), regions: await getRegions() }));
   const [tab, setTab] = useState<Tab>('czeka');
   const [query, setQuery] = useState('');
+  // Szybki wybór regionu: księgowa i admin widzą wszystkie regiony.
+  const [region, setRegion] = useState('');
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -33,8 +36,8 @@ export function AccountingPage() {
     for (const v of data.visits) byOrder.set(v.orderId, [...(byOrder.get(v.orderId) ?? []), v]);
     return data.orders
       .map((order) => ({ order, list: byOrder.get(order.id) ?? [], state: accountingState(order) }))
-      .filter((r) => r.state !== 'brak' && orderMatches(r.order, query));
-  }, [data, query]);
+      .filter((r) => r.state !== 'brak' && orderMatches(r.order, query) && (!region || r.order.branchId === region));
+  }, [data, query, region]);
 
   if (!data) return <Loading />;
   const waiting = rows
@@ -48,6 +51,21 @@ export function AccountingPage() {
 
   return (
     <Page title="Księgowość">
+      {Object.keys(data.regions).length > 1 && (
+        <label className="region-line region-switch">
+          <span>region</span>
+          <select value={region} aria-label="Region" onChange={(e) => setRegion(e.target.value)}>
+            <option value="">wszystkie</option>
+            {Object.entries(data.regions)
+              .sort((a, b) => a[1].name.localeCompare(b[1].name, 'pl'))
+              .map(([id, info]) => (
+                <option key={id} value={id}>
+                  {info.name.toLowerCase()}
+                </option>
+              ))}
+          </select>
+        </label>
+      )}
       <Search value={query} onChange={setQuery} placeholder="Szukaj: nazwisko, adres, kod, fv23, fv, prot" />
       <Chips
         value={tab}
