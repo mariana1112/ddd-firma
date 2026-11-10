@@ -237,11 +237,6 @@ function validate(step: StepId, s: FormState): Errors {
     if (!s.date) e.date = 'Podaj datę zabiegu';
     else if (!isValidDate(s.date)) e.date = 'Podaj poprawną datę';
     if (s.date && !/^\d{2}:\d{2}$/.test(s.time)) e.time = 'Podaj godzinę';
-    if (s.second === 'umowiony' && !s.secondDate) e.secondDate = 'Podaj datę drugiego zabiegu';
-    if (s.second === 'umowiony' && s.secondDate) {
-      if (!isValidDate(s.secondDate)) e.secondDate = 'Podaj poprawną datę';
-      else if (s.date && s.secondDate <= s.date) e.secondDate = 'Drugi zabieg musi być po pierwszym';
-    }
   }
   if (step === 'cena') {
     if (!s.priceMin.trim()) e.priceMin = 'Podaj cenę od';
@@ -567,26 +562,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               />
             </Field>
           )}
-          <Choice
-            label="Drugi zabieg"
-            value={s.second}
-            options={[
-              ['technik', 'Technik umówi z klientem'],
-              ['umowiony', 'Umów od razu'],
-              ['brak', 'Bez drugiego'],
-            ]}
-            onChange={(second) => set({ second })}
-          />
-          {s.second === 'umowiony' && (
-            <div className="form-row">
-              <Field label="Data drugiego" error={errors.secondDate}>
-                <input type="date" value={s.secondDate} onChange={(e) => set({ secondDate: e.target.value })} />
-              </Field>
-              <Field label="Godzina">
-                <input type="time" step={900} value={s.secondTime} onChange={(e) => set({ secondTime: e.target.value })} />
-              </Field>
-            </div>
-          )}
+          <p className="field-hint">O kolejnym zabiegu zdecydujesz przy zakończeniu tego (albo „Umów kolejny zabieg” w zleceniu).</p>
         </div>
       );
     case 'cena':
@@ -671,9 +647,6 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           <Info label="Szkodnik">{draft.pest === 'inne' ? draft.pestOther : PESTS[draft.pest]}</Info>
           <Info label="Termin">{formatTerm(`${s.date}T${s.time}`)}</Info>
           <Info label="Co pryskamy">{scopeText(formTerms(s).scope)}</Info>
-          <Info label="Drugi zabieg">
-            {s.second === 'umowiony' ? formatTerm(`${s.secondDate}T${s.secondTime}`) : s.second === 'technik' ? 'Technik umówi z klientem' : 'Bez drugiego'}
-          </Info>
           {price && <Info label="Widełki">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
           <Info label="Faktura">{INVOICES[draft.invoice]}</Info>
           <Info label="Protokół">{s.protocol ? 'Tak' : 'Nie'}</Info>
@@ -685,83 +658,10 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
   }
 }
 
-/** Szybkie zlecenie: najważniejsze pola na jednej stronie, reszta domyślna i do uzupełnienia w edycji. */
-function QuickForm(props: { state: FormState; set: (patch: Partial<FormState>) => void; errors: Errors }) {
-  const { state: s, set, errors } = props;
-  return (
-    <div className="form">
-      <div className="form-row">
-        <Field label="Telefon" error={errors.phone1}>
-          <input type="tel" inputMode="tel" value={s.phone1} placeholder="500 600 700" onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })} autoComplete="off" />
-        </Field>
-        <Field label="Imię / firma" error={errors.clientName}>
-          <input value={s.clientName} onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
-        </Field>
-      </div>
-      <Choice label="Budynek" value={s.building} options={Object.entries(BUILDINGS) as Array<[BuildingType, string]>} onChange={(building) => set({ building })} />
-      <div className="form-row">
-        <Field label="Ulica" error={errors.street}>
-          <input value={s.street} onChange={(e) => set({ street: e.target.value })} autoComplete="off" />
-        </Field>
-        <Field label="Nr domu" error={errors.houseNo}>
-          <input className="input-short" value={s.houseNo} onChange={(e) => set({ houseNo: e.target.value })} autoComplete="off" />
-        </Field>
-      </div>
-      <div className="form-row">
-        {s.building === 'blok' && (
-          <Field label="Nr lokalu" error={errors.flatNo}>
-            <input className="input-short" value={s.flatNo} onChange={(e) => set({ flatNo: e.target.value })} inputMode="numeric" autoComplete="off" />
-          </Field>
-        )}
-        <Field label="Miejscowość" error={errors.city}>
-          <input value={s.city} onChange={(e) => set({ city: e.target.value })} onBlur={() => set({ city: normalizeCity(s.city) })} autoCapitalize="words" autoComplete="off" />
-        </Field>
-      </div>
-      <MapsLinkField state={s} set={set} error={errors.mapsLink} />
-      <MethodsField value={s.methods} onChange={(methods) => set({ methods })} error={errors.methods} />
-      <Choice label="Szkodnik" value={s.pest} options={Object.entries(PESTS) as Array<[PestCategory, string]>} onChange={(pest) => set({ pest })} />
-      {s.pest === 'inne' && (
-        <Field label="Jaki szkodnik" error={errors.pestOther}>
-          <input value={s.pestOther} onChange={(e) => set({ pestOther: e.target.value })} autoComplete="off" />
-        </Field>
-      )}
-      <div className="form-row">
-        <Field label="Data" error={errors.date}>
-          <input type="date" value={s.date} onChange={(e) => set({ date: e.target.value })} />
-        </Field>
-        <Field label="Godzina" error={errors.time}>
-          <input type="time" step={900} value={s.time} onChange={(e) => set({ time: e.target.value })} />
-        </Field>
-      </div>
-      <Choice label="Co pryskamy" value={s.scopeKind} options={SCOPE_KINDS} onChange={(scopeKind) => set({ scopeKind })} />
-      {s.scopeKind !== 'calosc' && (
-        <Field label={s.scopeKind === 'pokoj' ? 'Który pokój?' : 'Co dokładnie?'}>
-          <input value={s.scopeNote} placeholder={s.scopeKind === 'pokoj' ? 'Np. sypialnia' : 'Np. kuchnia i łazienka'} onChange={(e) => set({ scopeNote: e.target.value })} autoComplete="off" />
-        </Field>
-      )}
-      <div className="form-row">
-        <Field label="Cena od (zł)" error={errors.priceMin}>
-          <input value={s.priceMin} onChange={(e) => set({ priceMin: e.target.value })} inputMode="decimal" autoComplete="off" />
-        </Field>
-        <Field label="do (zł)" error={errors.priceMax}>
-          <input value={s.priceMax} onChange={(e) => set({ priceMax: e.target.value })} inputMode="decimal" autoComplete="off" />
-        </Field>
-      </div>
-      <p className="field-hint">Pozostałe dane (opis, metraż, faktura, protokół, drugi zabieg, kod pink) uzupełnisz później w edycji zlecenia.</p>
-    </div>
-  );
-}
-
 export function OrderNewPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { confirm, run, toast } = useFeedback();
-  // Zawsze zaczyna się krok po kroku; szybkie zlecenie to wybór na tę jedną zmianę.
-  const [quick, setQuickState] = useState(false);
-  const setQuick = (value: boolean) => {
-    setQuickState(value);
-    setErrors({});
-  };
   const settings = useLiveQuery(() => getAppSettings());
   // Kliknięcie w kalendarzu przekazuje dzień i godzinę nowego zlecenia.
   const [state, setState] = useState<FormState>(() => {
@@ -819,7 +719,7 @@ export function OrderNewPage() {
     setErrors(found);
     if (Object.keys(found).length) {
       toast('Popraw zaznaczone pola', { tone: 'error' });
-      if (!quick) setStepIndex(Math.max(0, ALL_STEPS.findIndex((st) => Object.keys(validate(st, state)).length > 0)));
+      setStepIndex(Math.max(0, ALL_STEPS.findIndex((st) => Object.keys(validate(st, state)).length > 0)));
       return;
     }
     if (!(await askMissing(ALL_STEPS.flatMap((st) => missing(st, state)), 'Zapisz bez tego'))) return;
@@ -832,10 +732,7 @@ export function OrderNewPage() {
       const { order } = await createOrder(
         toDraft(state),
         { start: state.date ? `${state.date}T${state.time}` : null, durationMin: duration, terms: formTerms(state) },
-        // Drugi zabieg „umówiony” bez daty zapisuje się jako do umówienia.
-        state.second === 'umowiony'
-          ? { start: state.secondDate ? `${state.secondDate}T${state.secondTime}` : null, durationMin: duration, terms: formTerms(state) }
-          : null,
+        null,
       );
       saveDraft(null);
       toast(`Zapisano zlecenie ${orderCode(order)}`);
@@ -846,23 +743,6 @@ export function OrderNewPage() {
 
   return (
     <Page title="Nowe zlecenie" back="/zlecenia">
-      <div className="chips" role="group" aria-label="Rodzaj formularza">
-        <button type="button" className={quick ? 'chip' : 'chip active'} aria-pressed={!quick} onClick={() => setQuick(false)}>
-          Krok po kroku
-        </button>
-        <button type="button" className={quick ? 'chip active' : 'chip'} aria-pressed={quick} onClick={() => setQuick(true)}>
-          Szybkie zlecenie
-        </button>
-      </div>
-      {quick ? (
-        <>
-          <QuickForm state={state} set={set} errors={errors} />
-          <button type="button" className="btn btn-primary btn-block" onClick={() => void saveNow()}>
-            <Icon name="check" /> Zapisz zlecenie
-          </button>
-        </>
-      ) : (
-      <>
       <div className="wizard-progress" aria-label={`Krok ${stepIndex + 1} z ${steps.length}`}>
         {steps.map((s, i) => (
           <span key={s} className={i <= stepIndex ? 'done' : ''} />
@@ -888,8 +768,6 @@ export function OrderNewPage() {
           </button>
         )}
       </div>
-      </>
-      )}
       {hasDraft && stepIndex === 0 && (
         <button
           type="button"

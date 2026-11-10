@@ -27,7 +27,7 @@ import { formatDate, formatTerm } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
+import { Badge, Collapsible, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
 import { ContactBar, PinkBadge, UlvNotice, useContactActions, VisitBadge, visitWhen } from './common';
 import { doneMethods, METHOD_LABEL, methodOf, orderMethods, recommendationsFor } from '../data/methods';
 import { Photos } from './photos';
@@ -407,7 +407,7 @@ export function VisitPage() {
 
   const finish = async (input: { recommendations: string[]; next: NextVisit }) => {
     await run(async () => {
-      const { next } = await finishVisit(visit.id, {
+      await finishVisit(visit.id, {
         payMethod: visit.payMethod,
         amount: visit.amount,
         treatments: visit.treatments,
@@ -419,8 +419,8 @@ export function VisitPage() {
       });
       setFinishing(false);
       setEditingId(null);
-      toast('Zabieg zakończony');
-      await sendFinishSms({ ...visit, recommendations: input.recommendations }, next);
+      // SMS z zaleceniami wysyła się przyciskiem w podsumowaniu, bez wyskakującego okna.
+      toast(phone ? 'Zabieg zakończony. Wyślij klientowi SMS z zaleceniami.' : 'Zabieg zakończony');
     });
   };
 
@@ -550,11 +550,11 @@ export function VisitPage() {
         <>
           <VisitSummary order={order} visit={visit} vatRate={settings.vatRate} later={later} photos={<Photos visitId={visit.id} readOnly />} />
           <div className="btn-stack">
-            <button type="button" className="btn btn-primary" onClick={() => setEditingId(visit.id)}>
-              <Icon name="edit" /> Edytuj zabieg
+            <button type="button" className="btn btn-primary" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>
+              <Icon name="message" /> Wyślij klientowi SMS z zaleceniami
             </button>
-            <button type="button" className="btn" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>
-              <Icon name="message" /> SMS do klienta z zaleceniami
+            <button type="button" className="btn" onClick={() => setEditingId(visit.id)}>
+              <Icon name="edit" /> Edytuj zabieg
             </button>
             {!later?.start && (
               <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
@@ -634,7 +634,11 @@ export function VisitPage() {
           </Group>
           </div>
 
-          <Group title="Wywiad" plain>
+          <Collapsible
+            title="Wywiad"
+            summary={interview.situation.trim() ? interview.situation.trim().slice(0, 60) : 'Opis sytuacji, ugryzienia, owady'}
+            defaultOpen={Boolean(interview.situation.trim() || interview.other.trim())}
+          >
             <AutoText
               label="Opis sytuacji"
               placeholder="Co się dzieje, gdzie, od kiedy"
@@ -649,7 +653,7 @@ export function VisitPage() {
             )}
             <YesNoField label="Czy klient używał środków na własną rękę?" value={interview.selfTreatment} onChange={(v) => saveInterview('selfTreatment', v)} />
             <AutoText label="Inne uwagi" placeholder="Czy coś zauważyłem podczas zabiegu" rows={3} value={interview.other} onSave={(v) => saveInterview('other', v)} />
-          </Group>
+          </Collapsible>
 
           <Group title="Wykonane" plain>
             <ToggleChips
@@ -663,16 +667,16 @@ export function VisitPage() {
             {workSummary(visit) && <p className="field-hint">Do wiadomości: {workSummary(visit)}</p>}
           </Group>
 
-          <Group title="Dokumenty dla klienta" plain>
+          <Collapsible title="Zdjęcia" summary="Dotknij, żeby dodać zdjęcia">
+            <Photos visitId={visit.id} />
+          </Collapsible>
+
+          <Collapsible title="Protokół" summary={order.protocol ? 'Klient chce protokół' : 'Bez protokołu'}>
             <label className="check">
               <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
               Klient chce protokół z zabiegu
             </label>
-          </Group>
-
-          <Group title="Zdjęcia" plain>
-            <Photos visitId={visit.id} />
-          </Group>
+          </Collapsible>
 
           <div className={order.pink ? 'pink-box active' : 'pink-box'}>
             <label className="check check-pink">

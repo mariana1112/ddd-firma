@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
+import { cloneElement, createContext, isValidElement, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './icons';
 
@@ -49,6 +49,23 @@ export function Group(props: { title?: string; action?: ReactNode; children: Rea
         </div>
       )}
       {props.plain ? props.children : <div className="group-body">{props.children}</div>}
+    </section>
+  );
+}
+
+/** Sekcja zwijana: nagłówek z krótkim podsumowaniem, treść po dotknięciu. Skraca długie ekrany. */
+export function Collapsible(props: { title: string; summary?: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(props.defaultOpen ?? false);
+  return (
+    <section className={open ? 'group collapsible open' : 'group collapsible'}>
+      <button type="button" className="collapsible-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="collapsible-title">
+          <strong>{props.title}</strong>
+          {!open && props.summary && <span className="collapsible-summary">{props.summary}</span>}
+        </span>
+        <Icon name="chevron" size={18} />
+      </button>
+      {open && <div className="collapsible-body">{props.children}</div>}
     </section>
   );
 }
@@ -140,13 +157,36 @@ export function Info({ label, children }: { label: string; children: ReactNode }
   );
 }
 
+/**
+ * Pole formularza: nazwa, pole, błąd albo podpowiedź. Nazwa i podpowiedź są jawnie powiązane z polem, więc iPhone
+ * (autouzupełnianie, VoiceOver) zawsze wie, co to za pole, a dotknięcie nazwy ustawia kursor.
+ */
 export function Field(props: { label: string; error?: string; hint?: ReactNode; children: ReactNode }) {
+  const id = useId();
+  const described = props.error || props.hint ? `${id}-opis` : undefined;
+  const child = isValidElement(props.children)
+    ? cloneElement(props.children as ReactElement<Record<string, unknown>>, {
+        'aria-labelledby': `${id}-nazwa`,
+        'aria-describedby': described,
+        'aria-invalid': props.error ? true : undefined,
+      })
+    : props.children;
   return (
     <label className={props.error ? 'field field-error' : 'field'}>
-      <span className="field-label">{props.label}</span>
-      {props.children}
-      {props.error && <span className="field-message">{props.error}</span>}
-      {!props.error && props.hint && <span className="field-hint">{props.hint}</span>}
+      <span className="field-label" id={`${id}-nazwa`}>
+        {props.label}
+      </span>
+      {child}
+      {props.error && (
+        <span className="field-message" id={described}>
+          {props.error}
+        </span>
+      )}
+      {!props.error && props.hint && (
+        <span className="field-hint" id={described}>
+          {props.hint}
+        </span>
+      )}
     </label>
   );
 }

@@ -243,19 +243,21 @@ export function VisitListRow({ order, visit, today }: { order: Order; visit: Vis
         <>
           {date ? <strong className="row-when">{formatDate(date)}{visit.start && visit.status !== 'wykonany' ? `, godz. ${visit.start.slice(11, 16)}` : ''}</strong> : 'termin do umówienia'}
           {` · zabieg ${roman(visit.seq)}`}
+          <span className="row-tags">
+            {urgent && urgent !== 'w_trakcie' && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
+            {visit.payMethod && <PayBadge method={visit.payMethod} />}
+            {documentTags(order).map((tag) => (
+              <Badge key={tag} tone="info">
+                {tag}
+              </Badge>
+            ))}
+          </span>
         </>
       }
       trailing={
         <span className="row-end">
           {order.pink && <PinkBadge />}
           <VisitBadge visit={visit} />
-          {urgent && urgent !== 'w_trakcie' && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
-          {documentTags(order).map((tag) => (
-            <Badge key={tag} tone="info">
-              {tag}
-            </Badge>
-          ))}
-          {visit.payMethod && <PayBadge method={visit.payMethod} />}
         </span>
       }
     />
@@ -301,6 +303,18 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
             <span className="row-next">
               <NextVisitPill state={nextVisitState(list)} />
             </span>
+            <span className="row-tags">
+              {urgent && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
+              {isArchived(order, list) && <Badge tone="muted">Archiwum</Badge>}
+              {paid.map((m) => (
+                <PayBadge key={m} method={m} />
+              ))}
+              {documentTags(order).map((tag) => (
+                <Badge key={tag} tone="info">
+                  {tag}
+                </Badge>
+              ))}
+            </span>
           </>
         ) : undefined
       }
@@ -308,16 +322,6 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
         <span className="row-end">
           {order.pink && <PinkBadge />}
           {current && <VisitBadge visit={current} />}
-          {urgent && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
-          {isArchived(order, list) && <Badge tone="muted">Archiwum</Badge>}
-          {documentTags(order).map((tag) => (
-            <Badge key={tag} tone="info">
-              {tag}
-            </Badge>
-          ))}
-          {paid.map((m) => (
-            <PayBadge key={m} method={m} />
-          ))}
         </span>
       }
     />

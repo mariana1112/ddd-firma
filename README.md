@@ -7,14 +7,20 @@ zaszyfrowane.
 
 ## Co potrafi
 
-- **Kreator zlecenia** w sześciu krokach:
-  - adres z rodzajem budynku: dom, bliźniak albo blok (w bloku lokal, piętro i klatka) oraz opis dojazdu,
-  - szkodnik: karaluchy, chrząszczowate, pluskwy, gryzonie albo inne z opisem, metraż i kod pink,
-  - termin z czasem zabiegu i propozycjami blisko innych zleceń z szacowanym dojazdem, drugi zabieg umówiony od razu albo przez technika,
-  - widełki cenowe (przy fakturze VAT netto i brutto),
+- **Kreator zlecenia** krok po kroku (jedna ścieżka):
+  - adres z rodzajem budynku: dom, bliźniak albo blok (w bloku lokal, piętro i klatka) oraz opis dojazdu; miejscowość
+    poprawia się sama („gdansk” → „Gdańsk”),
+  - co robimy (żelowanie, zalanie odpływów, zamgławianie ULV, oprysk ciśnieniowy; od tego zależą zalecenia, przy ULV
+    zawsze widać uwagę o opuszczeniu lokalu i sprzątaniu), szkodnik, metraż i kod pink,
+  - termin z czasem zabiegu i propozycjami blisko innych zleceń z szacowanym dojazdem; o kolejnym zabiegu decyduje się
+    przy zakończeniu pierwszego,
+  - widełki cenowe (przy fakturze VAT netto i brutto), faktura i protokół,
   - klient wpisywany przy zleceniu, bez bazy klientów: telefony z dopiskiem, e-mail i NIP.
-  Żadne pole nie jest obowiązkowe: przy pustym adresie, telefonie czy nazwisku aplikacja pyta, czy na pewno ich nie
-  uzupełnić; błędnie wpisane wartości (np. kod 00-00) trzeba poprawić. Z każdego kroku można zapisać od razu.
+  Obowiązkowe: adres (ulica, numer, miejscowość), co robimy, data, widełki i telefon; bez nich zlecenia nie da się
+  zapisać. O puste nieobowiązkowe pola (numer lokalu, nazwisko) aplikacja tylko pyta.
+- **Lista zleceń**: każdy zabieg osobno (tylko jego termin, stan i płatność), albo „Połącz w zlecenia” w „Więcej
+  filtrów”. Filtry: Wszystkie, Do zrobienia, Zakończone, Pilne (na czerwono: niedokończony, bez płatności, zaległy
+  termin), Archiwum (także odwołane zabiegi). Szukanie po „fv23” (faktura VAT), „fv” (imienna) i „prot” (protokół).
 - **Płatność przy zabiegu jest wymagana**: przyciski formy płatności są szare, wybrany świeci na zielono. „Zakończ
   zabieg” bez formy płatności albo kwoty podświetla płatność na czerwono i przewija do niej; „Później” kończy zabieg
   i wrzuca go do **Pilnych** (Pulpit i filtr na liście zleceń), dopóki płatność nie zostanie uzupełniona.
@@ -30,8 +36,7 @@ zaszyfrowane.
 - **Gdy dzwoni klient**: pole „Kto dzwoni?” na Pulpicie szuka we wszystkich zleceniach, także zakończonych, po numerze
   telefonu w dowolnym zapisie (+48, spacje, myślniki, fragment), nazwisku, adresie albo kodzie. Telefon klienta jest widoczny
   na liście zleceń, na Pulpicie i w kalendarzu.
-- **Szybkie zlecenie**: telefon, nazwisko, adres, szkodnik, termin, zakres i cena na jednej stronie; reszta w edycji.
-  Niedokończony kreator zostaje zapamiętany. Każde zlecenie ma kod z prefiksem regionu i czterocyfrowym numerem, np. `LDZ-0210`;
+- Niedokończony kreator zostaje zapamiętany. Każde zlecenie ma kod z prefiksem regionu i czterocyfrowym numerem, np. `LDZ-0210`;
   zabiegi mają ten sam kod z numerem rzymskim: `LDZ-0210/I`, `LDZ-0210/II`. Prefiks ustawia się w Ustawieniach
   (osobno na każdym urządzeniu), a numery nie powtarzają się w całej firmie.
 - **Zabieg u klienta**:

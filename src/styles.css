@@ -2398,3 +2398,69 @@ a.btn.disabled {
 .check.check-required {
   font-weight: 600;
 }
+
+/* Sekcja zwijana (np. wywiad i zdjęcia na ekranie zabiegu) */
+.collapsible {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.collapsible-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collapsible-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.collapsible-summary {
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collapsible-head svg {
+  flex: none;
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+
+.collapsible.open .collapsible-head svg {
+  transform: rotate(-90deg);
+}
+
+.collapsible-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+/* Oznaczenia (płatność, fv23, prot) w jednym rzędzie pod adresem; po prawej zostaje tylko stan zabiegu */
+.row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.row-tags:empty {
+  display: none;
+}
