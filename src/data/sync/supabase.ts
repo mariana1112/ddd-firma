@@ -14,6 +14,7 @@ import {
   unwrapDataKey,
   type WrappedKey,
 } from './crypto';
+import type { Role } from '../types';
 import { SyncError, type PushChange, type RemoteRecord, type SyncServer } from './engine';
 
 let client: SupabaseClient | undefined;
@@ -146,7 +147,7 @@ export const supabaseServer: SyncServer = {
 export interface Membership {
   orgId: string;
   orgName: string;
-  role: 'owner' | 'technik';
+  role: Role;
   displayName: string;
   branchId: string | null;
   branchName: string;
@@ -164,7 +165,7 @@ export interface Branch {
 export interface Member {
   userId: string;
   displayName: string;
-  role: 'owner' | 'technik';
+  role: Role;
   branchId: string | null;
   approved: boolean;
   email: string;
@@ -422,7 +423,7 @@ async function invokeKonta(body: Record<string, unknown>): Promise<Record<string
 export async function issueSignupCode(opts: {
   orgId: string;
   branchId: string | null;
-  role: 'technik' | 'owner';
+  role: Role;
   companyPassword: string;
   orgWrapped: WrappedKey;
   deviceKey: CryptoKey;

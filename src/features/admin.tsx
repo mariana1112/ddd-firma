@@ -386,7 +386,7 @@ type MemberRow = {
   userId: string;
   displayName: string;
   email: string;
-  role: 'owner' | 'technik';
+  role: 'owner' | 'technik' | 'ksiegowosc';
   branchId: string | null;
   approved: boolean;
   suspended?: boolean;

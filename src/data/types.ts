@@ -182,6 +182,8 @@ export type BuildingType = 'dom' | 'blizniak' | 'blok';
 export type PestCategory = 'karaluchy' | 'chrzaszczowate' | 'pluskwy' | 'gryzonie' | 'inne';
 export type InvoiceType = 'brak' | 'imienna' | 'vat';
 export type PayMethod = 'gotowka' | 'blik' | 'przelew';
+/** Rola konta w firmie: admin (szef), technik albo księgowa. */
+export type Role = 'owner' | 'technik' | 'ksiegowosc';
 /** Co robimy w zleceniu: żelowanie, zalanie odpływów, zamgławianie ULV, oprysk ciśnieniowy. */
 export type TreatmentMethod = 'zelowanie' | 'odplywy' | 'ulv' | 'oprysk';
 
@@ -236,6 +238,15 @@ export interface Order extends BaseRecord {
   methods?: TreatmentMethod[];
   /** Klient chce protokół z zabiegu (zaznacza technik albo przyjmujący zlecenie). */
   protocol?: boolean;
+  /** Księgowość: faktura wystawiona i jej numer. */
+  invoiceDone?: boolean;
+  invoiceNumber?: string;
+  /** Księgowość: protokół przygotowany. */
+  protocolDone?: boolean;
+  /** Uwagi księgowej do zlecenia. */
+  accountingNote?: string;
+  /** Kiedy księgowa zamknęła zlecenie (wszystko zrobione); brak: do zrobienia. */
+  accountingClosedAt?: string | null;
 }
 
 export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';
@@ -386,8 +397,8 @@ export interface SyncState {
   cursor: number;
   lastSyncAt: string | null;
   lastError: string | null;
-  /** Rola w firmie: szef widzi wszystkie oddziały, technik swój. */
-  role?: 'owner' | 'technik';
+  /** Rola w firmie: szef widzi wszystkie oddziały, technik swój, księgowa wszystkie (bez panelu admina). */
+  role?: Role;
   displayName?: string;
   branchId?: string | null;
   branchName?: string;
