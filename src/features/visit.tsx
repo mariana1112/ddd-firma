@@ -19,7 +19,6 @@ import {
   PINK_PLACEHOLDER,
   pestName,
   priceRange,
-  reminderSms,
   workSummary,
 } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
@@ -508,7 +507,7 @@ export function VisitPage() {
 
       <ContactBar
         order={order}
-        onSms={(p) => void sms(p, visit.status === 'zaplanowany' && visit.start ? reminderSms(order, visit, settings) : '')}
+        visit={visit}
       />
 
       {order.access && (

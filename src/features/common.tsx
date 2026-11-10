@@ -10,7 +10,12 @@ import { Icon } from '../ui/icons';
 import { Badge, Sheet } from '../ui/kit';
 import { isIos, mapsQuery, navigationTargets } from '../data/maps';
 import { orderAddress } from '../data/texts';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { EARLY_MINUTES, earlierSms, LATE_MINUTES, lateSms, type SmsKind } from '../data/sms';
+import { getAppSettings, getProfile } from '../data/settings';
+import { reminderSms } from '../data/texts';
+import { visits as visitRepo } from '../data/repo';
 
 export function PayBadge({ method }: { method: PayMethod }) {
   return <span className={`pay-badge pay-${method}`}>{PAY_NAMES[method]}</span>;
@@ -151,9 +156,95 @@ export function NavigateSheet(props: { order: Order; open: boolean; onClose: () 
   );
 }
 
-export function ContactBar(props: { order: Order; onSms?: (phone: Phone) => void }) {
+/**
+ * Menu „SMS”: przypomnienie z prośbą o potwierdzenie, „spóźnię się” (ile minut), prośba o przyjazd wcześniej
+ * (ile minut) albo własna wiadomość. Tekst można poprawić przed wysłaniem; „Wyślij” otwiera Wiadomości.
+ */
+export function SmsSheet(props: { order: Order; visit?: Visit | null; open: boolean; onClose: () => void; initial?: SmsKind }) {
+  const { order, visit } = props;
+  const data = useLiveQuery(async () => ({ settings: await getAppSettings(), profile: await getProfile() }));
+  const phones = order.phones.filter((p) => p.number.trim());
+  const [phoneIdx, setPhoneIdx] = useState(0);
+  const planned = visit && visit.status === 'zaplanowany' && visit.start ? visit : null;
+  const [kind, setKind] = useState<SmsKind>(props.initial ?? (planned ? 'przypomnienie' : 'wlasna'));
+  const [minutes, setMinutes] = useState(15);
+  const [text, setText] = useState('');
+
+  // Treść gotowej wiadomości przelicza się po wyborze rodzaju i minut; własną wpisuje technik.
+  useEffect(() => {
+    if (!data || !props.open) return;
+    const who = data.profile.name;
+    const base = visit ?? { start: null, seq: 1 };
+    if (kind === 'przypomnienie' && planned) setText(reminderSms(order, planned, data.settings));
+    else if (kind === 'spoznienie') setText(lateSms(order, base, minutes, who));
+    else if (kind === 'wczesniej') setText(earlierSms(order, base, minutes, who));
+    else if (kind === 'wlasna') setText('');
+  }, [kind, minutes, data, props.open, order, visit, planned]);
+
+  if (!props.open) return null;
+  const phone = phones[phoneIdx];
+  const options: Array<[SmsKind, string]> = [
+    ...(planned ? ([['przypomnienie', 'Przypomnienie i prośba o potwierdzenie']] as Array<[SmsKind, string]>) : []),
+    ['spoznienie', 'Spóźnię się'],
+    ['wczesniej', 'Czy mogę przyjechać wcześniej?'],
+    ['wlasna', 'Własna wiadomość'],
+  ];
+  const send = async () => {
+    if (!phone) return;
+    await copyText(text);
+    // Przypomnienie znika z listy „do wysłania” na Pulpicie.
+    if (kind === 'przypomnienie' && planned) await visitRepo.update(planned.id, { remindedAt: new Date().toISOString() });
+    props.onClose();
+    window.location.href = smsUrl(phone.number, text);
+  };
+  return (
+    <Sheet open={props.open} title="SMS do klienta" onClose={props.onClose}>
+      <div className="form">
+        {phones.length > 1 && (
+          <div className="choice">
+            {phones.map((p, i) => (
+              <button key={i} type="button" className={i === phoneIdx ? 'choice-item active' : 'choice-item'} onClick={() => setPhoneIdx(i)}>
+                {p.number}
+                {p.label ? ` (${p.label})` : ''}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="sms-options">
+          {options.map(([value, label]) => (
+            <button key={value} type="button" className={kind === value ? 'choice-item active' : 'choice-item'} aria-pressed={kind === value} onClick={() => setKind(value)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {(kind === 'spoznienie' || kind === 'wczesniej') && (
+          <div className="field">
+            <span className="field-label">{kind === 'spoznienie' ? 'Ile minut spóźnienia (mniej więcej)?' : 'Ile minut wcześniej?'}</span>
+            <div className="chips chips-wrap">
+              {(kind === 'spoznienie' ? LATE_MINUTES : EARLY_MINUTES).map((m) => (
+                <button key={m} type="button" className={minutes === m ? 'chip active' : 'chip'} aria-pressed={minutes === m} onClick={() => setMinutes(m)}>
+                  {m} min
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <label className="field">
+          <span className="field-label">Treść (możesz poprawić)</span>
+          <textarea rows={5} value={text} placeholder="Wpisz wiadomość" onChange={(e) => setText(e.target.value)} />
+        </label>
+        <button type="button" className="btn btn-primary btn-block" disabled={!phone || !text.trim()} onClick={() => void send()}>
+          <Icon name="message" /> Wyślij {phone ? `do ${phone.number}` : ''}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+export function ContactBar(props: { order: Order; visit?: Visit | null }) {
   const { call } = useContactActions();
   const [navOpen, setNavOpen] = useState(false);
+  const [smsOpen, setSmsOpen] = useState(false);
   const phone = props.order.phones.find((p) => p.number.trim());
   return (
     <div className="contact-bar">
@@ -166,10 +257,11 @@ export function ContactBar(props: { order: Order; onSms?: (phone: Phone) => void
         <Icon name="phone" />
         <span>Zadzwoń</span>
       </button>
-      <button type="button" className="contact-btn" disabled={!phone || !props.onSms} onClick={() => phone && props.onSms?.(phone)}>
+      <button type="button" className="contact-btn" disabled={!phone} onClick={() => setSmsOpen(true)}>
         <Icon name="message" />
         <span>SMS</span>
       </button>
+      {smsOpen && <SmsSheet order={props.order} visit={props.visit} open={smsOpen} onClose={() => setSmsOpen(false)} />}
     </div>
   );
 }

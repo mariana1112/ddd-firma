@@ -2537,3 +2537,30 @@ a.btn.disabled {
   font-weight: 600;
   color: var(--primary);
 }
+
+/* Menu SMS: rodzaje wiadomości jeden pod drugim */
+.sms-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sms-options .choice-item {
+  text-align: left;
+}
+
+/* Przypomnienie na jutro: wiersz zabiegu i przyciski pod nim */
+.reminder-row {
+  border-bottom: 1px solid var(--line);
+}
+
+.reminder-row:last-child {
+  border-bottom: 0;
+}
+
+.reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 12px;
+}

@@ -306,6 +306,8 @@ export interface Visit extends BaseRecord {
    */
   priceMin?: number | null;
   priceMax?: number | null;
+  /** Kiedy wysłano klientowi przypomnienie z prośbą o potwierdzenie (SMS dzień przed). */
+  remindedAt?: string | null;
 }
 
 export type ScopeKind = 'calosc' | 'pokoj' | 'inne';

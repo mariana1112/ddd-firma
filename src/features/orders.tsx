@@ -11,8 +11,8 @@ import { googleCalendarUrl } from '../data/calendar';
 import { archiveOrder, deleteOrder, orderVisits, restoreOrder, scheduleNextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
-import { accessDetails, BUILDINGS, INVOICES, orderAddress, pestName, priceRange, reminderSms } from '../data/texts';
-import type { Order, PayMethod, Phone, Visit } from '../data/types';
+import { accessDetails, BUILDINGS, INVOICES, orderAddress, pestName, priceRange } from '../data/texts';
+import type { Order, PayMethod, Visit } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
@@ -21,7 +21,7 @@ import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Pa
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
-import { ContactBar, NextVisitPill, PayBadge, PinkBadge, UlvNotice, useContactActions, VisitBadge, visitWhen } from './common';
+import { ContactBar, NextVisitPill, PayBadge, PinkBadge, UlvNotice, VisitBadge, visitWhen } from './common';
 
 type StatusFilter = ListFilter;
 type PayFilter = 'wszystkie' | PayMethod;
@@ -378,7 +378,6 @@ export function OrderDetailPage() {
   const [scheduling, setScheduling] = useState(false);
   const navigate = useNavigate();
   const { confirm, run, toast } = useFeedback();
-  const { sms } = useContactActions();
   const data = useLiveQuery(async () => {
     const order = await orders.get(id);
     if (!order || order.deletedAt) return null;
@@ -436,8 +435,6 @@ export function OrderDetailPage() {
     });
   };
 
-  const onSms = (phone: Phone) =>
-    void sms(phone, nextPlanned ? reminderSms(order, nextPlanned, settings) : '');
 
   return (
     <Page
@@ -458,9 +455,8 @@ export function OrderDetailPage() {
         <p>{orderAddress(order)}</p>
       </div>
 
-      <ContactBar order={order} onSms={onSms} />
+      <ContactBar order={order} visit={nextPlanned ?? current} />
       {hasFogging(orderMethods(order)) && <UlvNotice />}
-      {nextPlanned && <p className="field-hint">SMS zawiera przypomnienie o zabiegu {formatDate(nextPlanned.start)} z prośbą o potwierdzenie.</p>}
 
       {order.pink && order.pinkNote && (
         <div className="notice notice-pink">

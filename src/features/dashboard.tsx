@@ -16,7 +16,8 @@ import { Icon } from '../ui/icons';
 import { Badge, Empty, Group, Loading, Page, Row } from '../ui/kit';
 import { SyncNotice } from './account';
 import { RegionLine } from './regions';
-import { PinkBadge, VisitBadge } from './common';
+import { PinkBadge, SmsSheet, VisitBadge } from './common';
+import { remindersDue } from '../data/sms';
 
 const BACKUP_REMINDER_DAYS = 7;
 // Przy synchronizacji dane są też na serwerze, więc własna kopia jest rzadziej potrzebna.
@@ -54,6 +55,28 @@ function QuickSearch() {
 /** Powód, dla którego zabieg jest w „Pilnych”. */
 type TodoReason = 'w_trakcie' | 'platnosc' | 'zalegly';
 const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'Niedokończony', platnosc: 'Uzupełnij płatność', zalegly: 'Zaległy termin' };
+
+/**
+ * Przypomnienie na jutro: SMS z prośbą o potwierdzenie terminu. Aplikacja nie wyśle go sama (iPhone nie pozwala
+ * stronom wysyłać SMS-ów), więc przypomina technikowi; „Wyślij” otwiera gotową wiadomość, „Pomiń” chowa pozycję.
+ */
+function ReminderRow({ visit, order }: { visit: Visit; order: Order }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="reminder-row">
+      <VisitRow visit={visit} order={order} timeOnly />
+      <div className="reminder-actions">
+        <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen(true)}>
+          <Icon name="message" size={16} /> Wyślij przypomnienie
+        </button>
+        <button type="button" className="btn btn-sm" onClick={() => void visits.update(visit.id, { remindedAt: new Date().toISOString() })}>
+          Pomiń (np. zadzwoniłem)
+        </button>
+      </div>
+      {open && <SmsSheet order={order} visit={visit} open={open} initial="przypomnienie" onClose={() => setOpen(false)} />}
+    </div>
+  );
+}
 
 function VisitRow({ visit, order, timeOnly, urgent, reason }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean; reason?: TodoReason }) {
   return (
@@ -144,6 +167,8 @@ export function DashboardPage() {
   const overdue = planned.filter(({ visit }) => visit.status === 'zaplanowany' && visit.start!.slice(0, 10) < today);
   const tomorrow = addDays(today, 1);
   const tomorrowList = planned.filter(({ visit }) => visit.start!.slice(0, 10) === tomorrow);
+  // Przypomnienia z prośbą o potwierdzenie dla klientów z jutrzejszymi zabiegami, jeszcze niewysłane.
+  const reminders = remindersDue(withOrder, tomorrow);
   // Pilne: rozpoczęte i niedokończone, bez płatności („później”) i zaległe terminy, od najnowszych.
   const todo = [
     ...withOrder.filter(({ visit }) => visit.status === 'w_trakcie').map((x) => ({ ...x, reason: 'w_trakcie' as TodoReason, at: x.visit.startedAt ?? x.visit.start ?? '' })),
@@ -253,6 +278,15 @@ export function DashboardPage() {
           ))}
           {todo.map(({ visit, order, reason }) => (
             <VisitRow key={`${reason}-${visit.id}`} visit={visit} order={order} reason={reason} />
+          ))}
+        </Group>
+      )}
+
+      {reminders.length > 0 && (
+        <Group title={`Przypomnienia na jutro do wysłania (${reminders.length})`}>
+          <p className="field-hint group-pad">Wyślij klientom SMS z prośbą o potwierdzenie jutrzejszego terminu.</p>
+          {reminders.map(({ visit, order }) => (
+            <ReminderRow key={visit.id} visit={visit} order={order} />
           ))}
         </Group>
       )}
