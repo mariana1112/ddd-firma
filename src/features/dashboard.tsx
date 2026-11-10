@@ -81,9 +81,30 @@ function VisitRow({ visit, order, timeOnly, urgent, reason }: { visit: Visit; or
   );
 }
 
+const SEEN_KEY = 'ddd:widziane-nowe';
+
+function readSeen(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+}
+
 export function DashboardPage() {
   // Szkice są w pamięci przeglądarki, której baza nie obserwuje: po porzuceniu szkicu odświeżamy ręcznie.
   const [, refresh] = useState(0);
+  // Nowe zlecenia od innych, które technik już zobaczył (tylko na tym urządzeniu).
+  const [seen, setSeen] = useState<string[]>(readSeen);
+  const markSeen = (ids: string[]) => {
+    const next = [...new Set([...seen, ...ids])].slice(-500);
+    setSeen(next);
+    try {
+      localStorage.setItem(SEEN_KEY, JSON.stringify(next));
+    } catch {
+      // Bez pamięci przeglądarki komunikat wróci po ponownym otwarciu.
+    }
+  };
   const data = useLiveQuery(async () => ({
     visits: await visits.all(),
     orders: await orders.all(),
@@ -108,10 +129,17 @@ export function DashboardPage() {
   const planned = withOrder
     .filter(({ visit }) => (visit.status === 'zaplanowany' || visit.status === 'w_trakcie') && visit.start)
     .sort((a, b) => a.visit.start!.localeCompare(b.visit.start!));
-  // Dzisiaj pokazuje cały dzień, także zakończone zabiegi.
-  const todayList = withOrder
-    .filter(({ visit }) => visit.status !== 'odwolany' && visit.start?.slice(0, 10) === today)
-    .sort((a, b) => a.visit.start!.localeCompare(b.visit.start!));
+  // Dzisiaj: tylko to, co jest jeszcze do zrobienia (wykonane znikają z Pulpitu).
+  const todayList = planned.filter(({ visit }) => visit.start!.slice(0, 10) === today);
+  // Nowe zlecenia na dziś i jutro dodane przez kogoś innego (np. szefa), jeszcze nieoznaczone jako widziane.
+  const fresh = planned.filter(
+    ({ visit, order }) =>
+      visit.status === 'zaplanowany' &&
+      [today, addDays(today, 1)].includes(visit.start!.slice(0, 10)) &&
+      Boolean(order.ownerId) &&
+      order.ownerId !== data.profile.userId &&
+      !seen.includes(visit.id),
+  );
   const overdue = planned.filter(({ visit }) => visit.status === 'zaplanowany' && visit.start!.slice(0, 10) < today);
   const tomorrow = addDays(today, 1);
   const tomorrowList = planned.filter(({ visit }) => visit.start!.slice(0, 10) === tomorrow);
@@ -136,6 +164,31 @@ export function DashboardPage() {
       <p className="page-date">{formatDateLong(today)}</p>
 
       <SyncNotice />
+
+      {fresh.length > 0 && (
+        <section className="new-orders" role="alert">
+          <div className="new-orders-head">
+            <Icon name="alert" />
+            <strong>
+              {fresh.length === 1 ? 'Nowe zlecenie' : `Nowe zlecenia (${fresh.length})`} na {fresh.every(({ visit }) => visit.start!.slice(0, 10) === today) ? 'dziś' : 'dziś i jutro'}
+            </strong>
+          </div>
+          {fresh.map(({ visit, order }) => (
+            <Link key={visit.id} to={`/zabieg/${visit.id}`} className="new-order" onClick={() => markSeen([visit.id])}>
+              <span className="new-order-when">
+                {visit.start!.slice(0, 10) === today ? 'Dziś' : 'Jutro'} {formatTime(visit.start!)}
+              </span>
+              <span>
+                <strong>{visitCode(order, visit.seq)}</strong> {order.clientName} · {orderAddress(order)}
+                {order.ownerName ? ` · dodał: ${order.ownerName}` : ''}
+              </span>
+            </Link>
+          ))}
+          <button type="button" className="btn btn-block" onClick={() => markSeen(fresh.map(({ visit }) => visit.id))}>
+            Widzę, OK
+          </button>
+        </section>
+      )}
 
       <QuickSearch />
 

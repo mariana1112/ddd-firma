@@ -27,10 +27,12 @@ import { formatDate, formatTerm } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Collapsible, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
+import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
 import { ContactBar, PinkBadge, UlvNotice, useContactActions, VisitBadge, visitWhen } from './common';
 import { doneMethods, hasFogging, METHOD_LABEL, methodOf, orderMethods, recommendationsFor } from '../data/methods';
 import { Photos } from './photos';
+import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
+import { isValidNip } from '../lib/validators';
 import { VisitSummary } from './visit-summary';
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
@@ -111,6 +113,57 @@ function AutoText(props: {
         onBlur={flush}
       />
     </Field>
+  );
+}
+
+/** Pole zlecenia (dane do faktury) zapisywane po wyjściu z pola; brak podświetla się na czerwono. */
+function OrderField(props: { label: string; value: string; missing: boolean; error?: string; inputMode?: 'email' | 'numeric' | 'text'; placeholder?: string; onSave: (value: string) => void }) {
+  const [value, setValue] = useState(props.value);
+  useEffect(() => setValue(props.value), [props.value]);
+  return (
+    <Field label={props.label} error={props.error ?? (props.missing ? `Uzupełnij: ${props.label}` : undefined)}>
+      <input
+        value={value}
+        inputMode={props.inputMode}
+        autoCapitalize={props.inputMode === 'email' ? 'none' : undefined}
+        placeholder={props.placeholder}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          if (value.trim() !== props.value) props.onSave(value.trim());
+        }}
+      />
+    </Field>
+  );
+}
+
+/**
+ * Dane do faktury przy zabiegu: po wybraniu faktury (także gdy klient zmieni zdanie w trakcie) trzeba uzupełnić
+ * przy VAT nazwę firmy, NIP i e-mail, przy imiennej imię i nazwisko oraz e-mail.
+ */
+function InvoiceData({ order, alert, onSave }: { order: Order; alert: boolean; onSave: (patch: Partial<Order>) => void }) {
+  if (order.invoice === 'brak') return null;
+  const missing = invoiceMissing(order);
+  const flag = (f: InvoiceField) => alert && missing.includes(f);
+  return (
+    <div className="invoice-data">
+      {order.invoice === 'vat' ? (
+        <>
+          <OrderField label="Nazwa firmy" value={order.invoiceName ?? ''} missing={flag('invoiceName')} placeholder="Np. Apt Production sp. z o.o." onSave={(invoiceName) => onSave({ invoiceName })} />
+          <OrderField
+            label="NIP"
+            value={order.nip}
+            inputMode="numeric"
+            missing={flag('nip')}
+            error={order.nip.trim() && !isValidNip(order.nip) ? 'NIP jest niepoprawny' : undefined}
+            onSave={(nip) => onSave({ nip })}
+          />
+        </>
+      ) : (
+        <OrderField label="Imię i nazwisko" value={order.clientName} missing={flag('clientName')} onSave={(clientName) => onSave({ clientName })} />
+      )}
+      <OrderField label="E-mail" value={order.email} inputMode="email" missing={flag('email')} onSave={(email) => onSave({ email })} />
+      <OrderField label="Adres do faktury (puste: adres zlecenia)" value={order.invoiceAddress} missing={false} onSave={(invoiceAddress) => onSave({ invoiceAddress })} />
+    </div>
   );
 }
 
@@ -309,6 +362,8 @@ export function VisitPage() {
   const [editingTerms, setEditingTerms] = useState(false);
   // Próba zakończenia bez płatności: sekcja płatności świeci na czerwono, ekran przewija się do niej.
   const [payAlert, setPayAlert] = useState(false);
+  // Faktura bez potrzebnych danych (NIP, firma, imię i nazwisko, e-mail): pola świecą na czerwono.
+  const [invoiceAlert, setInvoiceAlert] = useState(false);
   const payRef = useRef<HTMLDivElement>(null);
   // Pole opisu kodu pink dostaje kursor tylko zaraz po zaznaczeniu, a nie przy każdym wejściu na ekran.
   const [pinkJustOn, setPinkJustOn] = useState(false);
@@ -364,6 +419,15 @@ export function VisitPage() {
     // Kwota zapisuje się przy wyjściu z pola, więc czytamy świeży stan po chwili.
     await new Promise((resolve) => setTimeout(resolve, 150));
     const fresh = (await visits.get(visit.id)) ?? visit;
+    // Faktura wymaga danych klienta: bez nich zabiegu nie da się zakończyć.
+    const freshOrder = (await orders.get(order.id)) ?? order;
+    const lacking = invoiceMissing(freshOrder);
+    if (lacking.length) {
+      setInvoiceAlert(true);
+      toast(`Do faktury brakuje: ${lacking.map((f) => INVOICE_FIELD_LABEL[f]).join(', ')}`, { tone: 'error' });
+      scrollToPay();
+      return;
+    }
     const missing = [!fresh.payMethod && 'formy płatności', !fresh.amount && 'kwoty'].filter(Boolean) as string[];
     if (missing.length) {
       setPayAlert(true);
@@ -631,14 +695,11 @@ export function VisitPage() {
                 </button>
               ))}
             </div>
+            <InvoiceData order={order} alert={invoiceAlert} onSave={(patch) => void run(() => orders.update(order.id, patch))} />
           </Group>
           </div>
 
-          <Collapsible
-            title="Wywiad"
-            summary={interview.situation.trim() ? interview.situation.trim().slice(0, 60) : 'Opis sytuacji, ugryzienia, owady'}
-            defaultOpen={Boolean(interview.situation.trim() || interview.other.trim())}
-          >
+          <Group title="Wywiad" plain>
             <AutoText
               label="Opis sytuacji"
               placeholder="Co się dzieje, gdzie, od kiedy"
@@ -653,7 +714,7 @@ export function VisitPage() {
             )}
             <YesNoField label="Czy klient używał środków na własną rękę?" value={interview.selfTreatment} onChange={(v) => saveInterview('selfTreatment', v)} />
             <AutoText label="Inne uwagi" placeholder="Czy coś zauważyłem podczas zabiegu" rows={3} value={interview.other} onSave={(v) => saveInterview('other', v)} />
-          </Collapsible>
+          </Group>
 
           <Group title="Wykonane" plain>
             <ToggleChips
@@ -667,16 +728,16 @@ export function VisitPage() {
             {workSummary(visit) && <p className="field-hint">Do wiadomości: {workSummary(visit)}</p>}
           </Group>
 
-          <Collapsible title="Zdjęcia" summary="Dotknij, żeby dodać zdjęcia">
+          <Group title="Zdjęcia" plain>
             <Photos visitId={visit.id} />
-          </Collapsible>
+          </Group>
 
-          <Collapsible title="Protokół" summary={order.protocol ? 'Klient chce protokół' : 'Bez protokołu'}>
+          <Group title="Protokół" plain>
             <label className="check">
               <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
               Klient chce protokół z zabiegu
             </label>
-          </Collapsible>
+          </Group>
 
           <div className={order.pink ? 'pink-box active' : 'pink-box'}>
             <label className="check check-pink">

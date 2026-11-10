@@ -2464,3 +2464,53 @@ a.btn.disabled {
 .row-tags:empty {
   display: none;
 }
+
+/* Dane do faktury pod wyborem faktury na ekranie zabiegu */
+.invoice-data {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* Nowe zlecenie na dziś od szefa: bardzo widoczne na Pulpicie */
+.new-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--warn-soft, #fff3cd);
+  border: 2px solid var(--warn, #b7791f);
+  animation: new-orders-pulse 1.6s ease-in-out 3;
+}
+
+.new-orders-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.1rem;
+  color: var(--warn, #b7791f);
+}
+
+.new-order {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.new-order-when {
+  font-weight: 700;
+  color: var(--warn, #b7791f);
+}
+
+@keyframes new-orders-pulse {
+  50% {
+    transform: scale(1.015);
+  }
+}

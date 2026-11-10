@@ -152,6 +152,7 @@ export function AccountingOrderPage() {
       <Group title="Klient i dane do faktury">
         <Info label="Klient">{order.clientName || '—'}</Info>
         <Info label="Faktura">{INVOICES[order.invoice]}</Info>
+        {order.invoice === 'vat' && <Info label="Firma">{order.invoiceName || '—'}</Info>}
         {order.nip && <Info label="NIP">{order.nip}</Info>}
         <Info label="Adres do faktury">{order.invoiceAddress || `${orderAddress(order)}${order.postalCode ? `, ${order.postalCode}` : ''}`}</Info>
         {order.email && <Info label="E-mail">{order.email}</Info>}

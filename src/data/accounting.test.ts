@@ -31,3 +31,15 @@ describe('księgowość zlecenia', () => {
     expect(invoiceAmount([v('wykonany', 45000), v('wykonany', 40000), v('zaplanowany', null), v('odwolany', 10000)])).toBe(85000);
   });
 });
+
+describe('dane do faktury', () => {
+  it('VAT: firma, NIP, e-mail; imienna: imię i nazwisko, e-mail; bez faktury nic', async () => {
+    const { invoiceMissing } = await import('./invoice');
+    const o = { invoice: 'vat', invoiceName: '', nip: '', clientName: 'Jan', email: '' } as unknown as Order;
+    expect(invoiceMissing(o)).toEqual(['invoiceName', 'nip', 'email']);
+    expect(invoiceMissing({ ...o, invoiceName: 'Apt', nip: '5833534194', email: 'a@b.pl' })).toEqual([]);
+    expect(invoiceMissing({ ...o, invoiceName: 'Apt', nip: '1234567890', email: 'a@b.pl' })).toEqual(['nip']);
+    expect(invoiceMissing({ ...o, invoice: 'imienna', clientName: '' })).toEqual(['clientName', 'email']);
+    expect(invoiceMissing({ ...o, invoice: 'brak' })).toEqual([]);
+  });
+});

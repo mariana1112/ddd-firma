@@ -61,6 +61,8 @@ interface FormState {
   methods: TreatmentMethod[];
   /** Klient chce protokół z zabiegu. */
   protocol: boolean;
+  /** Nazwa firmy do faktury VAT. */
+  invoiceName: string;
 }
 
 const EMPTY: FormState = {
@@ -100,6 +102,7 @@ const EMPTY: FormState = {
   mapsLink: '',
   methods: [],
   protocol: false,
+  invoiceName: '',
 };
 
 const DRAFT_KEY = 'ddd-szkic-zlecenia';
@@ -153,6 +156,7 @@ function fromOrder(order: Order): FormState {
     mapsLink: order.mapsLink ?? '',
     methods: order.methods ?? [],
     protocol: order.protocol ?? false,
+    invoiceName: order.invoiceName ?? '',
   };
 }
 
@@ -178,7 +182,9 @@ function toDraft(s: FormState): OrderDraft {
     invoice: s.invoice,
     clientName: s.clientName.trim(),
     email: s.email.trim(),
-    nip: s.invoice !== 'brak' ? s.nip.trim() : '',
+    // NIP i nazwa firmy tylko przy fakturze VAT; imienna ma imię i nazwisko klienta.
+    nip: s.invoice === 'vat' ? s.nip.trim() : '',
+    invoiceName: s.invoice === 'vat' ? s.invoiceName.trim() : '',
     invoiceAddress: s.invoice !== 'brak' ? s.invoiceAddress.trim() : '',
     phones,
     pink: s.pink,
@@ -250,7 +256,13 @@ function validate(step: StepId, s: FormState): Errors {
     if (!s.phone1.trim()) e.phone1 = 'Podaj numer telefonu';
     else if (s.phone1.replace(/\D/g, '').length < 9) e.phone1 = 'Numer ma za mało cyfr';
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
-    if (s.invoice !== 'brak' && s.nip.trim() && !isValidNip(s.nip)) e.nip = 'NIP jest niepoprawny';
+    else if (s.invoice !== 'brak' && !s.email.trim()) e.email = 'Do faktury potrzebny jest e-mail';
+    if (s.invoice === 'vat') {
+      if (!s.invoiceName.trim()) e.invoiceName = 'Podaj nazwę firmy';
+      if (!s.nip.trim()) e.nip = 'Podaj NIP';
+      else if (!isValidNip(s.nip)) e.nip = 'NIP jest niepoprawny';
+    }
+    if (s.invoice === 'imienna' && !s.clientName.trim()) e.clientName = 'Do faktury imiennej podaj imię i nazwisko';
   }
   return e;
 }
@@ -609,7 +621,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
             phone={s.phone1}
             currentId={props.editId}
             onFill={(o) =>
-              set({ clientName: o.clientName, email: o.email, nip: o.nip, invoiceAddress: o.invoiceAddress, pink: o.pink || s.pink, pinkNote: o.pinkNote || s.pinkNote })
+              set({ clientName: o.clientName, email: o.email, nip: o.nip, invoiceName: o.invoiceName ?? '', invoiceAddress: o.invoiceAddress, pink: o.pink || s.pink, pinkNote: o.pinkNote || s.pinkNote })
             }
           />
           <Field label="Imię i nazwisko albo nazwa firmy" error={errors.clientName}>
@@ -623,18 +635,23 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <input value={s.phone2Label} onChange={(e) => set({ phone2Label: e.target.value })} autoComplete="off" />
             </Field>
           </div>
-          <Field label="E-mail" error={errors.email}>
+          <Field label={s.invoice === 'brak' ? 'E-mail' : 'E-mail (do faktury)'} error={errors.email}>
             <input type="email" inputMode="email" autoCapitalize="none" value={s.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" />
           </Field>
-          {s.invoice !== 'brak' && (
+          {s.invoice === 'vat' && (
             <>
-              <Field label={s.invoice === 'vat' ? 'NIP' : 'NIP (opcjonalnie)'} error={errors.nip}>
+              <Field label="Nazwa firmy" error={errors.invoiceName}>
+                <input value={s.invoiceName} placeholder="Np. Apt Production sp. z o.o." onChange={(e) => set({ invoiceName: e.target.value })} autoComplete="off" />
+              </Field>
+              <Field label="NIP" error={errors.nip}>
                 <input inputMode="numeric" value={s.nip} onChange={(e) => set({ nip: e.target.value })} autoComplete="off" />
               </Field>
-              <Field label="Adres do faktury" hint="Puste: adres zlecenia.">
-                <input value={s.invoiceAddress} onChange={(e) => set({ invoiceAddress: e.target.value })} autoComplete="off" />
-              </Field>
             </>
+          )}
+          {s.invoice !== 'brak' && (
+            <Field label="Adres do faktury" hint="Puste: adres zlecenia.">
+              <input value={s.invoiceAddress} onChange={(e) => set({ invoiceAddress: e.target.value })} autoComplete="off" />
+            </Field>
           )}
         </div>
       );
@@ -649,6 +666,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           <Info label="Co pryskamy">{scopeText(formTerms(s).scope)}</Info>
           {price && <Info label="Widełki">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
           <Info label="Faktura">{INVOICES[draft.invoice]}</Info>
+          {draft.invoice === 'vat' && <Info label="Do faktury">{`${draft.invoiceName}\nNIP ${draft.nip}`}</Info>}
           <Info label="Protokół">{s.protocol ? 'Tak' : 'Nie'}</Info>
           <Info label="Klient">{`${draft.clientName}\n${draft.phones.map((p) => (p.label ? `${p.number} (${p.label})` : p.number)).join('\n')}`}</Info>
           {draft.pink && <Info label="Kod pink">{draft.pinkNote || 'Tak'}</Info>}

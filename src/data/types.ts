@@ -222,6 +222,8 @@ export interface Order extends BaseRecord {
   email: string;
   nip: string;
   invoiceAddress: string;
+  /** Nazwa firmy do faktury VAT (przy imiennej fakturze: imię i nazwisko klienta). */
+  invoiceName?: string;
   phones: Phone[];
   /** Kod pink: trudny klient lub problematyczne mieszkanie. */
   pink: boolean;

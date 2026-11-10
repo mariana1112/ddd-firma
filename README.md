@@ -21,6 +21,9 @@ zaszyfrowane.
 - **Lista zleceń**: każdy zabieg osobno (tylko jego termin, stan i płatność), albo „Połącz w zlecenia” w „Więcej
   filtrów”. Filtry: Wszystkie, Do zrobienia, Zakończone, Pilne (na czerwono: niedokończony, bez płatności, zaległy
   termin), Archiwum (także odwołane zabiegi). Szukanie po „fv23” (faktura VAT), „fv” (imienna) i „prot” (protokół).
+- **Faktura**: przy fakturze VAT trzeba podać nazwę firmy, NIP i e-mail, przy imiennej imię i nazwisko oraz e-mail; bez faktury pola NIP nie ma. Gdy klient zmieni zdanie w trakcie zabiegu i wybierze fakturę, pola pojawiają się pod wyborem faktury, a zabiegu nie da się zakończyć bez tych danych.
+- **Nowe zlecenie na dziś**: zlecenie na dziś albo jutro dodane przez kogoś innego (np. szefa) pokazuje się na górze Pulpitu, aż technik kliknie „Widzę, OK”. Pulpit nie pokazuje już wykonanych zabiegów.
+- **Kalendarz Google** (zabieg i karta zlecenia): wpis w formacie firmy, np. „II pluskwy 600 Netto full, +48 573 324 034”, z adresem, dniem i godziną, danymi do faktury i opisem.
 - **Płatność przy zabiegu jest wymagana**: przyciski formy płatności są szare, wybrany świeci na zielono. „Zakończ
   zabieg” bez formy płatności albo kwoty podświetla płatność na czerwono i przewija do niej; „Później” kończy zabieg
   i wrzuca go do **Pilnych** (Pulpit i filtr na liście zleceń), dopóki płatność nie zostanie uzupełniona.

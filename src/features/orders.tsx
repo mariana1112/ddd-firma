@@ -7,6 +7,7 @@ import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, sortOrderRows, URGENT_LABEL, urgentReason, visitInFilter, visitUrgent, type ListFilter, type OrderSort } from '../data/order-list';
 import { documentTags, hasFogging, METHOD_LABEL, orderMethods, tagDone } from '../data/methods';
 import { accountingNote } from '../data/accounting';
+import { googleCalendarUrl } from '../data/calendar';
 import { archiveOrder, deleteOrder, orderVisits, restoreOrder, scheduleNextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
@@ -494,6 +495,11 @@ export function OrderDetailPage() {
           />
         ))}
       </Group>
+      {current?.status === 'zaplanowany' && current.start && (
+        <a className="btn btn-block" href={googleCalendarUrl(order, current)!} target="_blank" rel="noreferrer">
+          <Icon name="calendar" /> Dodaj {visitCode(order, current.seq)} do Kalendarza Google
+        </a>
+      )}
       <button type="button" className="btn btn-block" onClick={() => setScheduling(true)}>
         <Icon name="calendar" /> Umów kolejny zabieg
       </button>
@@ -549,6 +555,7 @@ export function OrderDetailPage() {
         ))}
         {order.email && <Info label="E-mail">{order.email}</Info>}
         <Info label="Faktura">{INVOICES[order.invoice]}</Info>
+        {order.invoice === 'vat' && order.invoiceName && <Info label="Firma do faktury">{order.invoiceName}</Info>}
         <Info label="Protokół">{order.protocol ? 'Tak, klient chce protokół' : 'Nie'}</Info>
         {accountingNote(order) && <Info label="Księgowość">{accountingNote(order)}</Info>}
         {order.invoiceNumber && <Info label="Numer faktury">{order.invoiceNumber}</Info>}
