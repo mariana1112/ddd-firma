@@ -850,7 +850,7 @@ export function AdminPage() {
   const region = params.get('region') ?? 'all';
   const [kind, setKind] = useState<PeriodKind>('tydzien');
   const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
-  const { confirm, run, toast } = useFeedback();
+  const { confirm, deliverFile, run, toast } = useFeedback();
   const regionsApi = useRegions(gate.state);
   // Dane całej firmy, bez filtra regionu z ekranów technika.
   const data = useLiveQuery(async () => ({
@@ -978,9 +978,23 @@ export function AdminPage() {
         title="Regiony"
         action={
           ranking.length > 0 ? (
-            <button type="button" className="link" onClick={() => void share(companyText(total, ranking), 'Podsumowanie firmy')}>
-              Wyślij podsumowanie
-            </button>
+            <span className="region-actions">
+              <button type="button" className="link" onClick={() => void share(companyText(total, ranking), 'Podsumowanie firmy')}>
+                Wyślij tekst
+              </button>
+              <button
+                type="button"
+                className="link"
+                onClick={() =>
+                  void run(async () => {
+                    const [{ companyDocument }, { renderPdf }] = await Promise.all([import('../pdf/documents'), import('../pdf/render')]);
+                    deliverFile(await renderPdf(companyDocument(total, ranking, periodName(period))), `podsumowanie-firmy-${period.from}.pdf`);
+                  })
+                }
+              >
+                PDF
+              </button>
+            </span>
           ) : undefined
         }
       >

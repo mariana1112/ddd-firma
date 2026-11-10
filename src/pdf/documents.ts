@@ -492,3 +492,63 @@ export function mileageDocument(opts: MileageOptions): TDocumentDefinitions {
   } as TDocumentDefinitions;
 }
 
+
+/**
+ * Podsumowanie firmy (panel admina): suma okresu, formy płatności, koszty, kilometry, wynik gotówki i ranking
+ * regionów z obrotem, zabiegami, kosztami, kilometrami i wynikiem.
+ */
+export function companyDocument(
+  total: Report,
+  ranking: Array<{ name: string; prefix: string; visits: number; report: Report }>,
+  periodLabel: string,
+): TDocumentDefinitions {
+  const summary: Array<[string, string, boolean?]> = [
+    ['Obrót', formatPln(total.turnover), true],
+    ...PAY_METHODS.map((m): [string, string] => [PAY_NAMES[m], formatPln(total.byMethod[m])]),
+    ['Zabiegi wykonane', String(total.visits.length)],
+    ['Koszty', formatPln(total.costs)],
+    ['Premie', formatPln(total.bonus)],
+    ['Km służbowo', `${total.km.sluzbowy} km`],
+    ['Km prywatnie', `${total.km.prywatny} km`],
+    ['Wynik gotówka', formatPln(total.cashForBoss), true],
+  ];
+  return {
+    ...base(`Podsumowanie firmy ${periodLabel}`),
+    content: [
+      { text: COMPANY_NAME, bold: true, fontSize: 11 },
+      { text: 'Podsumowanie firmy', style: 'title', margin: [0, 4, 0, 2] },
+      { text: periodLabel, color: MUTED },
+      { text: 'Cała firma', style: 'section' },
+      {
+        layout: tableLayout,
+        table: {
+          widths: ['*', 110],
+          body: summary.map(([label, value, strong]) => [{ text: label, bold: Boolean(strong) }, right(value, { bold: Boolean(strong) })]),
+        },
+      },
+      { text: 'Ranking regionów (obrót)', style: 'section' },
+      ranking.length > 0
+        ? {
+            layout: tableLayout,
+            table: {
+              headerRows: 1,
+              widths: [16, '*', 66, 42, 62, 48, 66],
+              body: [
+                ['#', 'Region', 'Obrót', 'Zabiegi', 'Koszty', 'Km', 'Wynik gotówka'].map((t, i) => (i >= 2 ? right(t, { style: 'th' }) : { text: t, style: 'th' })),
+                ...ranking.map((r, i) => [
+                  String(i + 1),
+                  r.prefix ? `${r.name} (${r.prefix})` : r.name,
+                  right(formatPln(r.report.turnover), { bold: true }),
+                  right(String(r.visits)),
+                  right(formatPln(r.report.costs + r.report.bonus)),
+                  right(String(r.report.km.sluzbowy + r.report.km.prywatny)),
+                  right(formatPln(r.report.cashForBoss)),
+                ]),
+              ],
+            },
+          }
+        : { text: 'Brak regionów.', color: MUTED },
+      { text: `Wygenerowano ${formatDate(new Date().toISOString())}`, style: 'small', margin: [0, 16, 0, 0] },
+    ],
+  };
+}
