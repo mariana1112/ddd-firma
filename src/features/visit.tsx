@@ -22,7 +22,8 @@ import {
   workSummary,
 } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
-import { formatDate, formatTerm } from '../lib/dates';
+import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
+import { TomorrowReminders } from './reminders';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
@@ -611,6 +612,7 @@ export function VisitPage() {
 
       {summary && (
         <>
+          {visit.doneOn === todayWarsaw() && <TomorrowReminders afterLastToday />}
           <VisitSummary order={order} visit={visit} vatRate={settings.vatRate} later={later} photos={<Photos visitId={visit.id} readOnly />} />
           <div className="btn-stack">
             <button type="button" className="btn btn-primary" disabled={!phone} onClick={() => void sendFinishSms(visit, later ?? null)}>

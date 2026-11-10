@@ -2564,3 +2564,10 @@ a.btn.disabled {
   gap: 8px;
   padding: 0 16px 12px;
 }
+
+.reminder-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px 6px;
+}
