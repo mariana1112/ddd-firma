@@ -193,7 +193,7 @@ type StepId = 'adres' | 'problem' | 'termin' | 'cena' | 'klient' | 'podsumowanie
 
 const STEP_TITLES: Record<StepId, string> = {
   adres: 'Adres',
-  problem: 'Problem',
+  problem: 'Co robimy i szkodnik',
   termin: 'Termin',
   cena: 'Cena i faktura',
   klient: 'Klient',
@@ -229,7 +229,7 @@ function validate(step: StepId, s: FormState): Errors {
     if (s.mapsLink.trim() && !isMapsLink(s.mapsLink)) e.mapsLink = 'Wklej link z Google Maps (Udostępnij → Kopiuj link)';
   }
   if (step === 'problem') {
-    if (s.methods.length === 0) e.methods = 'Wybierz, co robimy';
+    if (s.methods.length === 0) e.methods = 'Zaznacz, co dokładnie robimy: oprysk ciśnieniowy, zamgławianie ULV, żelowanie albo zalanie odpływów';
     if (s.pest === 'inne' && !s.pestOther.trim()) e.pestOther = 'Wpisz, jaki szkodnik';
     if (s.area.trim() && !/^\d+([.,]\d+)?$/.test(s.area.trim())) e.area = 'Podaj liczbę, np. 48';
   }
@@ -328,7 +328,7 @@ function MethodsField(props: { value: TreatmentMethod[]; onChange: (value: Treat
   const toggle = (m: TreatmentMethod) => props.onChange(props.value.includes(m) ? props.value.filter((x) => x !== m) : [...props.value, m]);
   return (
     <div className={props.error ? 'field field-error' : 'field'}>
-      <span className="field-label">Co robimy (można kilka)</span>
+      <span className="field-label">Co dokładnie robimy (obowiązkowe, można kilka)</span>
       <div className="choice">
         {METHODS.map(([m, label]) => (
           <button key={m} type="button" className={props.value.includes(m) ? 'choice-item active' : 'choice-item'} aria-pressed={props.value.includes(m)} onClick={() => toggle(m)}>
