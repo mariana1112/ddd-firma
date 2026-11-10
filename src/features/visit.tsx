@@ -29,7 +29,7 @@ import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Collapsible, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
 import { ContactBar, PinkBadge, UlvNotice, useContactActions, VisitBadge, visitWhen } from './common';
-import { doneMethods, METHOD_LABEL, methodOf, orderMethods, recommendationsFor } from '../data/methods';
+import { doneMethods, hasFogging, METHOD_LABEL, methodOf, orderMethods, recommendationsFor } from '../data/methods';
 import { Photos } from './photos';
 import { VisitSummary } from './visit-summary';
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
@@ -233,7 +233,7 @@ function FinishSheet(props: {
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
       <div className="form">
-        {doneMethods(visit.treatments, props.order).includes('ulv') && <UlvNotice />}
+        {hasFogging(doneMethods(visit.treatments, props.order)) && <UlvNotice />}
         <div className="field">
           <span className="field-label">
             Zalecenia do wykonanych metod
@@ -464,7 +464,7 @@ export function VisitPage() {
           <span className="terms-label">Co robimy</span> {orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')}
         </p>
       )}
-      {(orderMethods(order).includes('ulv') || visit.treatments.some((t) => methodOf(t) === 'ulv')) && <UlvNotice />}
+      {hasFogging([...orderMethods(order), ...visit.treatments.map(methodOf).filter((m): m is NonNullable<typeof m> => m !== null)]) && <UlvNotice />}
 
       {!summary && (
         <div className="terms-bar">

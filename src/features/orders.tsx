@@ -5,7 +5,7 @@ import { mainPhone, orderMatches } from '../data/order-search';
 import { orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, sortOrderRows, URGENT_LABEL, urgentReason, visitInFilter, visitUrgent, type ListFilter, type OrderSort } from '../data/order-list';
-import { documentTags, METHOD_LABEL, orderMethods } from '../data/methods';
+import { documentTags, hasFogging, METHOD_LABEL, orderMethods } from '../data/methods';
 import { archiveOrder, deleteOrder, orderVisits, restoreOrder, scheduleNextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
@@ -455,7 +455,7 @@ export function OrderDetailPage() {
       </div>
 
       <ContactBar order={order} onSms={onSms} />
-      {orderMethods(order).includes('ulv') && <UlvNotice />}
+      {hasFogging(orderMethods(order)) && <UlvNotice />}
       {nextPlanned && <p className="field-hint">SMS zawiera przypomnienie o zabiegu {formatDate(nextPlanned.start)} z prośbą o potwierdzenie.</p>}
 
       {order.pink && order.pinkNote && (

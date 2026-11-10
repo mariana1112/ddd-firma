@@ -26,7 +26,9 @@ const order = {
 describe('metody zabiegu i zalecenia', () => {
   it('nazwy zabiegów (także dawne) wskazują metodę; bez zaznaczonych zostają metody zlecenia', () => {
     expect(methodOf('Żel')).toBe('zelowanie');
-    expect(methodOf('Zamgławianie')).toBe('ulv');
+    expect(methodOf('Zamgławianie')).toBe('zamglawianie');
+    expect(methodOf('Zamgławianie ULV')).toBe('ulv');
+    expect(methodOf('ULV')).toBe('ulv');
     expect(methodOf('Oprysk ciśnieniowy')).toBe('oprysk');
     expect(methodOf('Pułapki lepowe')).toBeNull();
     expect(doneMethods(['Zalanie odpływów', 'Pułapki lepowe'], order)).toEqual(['odplywy']);
@@ -38,6 +40,9 @@ describe('metody zabiegu i zalecenia', () => {
     expect(ulv.required).toEqual(METHOD_RECOMMENDATIONS.ulv);
     expect(ulv.list.some((r) => r.includes('Opuścić lokal'))).toBe(true);
     expect(ulv.list.some((r) => r.includes('posprzątać'))).toBe(true);
+    const fog = recommendationsFor(['zamglawianie'], 'karaluchy');
+    expect(fog.required).toEqual(ulv.required);
+    expect(fog.list.some((r) => r.includes('Opuścić lokal'))).toBe(true);
     const gel = recommendationsFor(['zelowanie'], 'pluskwy');
     expect(gel.required).toEqual([]);
     expect(gel.list).toContain('Nie odkurzać ani nie myć miejsc, w których jest żel.');

@@ -184,8 +184,8 @@ export type InvoiceType = 'brak' | 'imienna' | 'vat';
 export type PayMethod = 'gotowka' | 'blik' | 'przelew';
 /** Rola konta w firmie: admin (szef), technik albo księgowa. */
 export type Role = 'owner' | 'technik' | 'ksiegowosc';
-/** Co robimy w zleceniu: żelowanie, zalanie odpływów, zamgławianie ULV, oprysk ciśnieniowy. */
-export type TreatmentMethod = 'zelowanie' | 'odplywy' | 'ulv' | 'oprysk';
+/** Co robimy w zleceniu: oprysk ciśnieniowy, ULV, zamgławianie, żelowanie, zalanie odpływów. */
+export type TreatmentMethod = 'oprysk' | 'ulv' | 'zamglawianie' | 'zelowanie' | 'odplywy';
 
 export interface Phone {
   number: string;

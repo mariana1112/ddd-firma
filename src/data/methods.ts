@@ -2,14 +2,20 @@ import type { Order, PestCategory, TreatmentMethod } from './types';
 
 /**
  * Co robimy w zleceniu: wybierane zawsze przy tworzeniu zlecenia. Od metody zależą zalecenia dla klienta,
- * a przy zamgławianiu ULV wszędzie widać uwagę o opuszczeniu lokalu i sprzątaniu.
+ * a przy ULV i zamgławianiu wszędzie widać uwagę o opuszczeniu lokalu i sprzątaniu.
  */
 export const METHODS: Array<[TreatmentMethod, string]> = [
+  ['oprysk', 'Oprysk ciśnieniowy'],
+  ['ulv', 'ULV'],
+  ['zamglawianie', 'Zamgławianie'],
   ['zelowanie', 'Żelowanie'],
   ['odplywy', 'Zalanie odpływów'],
-  ['ulv', 'Zamgławianie ULV'],
-  ['oprysk', 'Oprysk ciśnieniowy'],
 ];
+
+/** Metody, przy których klient opuszcza lokal i potem sprząta: ULV i zamgławianie. */
+export const FOGGING: TreatmentMethod[] = ['ulv', 'zamglawianie'];
+
+export const hasFogging = (methods: TreatmentMethod[]) => methods.some((m) => FOGGING.includes(m));
 
 export const METHOD_LABEL = Object.fromEntries(METHODS) as Record<TreatmentMethod, string>;
 
@@ -17,7 +23,8 @@ export const METHOD_LABEL = Object.fromEntries(METHODS) as Record<TreatmentMetho
 const ALIASES: Record<string, TreatmentMethod> = {
   'żel': 'zelowanie',
   'żelowanie': 'zelowanie',
-  'zamgławianie': 'ulv',
+  'zamgławianie': 'zamglawianie',
+  'zamglawianie': 'zamglawianie',
   'zamgławianie ulv': 'ulv',
   'ulv': 'ulv',
   'oprysk ciśnieniowy': 'oprysk',
@@ -39,19 +46,22 @@ export function doneMethods(treatments: string[], order: Pick<Order, 'methods'>)
   return found.length ? found : orderMethods(order);
 }
 
-/** Uwaga przy zamgławianiu ULV: widoczna przy zleceniu, zabiegu, w przypomnieniu i w zaleceniach. */
+/** Uwaga przy ULV i zamgławianiu: widoczna przy zleceniu, zabiegu, w przypomnieniu i w zaleceniach. */
 export const ULV_NOTICE =
-  'Zamgławianie ULV: na czas zabiegu i co najmniej 4 godziny po nim w lokalu nie może być ludzi ani zwierząt. Przed zabiegiem schować żywność i naczynia, po powrocie wywietrzyć lokal i posprzątać (umyć blaty, stoły i podłogi).';
+  'ULV / zamgławianie: na czas zabiegu i co najmniej 4 godziny po nim w lokalu nie może być ludzi ani zwierząt. Przed zabiegiem schować żywność i naczynia, po powrocie wywietrzyć lokal i posprzątać (umyć blaty, stoły i podłogi).';
 
-/** Zalecenia dla każdej metody. Zalecenia ULV są obowiązkowe: nie da się ich odznaczyć. */
+const FOGGING_RECOMMENDATIONS = [
+  'Opuścić lokal na czas zabiegu i na co najmniej 4 godziny po nim (ludzie i zwierzęta).',
+  'Przed zabiegiem schować żywność, naczynia, sztućce, szczoteczki do zębów i kosmetyki.',
+  'Akwarium przykryć i wyłączyć napowietrzanie na czas zabiegu.',
+  'Po powrocie wietrzyć lokal co najmniej przez 1 godzinę.',
+  'Po wywietrzeniu umyć blaty, stoły i powierzchnie, z którymi styka się żywność, oraz posprzątać podłogi.',
+];
+
+/** Zalecenia dla każdej metody. Zalecenia ULV i zamgławiania są obowiązkowe: nie da się ich odznaczyć. */
 export const METHOD_RECOMMENDATIONS: Record<TreatmentMethod, string[]> = {
-  ulv: [
-    'Opuścić lokal na czas zabiegu i na co najmniej 4 godziny po nim (ludzie i zwierzęta).',
-    'Przed zabiegiem schować żywność, naczynia, sztućce, szczoteczki do zębów i kosmetyki.',
-    'Akwarium przykryć i wyłączyć napowietrzanie na czas zabiegu.',
-    'Po powrocie wietrzyć lokal co najmniej przez 1 godzinę.',
-    'Po wywietrzeniu umyć blaty, stoły i powierzchnie, z którymi styka się żywność, oraz posprzątać podłogi.',
-  ],
+  zamglawianie: FOGGING_RECOMMENDATIONS,
+  ulv: FOGGING_RECOMMENDATIONS,
   oprysk: [
     'Nie przebywać w mieszkaniu przez 4 godziny od zabiegu.',
     'Zwierzęta i dzieci poza mieszkaniem w trakcie zabiegu i 4 godziny po nim.',
@@ -76,9 +86,9 @@ const PEST_RECOMMENDATIONS: Partial<Record<PestCategory, string[]>> = {
 
 const ALWAYS = ['Zgłosić obecność owadów przed kolejnym zabiegiem.'];
 
-/** Zalecenia dla wykonanych metod i szkodnika, bez powtórzeń; obowiązkowe to zalecenia ULV. */
+/** Zalecenia dla wykonanych metod i szkodnika, bez powtórzeń; obowiązkowe to zalecenia ULV i zamgławiania. */
 export function recommendationsFor(methods: TreatmentMethod[], pest: PestCategory): { list: string[]; required: string[] } {
-  const required = methods.includes('ulv') ? METHOD_RECOMMENDATIONS.ulv : [];
+  const required = hasFogging(methods) ? FOGGING_RECOMMENDATIONS : [];
   const list = [...new Set([...required, ...methods.flatMap((m) => METHOD_RECOMMENDATIONS[m]), ...(PEST_RECOMMENDATIONS[pest] ?? []), ...ALWAYS])];
   return { list, required };
 }

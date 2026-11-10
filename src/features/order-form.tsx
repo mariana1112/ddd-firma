@@ -8,7 +8,7 @@ import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
 import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind, TreatmentMethod } from '../data/types';
-import { METHOD_LABEL, METHODS } from '../data/methods';
+import { hasFogging, METHOD_LABEL, METHODS } from '../data/methods';
 import { normalizeCity } from '../data/cities';
 import { UlvNotice } from './common';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
@@ -229,7 +229,7 @@ function validate(step: StepId, s: FormState): Errors {
     if (s.mapsLink.trim() && !isMapsLink(s.mapsLink)) e.mapsLink = 'Wklej link z Google Maps (Udostępnij → Kopiuj link)';
   }
   if (step === 'problem') {
-    if (s.methods.length === 0) e.methods = 'Zaznacz, co dokładnie robimy: oprysk ciśnieniowy, zamgławianie ULV, żelowanie albo zalanie odpływów';
+    if (s.methods.length === 0) e.methods = 'Zaznacz, co dokładnie robimy: oprysk ciśnieniowy, ULV, zamgławianie, żelowanie albo zalanie odpływów';
     if (s.pest === 'inne' && !s.pestOther.trim()) e.pestOther = 'Wpisz, jaki szkodnik';
     if (s.area.trim() && !/^\d+([.,]\d+)?$/.test(s.area.trim())) e.area = 'Podaj liczbę, np. 48';
   }
@@ -337,7 +337,7 @@ function MethodsField(props: { value: TreatmentMethod[]; onChange: (value: Treat
         ))}
       </div>
       {props.error && <span className="field-message">{props.error}</span>}
-      {props.value.includes('ulv') && <UlvNotice />}
+      {hasFogging(props.value) && <UlvNotice />}
     </div>
   );
 }
