@@ -1,9 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { clearRecoveryLink, takeLinkInfo, takeRecoveryLink, tokenUser } from '../lib/auth-link';
 import { syncInBackground } from '../data/sync/runner';
-import { normalizePrefix, PREFIX_MAX } from '../data/codes';
+import { normalizePrefix, PREFIX_MAX, roman, visitCode } from '../data/codes';
 import { companyText, regionRanking, regionData, type RegionRef } from '../data/company';
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
@@ -11,7 +11,8 @@ import { getOwnBranch, setViewScope } from '../data/scope';
 import { COMPANY_NAME, getDataKey, getRegions, getSyncState, saveRegions, setSyncState, type RegionInfo } from '../data/settings';
 import { enterRegion } from './regions';
 import type { SyncState } from '../data/types';
-import { todayWarsaw } from '../lib/dates';
+import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
+import { orderAddress } from '../data/texts';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Field, Group, Info, Loading, Page, Row, ScopeBannerContext, Sheet, Stat } from '../ui/kit';
@@ -452,6 +453,19 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
 
   const inRegion = (m: MemberRow) =>
     !props.regionId || m.branchId === props.regionId || access.some((a) => a.userId === m.userId && a.branchId === props.regionId);
+  const toggleAdmin = async (m: MemberRow) => {
+    const give = m.role !== 'owner';
+    const ok = await confirm({
+      title: give ? `Dać ${label(m)} uprawnienia admina?` : `Odebrać ${label(m)} uprawnienia admina?`,
+      message: give
+        ? 'Admin widzi wszystkie regiony, wchodzi do panelu admina, zarządza kontami i generuje kody. Do panelu loguje się swoim e-mailem i hasłem.'
+        : 'Konto zostanie technikiem w swoim regionie i straci dostęp do panelu admina.',
+      confirmLabel: give ? 'Daj admina' : 'Odbierz admina',
+      danger: !give,
+    });
+    if (ok) await act(async () => (await supabaseApi()).setMemberRole(props.state.orgId, m.userId, give ? 'owner' : 'technik'), give ? 'Konto jest teraz adminem' : 'Konto jest teraz technikiem');
+  };
+
   const sorted = [...(members ?? [])].filter(inRegion).sort(
     (a, b) => Number(a.approved) - Number(b.approved) || Number(Boolean(b.suspended)) - Number(Boolean(a.suspended)) || label(a).localeCompare(label(b), 'pl'),
   );
@@ -466,7 +480,7 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
           <div key={m.userId} className="member-row">
             <div className="member-main">
               <strong>
-                {label(m)}
+                {m.approved ? <Link to={`/admin/technik/${m.userId}?imie=${encodeURIComponent(label(m))}`}>{label(m)}</Link> : label(m)}
                 {self ? ' (Ty)' : ''}
               </strong>
               <span className="row-sub">
@@ -482,6 +496,16 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
                 {!m.approved && (
                   <button type="button" className="btn btn-sm btn-primary" onClick={() => void act(async () => (await supabaseApi()).approveMember(props.state.orgId, m.userId), 'Konto przyjęte')}>
                     Przyjmij
+                  </button>
+                )}
+                {m.approved && (
+                  <Link className="btn btn-sm" to={`/admin/technik/${m.userId}?imie=${encodeURIComponent(label(m))}`}>
+                    Podgląd
+                  </Link>
+                )}
+                {m.approved && !m.suspended && (
+                  <button type="button" className="btn btn-sm" onClick={() => void toggleAdmin(m)}>
+                    {m.role === 'owner' ? 'Odbierz admina' : 'Daj admina'}
                   </button>
                 )}
                 {m.approved && (
@@ -993,6 +1017,75 @@ export function AdminPage() {
         <Row to="/ustawienia" icon="gear" title="Ustawienia firmy" sub="Premia, zalecenia, SMS, dane do kilometrówki" />
         <Row to="/admin/bezpieczenstwo" icon="gear" title="Login, hasło i pytania pomocnicze" sub="Zmiana danych logowania do panelu i odzyskiwania" />
         <Row to="/konto" icon="users" title="Konto admina" sub="Synchronizacja i regiony tego telefonu" />
+      </Group>
+    </Page>
+  );
+}
+
+// ---------- Podgląd technika ----------
+
+/**
+ * Co robi technik: zabiegi do zrobienia (umówione i bez terminu), ostatnio wykonane i wynik tygodnia. Dane z tego
+ * telefonu admina (admin ma zlecenia wszystkich regionów), bez logowania na konto technika.
+ */
+export function AdminTechnicianPage() {
+  const gate = useAdminGate();
+  const { id = '' } = useParams();
+  const [params] = useSearchParams();
+  const name = params.get('imie') || 'Technik';
+  const data = useLiveQuery(async () => {
+    const list = (await visits.allRegions()).filter((v) => v.technicianId === id && !v.deletedAt);
+    const byId = new Map((await orders.allRegions()).map((o) => [o.id, o]));
+    return { list, byId };
+  }, [id]);
+
+  useEffect(() => touchUnlock());
+
+  if (gate.state === undefined || !data) return <Loading />;
+  if (!gate.state || gate.state.role !== 'owner') return <NotAdmin />;
+  if (!gate.unlocked) return <Navigate to="/admin" replace />;
+
+  const week = periodOf('tydzien', todayWarsaw());
+  const todo = data.list
+    .filter((v) => v.status === 'zaplanowany' || v.status === 'w_trakcie')
+    .sort((a, b) => (a.start ?? '9999').localeCompare(b.start ?? '9999'));
+  const done = data.list
+    .filter((v) => v.status === 'wykonany')
+    .sort((a, b) => (b.finishedAt ?? b.doneOn ?? '').localeCompare(a.finishedAt ?? a.doneOn ?? ''));
+  const weekDone = done.filter((v) => v.doneOn && v.doneOn >= week.from && v.doneOn <= week.to);
+  const turnover = weekDone.reduce((sum, v) => sum + (v.amount ?? 0), 0);
+
+  const row = (v: (typeof data.list)[number]) => {
+    const order = data.byId.get(v.orderId);
+    return (
+      <Row
+        key={v.id}
+        to={`/zabieg/${v.id}`}
+        title={order ? `${visitCode(order, v.seq)} ${order.clientName}` : `Zabieg ${roman(v.seq)}`}
+        sub={`${v.status === 'wykonany' ? `Wykonany ${formatDate(v.doneOn ?? v.start)}` : v.start ? formatTerm(v.start) : 'bez terminu'}${order ? ` · ${orderAddress(order)}` : ''}`}
+        trailing={v.status === 'w_trakcie' ? <Badge tone="warn">W trakcie</Badge> : v.amount ? <span className="num">{formatPln(v.amount)}</span> : undefined}
+      />
+    );
+  };
+
+  return (
+    <Page title={name} back="/admin">
+      <div className="stats">
+        <Stat label="Obrót w tym tygodniu" value={formatPln(turnover)} />
+        <Stat label="Wykonane w tym tygodniu" value={String(weekDone.length)} />
+        <Stat label="Do zrobienia" value={String(todo.length)} />
+        <Stat label="Wykonane razem" value={String(done.length)} />
+      </div>
+      <Group title={`Do zrobienia (${todo.length})`}>
+        {todo.length === 0 && <Empty title="Nic do zrobienia" />}
+        {todo.map(row)}
+      </Group>
+      <Group title="Ostatnio wykonane">
+        {done.length === 0 && <Empty title="Brak wykonanych zabiegów" />}
+        {done.slice(0, 15).map(row)}
+      </Group>
+      <Group title="Więcej">
+        <Row to={`/raporty?technik=${id}&imie=${encodeURIComponent(name)}`} icon="chart" title="Raport technika" sub="Dzień, tydzień, miesiąc, PDF" />
       </Group>
     </Page>
   );

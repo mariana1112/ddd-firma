@@ -35,6 +35,22 @@ export function loadServer(): Promise<SyncServer> {
   return serverPromise;
 }
 
+let roleCheckedAt = 0;
+
+/** Co kilka minut sprawdza rolę konta na serwerze: nadanie albo odebranie admina działa bez ponownego logowania. */
+async function refreshRole(): Promise<void> {
+  if (Date.now() - roleCheckedAt < 5 * 60 * 1000) return;
+  roleCheckedAt = Date.now();
+  try {
+    const state = await getSyncState();
+    if (!state) return;
+    const membership = (await (await import('./supabase')).myMemberships()).find((m) => m.orgId === state.orgId);
+    if (membership && membership.role !== state.role) await setSyncState({ ...state, role: membership.role });
+  } catch {
+    // Bez internetu rola zostaje do następnego sprawdzenia.
+  }
+}
+
 /** Jeden cykl naraz. Wywołanie w trakcie trwającego cyklu czeka na jego koniec. */
 export function syncInBackground(): Promise<void> {
   current ??= (async () => {
@@ -48,6 +64,7 @@ export function syncInBackground(): Promise<void> {
     ]);
     try {
       await syncNow(server);
+      await refreshRole();
     } catch (error) {
       console.warn('Synchronizacja nie powiodła się', error);
       const latest = await getSyncState();

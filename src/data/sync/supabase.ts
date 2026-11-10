@@ -42,6 +42,7 @@ const MESSAGES: Record<string, string> = {
   BAD_ACCOUNT: 'Nie udało się przygotować danych konta. Spróbuj ponownie.',
   RECOVERY_PENDING: 'Najpierw odpowiedz na pytania pomocnicze (konto czeka na potwierdzenie po resecie hasła).',
   BAD_ANSWERS: 'Każda odpowiedź musi mieć co najmniej 2 znaki.',
+  BAD_ROLE: 'Nieznana rola konta.',
 };
 
 /** Komunikat po polsku dla błędu sieci, serwera lub logowania. */
@@ -479,6 +480,12 @@ export async function claimAccount(email: string, newPassword: string): Promise<
   if (error) fail(error);
   await invokeKonta({ action: 'claim', email });
   await supabase().auth.refreshSession();
+}
+
+/** Admin nadaje innemu kontu uprawnienia admina albo je odbiera (siebie nie zmieni). */
+export async function setMemberRole(orgId: string, userId: string, role: 'owner' | 'technik'): Promise<void> {
+  const { error } = await supabase().rpc('set_member_role', { p_org: orgId, p_user: userId, p_role: role });
+  if (error) fail(error);
 }
 
 /** Admin zawiesza (tymczasowo blokuje) albo przywraca konto. */

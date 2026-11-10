@@ -6,7 +6,7 @@ import { AccountPage, BranchesPage, ClaimAccountPage, LoginGate } from './featur
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getSyncState } from './data/settings';
 import { isSyncConfigured } from './data/sync/config';
-import { AdminPage, AdminRecoveryPage, AdminScoped, AdminSecurityPage } from './features/admin';
+import { AdminPage, AdminRecoveryPage, AdminScoped, AdminSecurityPage, AdminTechnicianPage } from './features/admin';
 import { CostsPage } from './features/costs';
 import { DashboardPage } from './features/dashboard';
 import { OrderEditPage, OrderNewPage } from './features/order-form';
@@ -113,6 +113,7 @@ function AppRoutes() {
       <Route path="/oddzialy" element={<BranchesPage />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/admin/bezpieczenstwo" element={<AdminSecurityPage />} />
+      <Route path="/admin/technik/:id" element={<AdminTechnicianPage />} />
       <Route path="/admin/odzyskiwanie" element={<AdminRecoveryPage />} />
       <Route path="/admin/zlecenia" element={<AdminScoped><OrdersPage /></AdminScoped>} />
       <Route path="/admin/kalendarz" element={<AdminScoped><CalendarPage /></AdminScoped>} />
