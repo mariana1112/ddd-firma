@@ -15,6 +15,7 @@ import { ReportsPage } from './features/reports';
 import { BackupPage, MorePage, SettingsPage, TrashPage } from './features/settings';
 import { TripsPage } from './features/trips';
 import { CardPage } from './features/card';
+import { AccountingOrderPage, AccountingPage, CorrectionsPage } from './features/accounting';
 import { VisitPage } from './features/visit';
 import { FeedbackProvider } from './ui/feedback';
 import { Icon, type IconName } from './ui/icons';
@@ -31,12 +32,31 @@ const TABS: Array<{ to: string; label: string; icon: IconName; end?: boolean; al
   { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto'] },
 ];
 
+/** Księgowa nie dodaje kosztów ani przejazdów: zamiast Pulpitu i Kalendarza ma swój panel. */
+const ACCOUNTANT_TABS: typeof TABS = [
+  { to: '/', label: 'Księgowość', icon: 'receipt', end: true, also: ['/ksiegowosc'] },
+  { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard', also: ['/zabieg'] },
+  { to: '/raporty', label: 'Raporty', icon: 'chart' },
+  TABS[4],
+];
+
+const useRole = () => useLiveQuery(async () => (await getSyncState())?.role ?? null);
+
+/** Strona startowa: Pulpit technika albo panel księgowej. */
+function HomePage() {
+  const role = useRole();
+  if (role === undefined) return <Loading />;
+  return role === 'ksiegowosc' ? <AccountingPage /> : <DashboardPage />;
+}
+
 function Navigation() {
   const { pathname } = useLocation();
+  const role = useRole();
+  const tabs = role === 'ksiegowosc' ? ACCOUNTANT_TABS : TABS;
   return (
     <nav className="tabs" aria-label="Główna nawigacja">
       <div className="tabs-brand">Pogromcy Insektów</div>
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <NavLink
           key={tab.to}
           to={tab.to}
@@ -94,7 +114,10 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<DashboardPage />} />
+      <Route path="/" element={<HomePage />} />
+      <Route path="/ksiegowosc" element={<AccountingPage />} />
+      <Route path="/ksiegowosc/poprawki" element={<CorrectionsPage />} />
+      <Route path="/ksiegowosc/:id" element={<AccountingOrderPage />} />
       <Route path="/kalendarz" element={<CalendarPage />} />
       <Route path="/zlecenia" element={<OrdersPage />} />
       <Route path="/zlecenia/nowe" element={<OrderNewPage />} />
@@ -120,7 +143,7 @@ function AppRoutes() {
       <Route path="/admin/raporty" element={<AdminScoped><ReportsPage /></AdminScoped>} />
       <Route path="/admin/kilometry" element={<AdminScoped><TripsPage /></AdminScoped>} />
       <Route path="/admin/koszty" element={<AdminScoped><CostsPage /></AdminScoped>} />
-      <Route path="*" element={<DashboardPage />} />
+      <Route path="*" element={<HomePage />} />
     </Routes>
   );
 }

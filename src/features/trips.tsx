@@ -194,7 +194,7 @@ export function TripsPage() {
       profile,
       vehicle: await getVehicle(),
       company: await getCompany(),
-      owner: Boolean(sync && sync.role === 'owner'),
+      owner: Boolean(sync && (sync.role === 'owner' || sync.role === 'ksiegowosc')),
     };
   });
 

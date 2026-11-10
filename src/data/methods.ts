@@ -93,6 +93,11 @@ export function recommendationsFor(methods: TreatmentMethod[], pest: PestCategor
   return { list, required };
 }
 
+/** Czy dokument z oznaczenia jest już zrobiony przez księgową. */
+export function tagDone(order: Pick<Order, 'invoiceDone' | 'protocolDone'>, tag: string): boolean {
+  return tag === 'prot' ? Boolean(order.protocolDone) : Boolean(order.invoiceDone);
+}
+
 /** Krótkie oznaczenia dokumentów na liście i w szukaniu: „fv23” (faktura VAT), „fv” (imienna), „prot”. */
 export function documentTags(order: Pick<Order, 'invoice' | 'protocol'>): string[] {
   const tags: string[] = [];

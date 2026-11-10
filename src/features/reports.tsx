@@ -28,7 +28,8 @@ export function ReportsPage() {
   const data = useLiveQuery(async () => {
     const profile = await getProfile();
     const state = await getSyncState();
-    const owner = state?.role === 'owner';
+    // Admin i księgowa widzą domyślnie wszystkich techników.
+    const owner = state?.role === 'owner' || state?.role === 'ksiegowosc';
     const everyone = !otherId && owner && (inPanel || !onlyMine);
     const who = otherId ?? profile.userId;
     const self = !otherId || otherId === profile.userId;

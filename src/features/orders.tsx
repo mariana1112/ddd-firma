@@ -5,7 +5,8 @@ import { mainPhone, orderMatches } from '../data/order-search';
 import { orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, sortOrderRows, URGENT_LABEL, urgentReason, visitInFilter, visitUrgent, type ListFilter, type OrderSort } from '../data/order-list';
-import { documentTags, hasFogging, METHOD_LABEL, orderMethods } from '../data/methods';
+import { documentTags, hasFogging, METHOD_LABEL, orderMethods, tagDone } from '../data/methods';
+import { accountingNote } from '../data/accounting';
 import { archiveOrder, deleteOrder, orderVisits, restoreOrder, scheduleNextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
@@ -247,8 +248,9 @@ export function VisitListRow({ order, visit, today }: { order: Order; visit: Vis
             {urgent && urgent !== 'w_trakcie' && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
             {visit.payMethod && <PayBadge method={visit.payMethod} />}
             {documentTags(order).map((tag) => (
-              <Badge key={tag} tone="info">
+              <Badge key={tag} tone={tagDone(order, tag) ? 'ok' : 'info'}>
                 {tag}
+                {tagDone(order, tag) ? ' ✓' : ''}
               </Badge>
             ))}
           </span>
@@ -310,8 +312,9 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
                 <PayBadge key={m} method={m} />
               ))}
               {documentTags(order).map((tag) => (
-                <Badge key={tag} tone="info">
+                <Badge key={tag} tone={tagDone(order, tag) ? 'ok' : 'info'}>
                   {tag}
+                  {tagDone(order, tag) ? ' ✓' : ''}
                 </Badge>
               ))}
             </span>
@@ -547,6 +550,9 @@ export function OrderDetailPage() {
         {order.email && <Info label="E-mail">{order.email}</Info>}
         <Info label="Faktura">{INVOICES[order.invoice]}</Info>
         <Info label="Protokół">{order.protocol ? 'Tak, klient chce protokół' : 'Nie'}</Info>
+        {accountingNote(order) && <Info label="Księgowość">{accountingNote(order)}</Info>}
+        {order.invoiceNumber && <Info label="Numer faktury">{order.invoiceNumber}</Info>}
+        {order.accountingNote && <Info label="Uwagi księgowej">{order.accountingNote}</Info>}
         {order.nip && <Info label="NIP">{order.nip}</Info>}
         {order.invoiceAddress && <Info label="Adres do FV">{order.invoiceAddress}</Info>}
       </Group>

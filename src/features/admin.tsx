@@ -487,7 +487,7 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
                 {temp(m) ? 'login tymczasowy, jeszcze bez własnego e-maila' : m.email} · {regionNames(m)}
               </span>
               <span className="member-badges">
-                {m.role === 'owner' ? <Badge tone="primary">Admin</Badge> : <Badge tone="muted">Technik</Badge>}
+                {m.role === 'owner' ? <Badge tone="primary">Admin</Badge> : m.role === 'ksiegowosc' ? <Badge tone="info">Księgowa</Badge> : <Badge tone="muted">Technik</Badge>}
                 {!m.approved ? <Badge tone="warn">Czeka na zgodę</Badge> : m.suspended ? <Badge tone="danger">Zawieszone</Badge> : <Badge tone="ok">Aktywne</Badge>}
               </span>
             </div>
@@ -529,6 +529,7 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
 
 const APP_URL = 'https://mariana1112.github.io/ddd-firma/';
 const ADMIN_TARGET = 'admin';
+const ACCOUNTANT_TARGET = 'ksiegowa';
 
 type CodeResult = { title: string; code: string; text: string };
 
@@ -575,7 +576,7 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
   }, []);
 
   const region = props.regions.find((r) => r.id === target);
-  const ready = (target === ADMIN_TARGET || Boolean(region)) && (Boolean(saved) || companyPassword.length >= 12);
+  const ready = (target === ADMIN_TARGET || target === ACCOUNTANT_TARGET || Boolean(region)) && (Boolean(saved) || companyPassword.length >= 12);
 
   const generate = () =>
     run(async () => {
@@ -586,13 +587,14 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
         const deviceKey = await getDataKey();
         if (!orgWrapped || !deviceKey) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
         const admin = target === ADMIN_TARGET;
+        const accountant = target === ACCOUNTANT_TARGET;
         const password = saved || companyPassword;
         let code: string;
         try {
           code = await api.issueSignupCode({
             orgId: props.state.orgId,
-            branchId: admin ? null : target,
-            role: admin ? 'owner' : 'technik',
+            branchId: admin || accountant ? null : target,
+            role: admin ? 'owner' : accountant ? 'ksiegowosc' : 'technik',
             companyPassword: password,
             orgWrapped,
             deviceKey,
@@ -611,7 +613,7 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
           setSaved(password);
           setCompanyPassword('');
         }
-        const where = admin ? 'admin (wszystkie regiony)' : `region ${region?.name ?? ''}`;
+        const where = admin ? 'admin (wszystkie regiony)' : accountant ? 'księgowa (wszystkie regiony)' : `region ${region?.name ?? ''}`;
         setResult({
           title: `Kod: ${where}`,
           code,
@@ -644,6 +646,7 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
               </option>
             ))}
             <option value={ADMIN_TARGET}>Admin (wszystkie regiony)</option>
+            <option value={ACCOUNTANT_TARGET}>Księgowa (wszystkie regiony)</option>
           </select>
         </Field>
         )}
