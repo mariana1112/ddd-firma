@@ -4,7 +4,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { mainPhone, orderMatches } from '../data/order-search';
 import { orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
-import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, paymentMissing, sortOrderRows, type OrderSort } from '../data/order-list';
+import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, sortOrderRows, URGENT_LABEL, urgentReason, type OrderSort } from '../data/order-list';
+import { documentTags, METHOD_LABEL, orderMethods } from '../data/methods';
 import { archiveOrder, deleteOrder, orderVisits, restoreOrder, scheduleNextVisit } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
@@ -18,7 +19,7 @@ import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Pa
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
-import { ContactBar, NextVisitPill, PayBadge, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
+import { ContactBar, NextVisitPill, PayBadge, PinkBadge, UlvNotice, useContactActions, VisitBadge, visitWhen } from './common';
 
 type StatusFilter = 'aktywne' | 'pilne' | 'wykonane' | 'archiwum' | 'wszystkie';
 type PayFilter = 'wszystkie' | PayMethod;
@@ -31,18 +32,17 @@ export function OrdersPage() {
   // Wyszukiwanie z Pulpitu przychodzi w adresie (?q=…), np. numer osoby, która dzwoni.
   const [params] = useSearchParams();
   const [query, setQuery] = useState(() => params.get('q') ?? '');
-  const [status, setStatus] = useState<StatusFilter>('aktywne');
+  const [status, setStatus] = useState<StatusFilter>('wszystkie');
   const searching = query.trim().length > 0;
-  // Pilne: wykonane zabiegi bez formy płatności albo kwoty (np. „uzupełnię później”), poza archiwum.
+  const today = todayWarsaw();
+  // Pilne: niedokończone zabiegi, brak płatności i zaległe terminy, poza archiwum.
   const urgentCount = useMemo(() => {
     if (!data) return 0;
-    const archivedIds = new Set(data.orders.filter((o) => o.archived).map((o) => o.id));
-    return new Set(data.visits.filter((v) => paymentMissing(v) && !archivedIds.has(v.orderId)).map((v) => v.orderId)).size;
-  }, [data]);
+    return data.orders.filter((o) => urgentReason(o, data.visits.filter((v) => v.orderId === o.id), today)).length;
+  }, [data, today]);
   const [pay, setPay] = useState<PayFilter>('wszystkie');
   const [invoicesOnly, setInvoicesOnly] = useState(false);
-  const [sort, setSort] = useState<OrderSort>('najwczesniej');
-  const today = todayWarsaw();
+  const [sort, setSort] = useState<OrderSort>('najpozniej');
   const changeStatus = (next: StatusFilter) => {
     setStatus(next);
     setSort(defaultSort(next));
@@ -64,13 +64,13 @@ export function OrdersPage() {
         if (searching) return true;
         if (status === 'archiwum') return archived;
         if (archived) return false;
-        if (status === 'pilne') return list.some(paymentMissing);
+        if (status === 'pilne') return urgentReason(order, list, today) !== null;
         if (status === 'aktywne') return active;
         if (status === 'wykonane') return !active;
         return true;
       });
     return sortOrderRows(filtered, sort);
-  }, [data, query, status, pay, invoicesOnly, sort, searching]);
+  }, [data, query, status, pay, invoicesOnly, sort, searching, today]);
 
   return (
     <Page title="Zlecenia" actions={<AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
@@ -82,17 +82,17 @@ export function OrdersPage() {
         </Empty>
       ) : (
         <>
-          <Search value={query} onChange={setQuery} placeholder="Szukaj: telefon, nazwisko, adres, kod (np. 0210)" />
+          <Search value={query} onChange={setQuery} placeholder="Szukaj: telefon, nazwisko, adres, kod, fv23, fv, prot" />
           {searching && <p className="field-hint">Szukam we wszystkich zleceniach, także zakończonych. Znalezione: {rows.length}.</p>}
           <Chips
             value={status}
             onChange={changeStatus}
             options={[
-              { value: 'aktywne', label: 'Do zrobienia' },
-              { value: 'pilne', label: 'Pilne', count: urgentCount },
-              { value: 'wykonane', label: 'Zakończone' },
-              { value: 'archiwum', label: 'Archiwum' },
               { value: 'wszystkie', label: 'Wszystkie' },
+              { value: 'aktywne', label: 'Do zrobienia' },
+              { value: 'wykonane', label: 'Zakończone' },
+              { value: 'pilne', label: 'Pilne', count: urgentCount },
+              { value: 'archiwum', label: 'Archiwum' },
             ]}
           />
           <div className="chips" role="group" aria-label="Forma płatności">
@@ -163,9 +163,11 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
   const tile = term.date ? dateTile(term.date) : null;
   const tone = !term.date ? ' date-tile-none' : term.date === today ? ' date-tile-today' : open && term.date < today ? ' date-tile-late' : !open ? ' date-tile-done' : '';
   const paid = [...new Set(list.map((v) => v.payMethod).filter((m): m is PayMethod => m !== null))];
+  const urgent = urgentReason(order, list, today);
   return (
     <Row
       to={`/zlecenia/${order.id}`}
+      className={urgent ? 'row-urgent' : undefined}
       lead={
         <span className={`date-tile${tone}`} aria-hidden="true">
           {tile ? (
@@ -200,9 +202,13 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
         <span className="row-end">
           {order.pink && <PinkBadge />}
           {current && <VisitBadge visit={current} />}
-          {list.some(paymentMissing) && <Badge tone="danger">Brak płatności</Badge>}
+          {urgent && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
           {isArchived(order, list) && <Badge tone="muted">Archiwum</Badge>}
-          {order.invoice !== 'brak' && <Badge tone="info">{order.invoice === 'vat' ? 'FV VAT' : 'FV'}</Badge>}
+          {documentTags(order).map((tag) => (
+            <Badge key={tag} tone="info">
+              {tag}
+            </Badge>
+          ))}
           {paid.map((m) => (
             <PayBadge key={m} method={m} />
           ))}
@@ -339,6 +345,7 @@ export function OrderDetailPage() {
       </div>
 
       <ContactBar order={order} onSms={onSms} />
+      {orderMethods(order).includes('ulv') && <UlvNotice />}
       {nextPlanned && <p className="field-hint">SMS zawiera przypomnienie o zabiegu {formatDate(nextPlanned.start)} z prośbą o potwierdzenie.</p>}
 
       {order.pink && order.pinkNote && (
@@ -402,6 +409,7 @@ export function OrderDetailPage() {
       </Group>
 
       <Group title="Problem">
+        {orderMethods(order).length > 0 && <Info label="Co robimy">{orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')}</Info>}
         <Info label="Szkodnik">{pestName(order)}</Info>
         {order.description && <Info label="Opis">{order.description}</Info>}
         {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
@@ -428,6 +436,7 @@ export function OrderDetailPage() {
         ))}
         {order.email && <Info label="E-mail">{order.email}</Info>}
         <Info label="Faktura">{INVOICES[order.invoice]}</Info>
+        <Info label="Protokół">{order.protocol ? 'Tak, klient chce protokół' : 'Nie'}</Info>
         {order.nip && <Info label="NIP">{order.nip}</Info>}
         {order.invoiceAddress && <Info label="Adres do FV">{order.invoiceAddress}</Info>}
       </Group>

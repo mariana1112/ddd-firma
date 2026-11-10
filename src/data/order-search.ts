@@ -1,4 +1,5 @@
 import { matchesCode, orderCode } from './codes';
+import { documentTags } from './methods';
 import { orderAddress, pestName } from './texts';
 import type { Order } from './types';
 import { normalizeForSearch } from '../lib/validators';
@@ -36,8 +37,15 @@ export function orderMatches(order: Order, query: string): boolean {
     const wanted = phoneDigits(query);
     if (order.phones.some((p) => phoneDigits(p.number).includes(wanted))) return true;
   }
+  // „fv23”, „fv”, „prot”: dokładne oznaczenia dokumentów, więc „fv” nie pokazuje faktur VAT.
+  const tags = documentTags(order);
+  const words = q.split(/\s+/);
+  const tagWords: string[] = words.filter((w) => w === 'fv' || w === 'fv23' || w === 'prot');
+  if (tagWords.length && !tagWords.every((w) => tags.includes(w))) return false;
+  const rest = words.filter((w) => !tagWords.includes(w));
+  if (rest.length === 0) return true;
   const hay = normalizeForSearch(
     [orderCode(order), order.clientName, orderAddress(order), order.postalCode, pestName(order), ...order.phones.map((p) => p.number.replace(/\s/g, ''))].join(' '),
   );
-  return q.split(/\s+/).every((word) => hay.includes(word));
+  return rest.every((word) => hay.includes(word));
 }

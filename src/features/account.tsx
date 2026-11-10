@@ -803,7 +803,59 @@ function KeyMissing({ state }: { state: SyncState }) {
 
 // ---------- Stan ----------
 
+/**
+ * Ponowne logowanie, gdy sesja na urządzeniu wygasła (np. po zmianie hasła na innym telefonie). Tylko to samo konto:
+ * dane i klucz firmy zostają na urządzeniu, synchronizacja rusza od razu.
+ */
+function Relogin({ state }: { state: SyncState }) {
+  const { run, toast } = useFeedback();
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="form card"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!password) return;
+        setBusy(true);
+        await run(async () => {
+          const api = await supabaseApi();
+          const user = await api.signIn(state.email, password);
+          if (user.userId !== state.userId) {
+            await api.signOut();
+            throw new Error('To inne konto niż konto tego urządzenia.');
+          }
+          setPassword('');
+          const latest = await getSyncState();
+          if (latest) await setSyncState({ ...latest, lastError: null });
+          await syncInBackground();
+          toast('Zalogowano ponownie, synchronizacja działa');
+        });
+        setBusy(false);
+      }}
+    >
+      <div className="notice notice-warn">
+        <Icon name="alert" />
+        <span>Sesja logowania na tym urządzeniu wygasła. Wpisz hasło do konta {state.email}, żeby dalej synchronizować.</span>
+      </div>
+      <Field label="Hasło">
+        <input type="password" name="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </Field>
+      <button type="submit" className="btn btn-primary btn-block" disabled={!password || busy}>
+        {busy ? 'Loguję…' : 'Zaloguj ponownie'}
+      </button>
+    </form>
+  );
+}
+
 function SyncStatus({ state }: { state: SyncState }) {
+  const [sessionLost, setSessionLost] = useState(false);
+  useEffect(() => {
+    void supabaseApi()
+      .then((api) => api.hasSession())
+      .then((ok) => setSessionLost(!ok))
+      .catch(() => undefined);
+  }, [state.lastError]);
   const { confirm, run, toast } = useFeedback();
   const hasKey = useLiveQuery(async () => Boolean(await getDataKey()));
   const running = useSyncRunning();
@@ -862,6 +914,7 @@ function SyncStatus({ state }: { state: SyncState }) {
 
   return (
     <>
+      {sessionLost && <Relogin state={state} />}
       {hasKey === false ? (
         <>
           <Group>
@@ -872,7 +925,7 @@ function SyncStatus({ state }: { state: SyncState }) {
         </>
       ) : (
         <>
-          {state.lastError && (
+          {state.lastError && !sessionLost && (
             <div className="notice notice-warn">
               <Icon name="alert" />
               <span>{state.lastError}</span>

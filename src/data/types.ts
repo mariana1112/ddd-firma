@@ -182,6 +182,8 @@ export type BuildingType = 'dom' | 'blizniak' | 'blok';
 export type PestCategory = 'karaluchy' | 'chrzaszczowate' | 'pluskwy' | 'gryzonie' | 'inne';
 export type InvoiceType = 'brak' | 'imienna' | 'vat';
 export type PayMethod = 'gotowka' | 'blik' | 'przelew';
+/** Co robimy w zleceniu: żelowanie, zalanie odpływów, zamgławianie ULV, oprysk ciśnieniowy. */
+export type TreatmentMethod = 'zelowanie' | 'odplywy' | 'ulv' | 'oprysk';
 
 export interface Phone {
   number: string;
@@ -230,6 +232,10 @@ export interface Order extends BaseRecord {
    * to miejsce, a gdy link zawiera współrzędne, dostają je też inne mapy.
    */
   mapsLink?: string;
+  /** Co robimy (wybierane przy tworzeniu). Brak w zleceniach sprzed tej opcji. */
+  methods?: TreatmentMethod[];
+  /** Klient chce protokół z zabiegu (zaznacza technik albo przyjmujący zlecenie). */
+  protocol?: boolean;
 }
 
 export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';

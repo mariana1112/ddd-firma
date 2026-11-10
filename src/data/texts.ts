@@ -1,4 +1,5 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
+import { ULV_NOTICE } from './methods';
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
 import { roman, visitCode } from './codes';
 import { normalizeInterview } from './interview';
@@ -92,12 +93,14 @@ function fill(template: string, values: Record<string, string>): string {
 }
 
 export function reminderSms(order: Order, visit: Visit, settings: AppSettings): string {
-  return fill(settings.reminderTemplate, {
+  const text = fill(settings.reminderTemplate, {
     data: formatDate(visit.start),
     godzina: visit.start ? formatTime(visit.start) : '',
     adres: orderAddress(order),
     numer: visitCode(order, visit.seq),
   });
+  // Klient musi się przygotować do zamgławiania: wyjść z lokalu i potem posprzątać.
+  return order.methods?.includes('ulv') ? `${text}\n${ULV_NOTICE}` : text;
 }
 
 /**

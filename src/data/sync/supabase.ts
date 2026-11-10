@@ -35,6 +35,7 @@ const MESSAGES: Record<string, string> = {
   FORBIDDEN: 'To konto nie ma uprawnień w tej firmie (np. zostało zawieszone przez admina).',
   ORG_EXISTS: 'To konto ma już firmę.',
   NOT_AUTHENTICATED: 'Sesja wygasła. Zaloguj się ponownie.',
+  SESSION_LOST: 'Sesja logowania na tym urządzeniu wygasła (np. po zmianie hasła). Zaloguj się ponownie w „Konto”. Dane na urządzeniu są bezpieczne.',
   NOT_PENDING: 'Ta prośba została już rozpatrzona.',
   EMAIL_TAKEN: 'Ten e-mail ma już konto. Zaloguj się nim, a kod wpiszesz po zalogowaniu.',
   BAD_EMAIL: 'Podaj poprawny adres e-mail.',
@@ -51,6 +52,7 @@ export function describeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message ?? error);
   for (const [code, text] of Object.entries(MESSAGES)) if (message.includes(code)) return text;
   if (/invalid login credentials/i.test(message)) return 'Nieprawidłowy e-mail lub hasło.';
+  if (/permission denied for table/i.test(message)) return MESSAGES.SESSION_LOST;
   if (/could not find the function|PGRST202/i.test(message)) return 'Serwer nie ma jeszcze tej funkcji: trzeba wykonać migrację odzyskiwania konta admina.';
   if (/email not confirmed/i.test(message)) return 'Najpierw potwierdź adres linkiem z wiadomości e-mail, potem zaloguj się tutaj.';
   if (/already registered|already exists/i.test(message)) return 'Konto z tym adresem już istnieje. Zaloguj się.';
@@ -71,8 +73,19 @@ function fail(error: unknown): never {
   throw new SyncError(describeError(error));
 }
 
+/** Czy urządzenie ma sesję logowania. Bez niej zapytania szłyby jako anonim i serwer by je odrzucał. */
+export async function hasSession(): Promise<boolean> {
+  const { data } = await supabase().auth.getSession();
+  return Boolean(data.session);
+}
+
+async function requireSession(): Promise<void> {
+  if (!(await hasSession())) throw new SyncError(MESSAGES.SESSION_LOST);
+}
+
 export const supabaseServer: SyncServer = {
   async push(orgId: string, deviceId: string, schema: number, changes: PushChange[]) {
+    await requireSession();
     const { error } = await supabase().rpc('sync_push', {
       p_org: orgId,
       p_device: deviceId,
@@ -83,6 +96,7 @@ export const supabaseServer: SyncServer = {
   },
 
   async pull(orgId: string, sinceRev: number, limit: number): Promise<RemoteRecord[]> {
+    await requireSession();
     const { data, error } = await supabase()
       .from('records')
       .select('tbl, id, data, rev, purged, branch_id')

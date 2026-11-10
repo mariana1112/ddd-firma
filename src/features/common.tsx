@@ -1,4 +1,5 @@
 import { orderCode, roman } from '../data/codes';
+import { ULV_NOTICE } from '../data/methods';
 import type { NextVisitState } from '../data/order-list';
 // Elementy wspólne ekranów zleceń: etykiety, akcje kontaktu z klientem i udostępnianie tekstu.
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
@@ -169,6 +170,16 @@ export function ContactBar(props: { order: Order; onSms?: (phone: Phone) => void
         <Icon name="message" />
         <span>SMS</span>
       </button>
+    </div>
+  );
+}
+
+/** Uwaga przy zamgławianiu ULV: zawsze widoczna przy zleceniu, zabiegu i w formularzu. */
+export function UlvNotice() {
+  return (
+    <div className="notice notice-warn notice-ulv">
+      <Icon name="alert" />
+      <span>{ULV_NOTICE}</span>
     </div>
   );
 }

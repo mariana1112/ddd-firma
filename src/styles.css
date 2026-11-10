@@ -2377,3 +2377,24 @@ a.btn.disabled {
 .input-secret {
   -webkit-text-security: disc;
 }
+
+/* Pilne zlecenie na liście: niedokończone, bez płatności albo z zaległym terminem. */
+.row.row-urgent {
+  background: var(--danger-soft);
+  box-shadow: inset 4px 0 0 var(--danger);
+}
+
+/* „Co robimy” nad zabiegiem */
+.methods-line {
+  margin: 0;
+  font-weight: 600;
+}
+
+.methods-line .terms-label {
+  display: block;
+}
+
+/* Zalecenie obowiązkowe (ULV): zawsze zaznaczone */
+.check.check-required {
+  font-weight: 600;
+}

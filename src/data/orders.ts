@@ -1,4 +1,5 @@
 // Zlecenia i zabiegi Pogromców Insektów. Operacje wielotabelowe działają w transakcjach.
+import { METHOD_LABEL } from './methods';
 import { todayWarsaw } from '../lib/dates';
 import type { VisitTerms } from './visit-terms';
 import { newId } from '../lib/ids';
@@ -90,11 +91,15 @@ export async function startVisit(id: string): Promise<void> {
   const visit = await visits.get(id);
   // Kolejny zabieg (II, III…) zaczyna się tylko po umówieniu terminu z klientem.
   if (visit && visit.seq > 1 && !visit.start) throw new DomainError('Najpierw umów termin tego zabiegu z klientem.');
+  const order = visit ? await orders.get(visit.orderId) : undefined;
+  // „Wykonane” zaczyna od metod wybranych przy zleceniu; technik odznacza, czego nie zrobił.
+  const treatments = visit && visit.treatments.length === 0 && order?.methods?.length ? order.methods.map((m) => METHOD_LABEL[m]) : undefined;
   await visits.update(id, {
     status: 'w_trakcie',
     startedAt: new Date().toISOString(),
     technicianId: profile.userId,
     technicianName: profile.name,
+    ...(treatments ? { treatments } : {}),
   });
 }
 

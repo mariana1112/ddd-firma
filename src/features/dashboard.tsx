@@ -3,23 +3,19 @@ import { scopeText } from '../data/visit-terms';
 import { mainPhone } from '../data/order-search';
 import { paymentMissing } from '../data/order-list';
 import { orderCode } from '../data/codes';
-import { cancelVisit, restoreOrder } from '../data/orders';
 import { dropEditDraft, listDrafts } from '../lib/drafts';
-import { useFeedback } from '../ui/feedback';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { buildReport, formatPln, periodOf } from '../data/reports';
-import { expenses, orders, trips, visits } from '../data/repo';
-import { getLastBackupAt, getProfile, getSyncState, ownedBy } from '../data/settings';
+import { orders, visits } from '../data/repo';
+import { getLastBackupAt, getProfile, getSyncState } from '../data/settings';
 import { orderAddress, pestName } from '../data/texts';
 import type { Order, Visit } from '../data/types';
-import { addDays, formatDate, formatDateLong, formatTime, monthOf, todayWarsaw } from '../lib/dates';
+import { addDays, formatDate, formatDateLong, formatTime, todayWarsaw } from '../lib/dates';
 import { Icon } from '../ui/icons';
-import { Badge, Empty, Group, Loading, Page, Row, Stat } from '../ui/kit';
+import { Badge, Empty, Group, Loading, Page, Row } from '../ui/kit';
 import { SyncNotice } from './account';
 import { PinkBadge, VisitBadge } from './common';
-import { kmSummary } from './trips';
 
 const BACKUP_REMINDER_DAYS = 7;
 // Przy synchronizacji dane są też na serwerze, więc własna kopia jest rzadziej potrzebna.
@@ -54,45 +50,9 @@ function QuickSearch() {
   );
 }
 
-/** Powód, dla którego zabieg jest w „Do dokończenia”. */
+/** Powód, dla którego zabieg jest w „Pilnych”. */
 type TodoReason = 'w_trakcie' | 'platnosc' | 'zalegly';
-const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'W trakcie', platnosc: 'Uzupełnij płatność', zalegly: 'Zaległy termin' };
-
-/** Pozycja „Do umówienia” z możliwością usunięcia przypomnienia (odwołanie zabiegu po potwierdzeniu). */
-function ToScheduleRow({ visit, order }: { visit: Visit; order: Order }) {
-  const { confirm, run, toast } = useFeedback();
-  const remove = async () => {
-    const ok = await confirm({
-      title: 'Usunąć przypomnienie?',
-      message: `Zabieg ${roman(visit.seq)} zlecenia ${orderCode(order)} (${order.clientName || orderAddress(order)}) zostanie odwołany i zniknie z „Do umówienia”.`,
-      confirmLabel: 'Usuń przypomnienie',
-      cancelLabel: 'Zostaw',
-      danger: true,
-    });
-    if (!ok) return;
-    await run(async () => {
-      const { archived } = await cancelVisit(visit.id);
-      toast('Usunięto przypomnienie', {
-        action: {
-          label: 'Cofnij',
-          onClick: () =>
-            void run(async () => {
-              await visits.update(visit.id, { status: 'zaplanowany' });
-              if (archived) await restoreOrder(order.id);
-            }),
-        },
-      });
-    });
-  };
-  return (
-    <div className="row-with-action">
-      <VisitRow visit={visit} order={order} />
-      <button type="button" className="icon-btn" aria-label={`Usuń przypomnienie: ${visitCode(order, visit.seq)}`} onClick={() => void remove()}>
-        <Icon name="close" size={18} />
-      </button>
-    </div>
-  );
-}
+const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'Niedokończony', platnosc: 'Uzupełnij płatność', zalegly: 'Zaległy termin' };
 
 function VisitRow({ visit, order, timeOnly, urgent, reason }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean; reason?: TodoReason }) {
   return (
@@ -127,8 +87,6 @@ export function DashboardPage() {
   const data = useLiveQuery(async () => ({
     visits: await visits.all(),
     orders: await orders.all(),
-    expenses: await expenses.all(),
-    trips: await trips.all(),
     profile: await getProfile(),
     lastBackup: await getLastBackupAt(),
     synced: Boolean(await getSyncState()),
@@ -144,8 +102,6 @@ export function DashboardPage() {
 
   const today = todayWarsaw();
   const orderById = new Map(data.orders.map((o) => [o.id, o]));
-  const mine = <T extends { ownerId?: string | null }>(list: T[]) =>
-    list.filter((x) => ownedBy(x.ownerId, data.profile.userId, true));
   const withOrder = data.visits
     .filter((v) => orderById.has(v.orderId))
     .map((visit) => ({ visit, order: orderById.get(visit.orderId)! }));
@@ -157,9 +113,9 @@ export function DashboardPage() {
     .filter(({ visit }) => visit.status !== 'odwolany' && visit.start?.slice(0, 10) === today)
     .sort((a, b) => a.visit.start!.localeCompare(b.visit.start!));
   const overdue = planned.filter(({ visit }) => visit.status === 'zaplanowany' && visit.start!.slice(0, 10) < today);
-  const upcoming = planned.filter(({ visit }) => visit.start!.slice(0, 10) > today && visit.start!.slice(0, 10) <= addDays(today, 7));
-  const toSchedule = withOrder.filter(({ visit }) => visit.status === 'zaplanowany' && !visit.start);
-  // Do dokończenia: rozpoczęte, bez płatności („później”) i zaległe terminy, od najnowszych.
+  const tomorrow = addDays(today, 1);
+  const tomorrowList = planned.filter(({ visit }) => visit.start!.slice(0, 10) === tomorrow);
+  // Pilne: rozpoczęte i niedokończone, bez płatności („później”) i zaległe terminy, od najnowszych.
   const todo = [
     ...withOrder.filter(({ visit }) => visit.status === 'w_trakcie').map((x) => ({ ...x, reason: 'w_trakcie' as TodoReason, at: x.visit.startedAt ?? x.visit.start ?? '' })),
     ...withOrder
@@ -170,15 +126,6 @@ export function DashboardPage() {
   const drafts = listDrafts();
   const draftEdits = drafts.edits.map((id) => orderById.get(id)).filter((o): o is Order => Boolean(o));
   const todoCount = todo.length + (drafts.newOrder ? 1 : 0) + draftEdits.length;
-
-  const month = monthOf(today);
-  const km = kmSummary(mine(data.trips), `${month}-01`, `${month}-31`);
-  const week = buildReport(periodOf('tydzien', today), {
-    visits: data.visits.filter((v) => ownedBy(v.technicianId, data.profile.userId, true)),
-    orders: data.orders,
-    expenses: mine(data.expenses),
-    trips: [],
-  });
 
   const hasData = data.orders.length > 0;
   const remindAfter = data.synced ? SYNCED_BACKUP_REMINDER_DAYS : BACKUP_REMINDER_DAYS;
@@ -211,18 +158,6 @@ export function DashboardPage() {
         </Link>
       </div>
 
-      <Link to="/kilometry" className="km-card">
-        <span className="km-label">Kilometry w tym miesiącu</span>
-        <span className="km-values">
-          <span>
-            <strong className="num">{km.sluzbowy}</strong> km służbowo
-          </span>
-          <span>
-            <strong className="num">{km.prywatny}</strong> km prywatnie
-          </span>
-        </span>
-      </Link>
-
       {!data.profile.name && (
         <Link to="/ustawienia" className="notice notice-info">
           <Icon name="users" />
@@ -240,7 +175,7 @@ export function DashboardPage() {
       )}
 
       {todoCount > 0 && (
-        <Group title={`Do dokończenia (${todoCount})`}>
+        <Group title={`Pilne (${todoCount})`}>
           {drafts.newOrder && (
             <Row to="/zlecenia/nowe" icon="clipboard" title="Niedokończone nowe zlecenie" sub={drafts.newOrder} trailing={<Badge tone="warn">Szkic</Badge>} />
           )}
@@ -274,33 +209,12 @@ export function DashboardPage() {
         ))}
       </Group>
 
-      {toSchedule.length > 0 && (
-        <Group title={`Kolejne zabiegi bez terminu (${toSchedule.length})`}>
-          {toSchedule.map(({ visit, order }) => (
-            <ToScheduleRow key={visit.id} visit={visit} order={order} />
-          ))}
-        </Group>
-      )}
-
-      {upcoming.length > 0 && (
-        <Group title={`Najbliższe 7 dni (${upcoming.length})`}>
-          {upcoming.map(({ visit, order }) => (
-            <VisitRow key={visit.id} visit={visit} order={order} />
-          ))}
-        </Group>
-      )}
-
-      {hasData && (
-        <Group title="Ten tydzień" action={<Link className="link" to="/raporty">Raporty</Link>} plain>
-          <div className="stats">
-            <Stat label="Obrót" value={formatPln(week.turnover)} />
-            <Stat label="Gotówka do oddania" value={formatPln(week.cashForBoss)} />
-            <Stat label="Koszty" value={formatPln(week.costs + week.bonus)} />
-            <Stat label="Premia" value={formatPln(week.bonus)} tone={week.bonus > 0 ? 'ok' : undefined} />
-          </div>
-          {week.unpaid > 0 && <Badge tone="warn">Zabiegi bez zapisanej płatności: {week.unpaid}</Badge>}
-        </Group>
-      )}
+      <Group title={`Jutro${tomorrowList.length ? ` (${tomorrowList.length})` : ''}`}>
+        {tomorrowList.length === 0 && <Empty title="Brak zabiegów na jutro" />}
+        {tomorrowList.map(({ visit, order }) => (
+          <VisitRow key={visit.id} visit={visit} order={order} timeOnly />
+        ))}
+      </Group>
     </Page>
   );
 }

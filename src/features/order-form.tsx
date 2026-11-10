@@ -7,7 +7,10 @@ import { createOrder, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
-import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind } from '../data/types';
+import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind, TreatmentMethod } from '../data/types';
+import { METHOD_LABEL, METHODS } from '../data/methods';
+import { normalizeCity } from '../data/cities';
+import { UlvNotice } from './common';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
@@ -54,6 +57,10 @@ interface FormState {
   pinkNote: string;
   /** Link do miejsca z Google Maps (opcjonalny), żeby nawigacja trafiała dokładnie. */
   mapsLink: string;
+  /** Co robimy: wymagane przy tworzeniu, od tego zależą zalecenia. */
+  methods: TreatmentMethod[];
+  /** Klient chce protokół z zabiegu. */
+  protocol: boolean;
 }
 
 const EMPTY: FormState = {
@@ -91,6 +98,8 @@ const EMPTY: FormState = {
   pink: false,
   pinkNote: '',
   mapsLink: '',
+  methods: [],
+  protocol: false,
 };
 
 const DRAFT_KEY = 'ddd-szkic-zlecenia';
@@ -142,6 +151,8 @@ function fromOrder(order: Order): FormState {
     pink: order.pink,
     pinkNote: order.pinkNote,
     mapsLink: order.mapsLink ?? '',
+    methods: order.methods ?? [],
+    protocol: order.protocol ?? false,
   };
 }
 
@@ -156,7 +167,7 @@ function toDraft(s: FormState): OrderDraft {
     floor: s.building === 'blok' ? s.floor.trim() : '',
     staircase: s.building === 'blok' ? s.staircase.trim() : '',
     postalCode: s.postalCode.trim(),
-    city: s.city.trim(),
+    city: normalizeCity(s.city),
     access: s.access.trim(),
     pest: s.pest,
     pestOther: s.pest === 'inne' ? s.pestOther.trim() : '',
@@ -173,6 +184,8 @@ function toDraft(s: FormState): OrderDraft {
     pink: s.pink,
     pinkNote: s.pink ? s.pinkNote.trim() : '',
     mapsLink: s.mapsLink.trim(),
+    methods: s.methods,
+    protocol: s.protocol,
   };
 }
 
@@ -190,54 +203,57 @@ const STEP_TITLES: Record<StepId, string> = {
 type Errors = Partial<Record<keyof FormState, string>>;
 
 /**
- * Puste pola, o które warto zapytać. Nie blokują zapisu: aplikacja pyta, czy na pewno ich nie uzupełnić,
- * bo czasem klient poda adres albo nazwisko dopiero później.
+ * Puste pola nieobowiązkowe, o które warto zapytać: aplikacja pyta, czy na pewno ich nie uzupełnić.
+ * Data, telefon, adres, widełki i „Co robimy” są obowiązkowe (validate).
  */
 function missing(step: StepId, s: FormState): Array<[keyof FormState, string]> {
   const m: Array<[keyof FormState, string]> = [];
-  if (step === 'adres') {
-    if (!s.street.trim()) m.push(['street', 'ulica']);
-    if (!s.houseNo.trim()) m.push(['houseNo', 'numer domu']);
-    if (s.building === 'blok' && !s.flatNo.trim()) m.push(['flatNo', 'numer lokalu']);
-    if (!s.city.trim()) m.push(['city', 'miejscowość']);
-  }
-  if (step === 'problem' && s.pest === 'inne' && !s.pestOther.trim()) m.push(['pestOther', 'jaki szkodnik']);
-  if (step === 'termin' && s.second === 'umowiony' && !s.secondDate) m.push(['secondDate', 'data drugiego zabiegu']);
-  if (step === 'klient') {
-    if (!s.phone1.trim()) m.push(['phone1', 'telefon']);
-    if (!s.clientName.trim()) m.push(['clientName', 'imię lub firma']);
-  }
+  if (step === 'adres' && s.building === 'blok' && !s.flatNo.trim()) m.push(['flatNo', 'numer lokalu']);
+  if (step === 'klient' && !s.clientName.trim()) m.push(['clientName', 'imię lub firma']);
   return m;
 }
 
 const ALL_STEPS: StepId[] = ['adres', 'problem', 'termin', 'cena', 'klient'];
 
-/** Błędnie wpisane wartości. Te blokują zapis, bo trafiłyby do zlecenia z błędem (np. kod 00-00). */
+/**
+ * Błędy, które blokują zapis: puste pola obowiązkowe (adres, co robimy, data, widełki, telefon) i błędnie wpisane
+ * wartości, które trafiłyby do zlecenia z błędem (np. kod 00-00).
+ */
 function validate(step: StepId, s: FormState): Errors {
   const e: Errors = {};
   if (step === 'adres') {
+    if (!s.street.trim()) e.street = 'Podaj ulicę';
+    if (!s.houseNo.trim()) e.houseNo = 'Podaj numer';
+    if (!s.city.trim()) e.city = 'Podaj miejscowość';
     if (s.postalCode.trim() && !/^\d{2}-\d{3}$/.test(s.postalCode.trim())) e.postalCode = 'Kod w formacie 00-000';
     if (s.mapsLink.trim() && !isMapsLink(s.mapsLink)) e.mapsLink = 'Wklej link z Google Maps (Udostępnij → Kopiuj link)';
   }
   if (step === 'problem') {
+    if (s.methods.length === 0) e.methods = 'Wybierz, co robimy';
+    if (s.pest === 'inne' && !s.pestOther.trim()) e.pestOther = 'Wpisz, jaki szkodnik';
     if (s.area.trim() && !/^\d+([.,]\d+)?$/.test(s.area.trim())) e.area = 'Podaj liczbę, np. 48';
   }
   if (step === 'termin') {
-    if (s.date && !isValidDate(s.date)) e.date = 'Podaj poprawną datę';
+    if (!s.date) e.date = 'Podaj datę zabiegu';
+    else if (!isValidDate(s.date)) e.date = 'Podaj poprawną datę';
     if (s.date && !/^\d{2}:\d{2}$/.test(s.time)) e.time = 'Podaj godzinę';
+    if (s.second === 'umowiony' && !s.secondDate) e.secondDate = 'Podaj datę drugiego zabiegu';
     if (s.second === 'umowiony' && s.secondDate) {
       if (!isValidDate(s.secondDate)) e.secondDate = 'Podaj poprawną datę';
       else if (s.date && s.secondDate <= s.date) e.secondDate = 'Drugi zabieg musi być po pierwszym';
     }
   }
   if (step === 'cena') {
-    if (s.priceMin.trim() && parseMoney(s.priceMin) === null) e.priceMin = 'Podaj kwotę, np. 300';
-    if (s.priceMax.trim() && parseMoney(s.priceMax) === null) e.priceMax = 'Podaj kwotę, np. 350';
+    if (!s.priceMin.trim()) e.priceMin = 'Podaj cenę od';
+    else if (parseMoney(s.priceMin) === null) e.priceMin = 'Podaj kwotę, np. 300';
+    if (!s.priceMax.trim()) e.priceMax = 'Podaj cenę do';
+    else if (parseMoney(s.priceMax) === null) e.priceMax = 'Podaj kwotę, np. 350';
     const [min, max] = [parseMoney(s.priceMin), parseMoney(s.priceMax)];
     if (min !== null && max !== null && max < min) e.priceMax = 'Górna granica jest niższa niż dolna';
   }
   if (step === 'klient') {
-    if (s.phone1.trim() && s.phone1.replace(/\D/g, '').length < 9) e.phone1 = 'Numer ma za mało cyfr';
+    if (!s.phone1.trim()) e.phone1 = 'Podaj numer telefonu';
+    else if (s.phone1.replace(/\D/g, '').length < 9) e.phone1 = 'Numer ma za mało cyfr';
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
     if (s.invoice !== 'brak' && s.nip.trim() && !isValidNip(s.nip)) e.nip = 'NIP jest niepoprawny';
   }
@@ -308,6 +324,25 @@ function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState
             : 'Opcjonalnie: sprawdź adres w Google Maps, potem „Udostępnij” → „Kopiuj link” i wklej go tutaj. Dane formularza zostają zapisane.'}
         </span>
       )}
+    </div>
+  );
+}
+
+/** „Co robimy”: jedna albo kilka metod. Przy zamgławianiu ULV od razu widać uwagę dla klienta. */
+function MethodsField(props: { value: TreatmentMethod[]; onChange: (value: TreatmentMethod[]) => void; error?: string }) {
+  const toggle = (m: TreatmentMethod) => props.onChange(props.value.includes(m) ? props.value.filter((x) => x !== m) : [...props.value, m]);
+  return (
+    <div className={props.error ? 'field field-error' : 'field'}>
+      <span className="field-label">Co robimy (można kilka)</span>
+      <div className="choice">
+        {METHODS.map(([m, label]) => (
+          <button key={m} type="button" className={props.value.includes(m) ? 'choice-item active' : 'choice-item'} aria-pressed={props.value.includes(m)} onClick={() => toggle(m)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {props.error && <span className="field-message">{props.error}</span>}
+      {props.value.includes('ulv') && <UlvNotice />}
     </div>
   );
 }
@@ -455,7 +490,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <input value={s.postalCode} onChange={(e) => set({ postalCode: formatPostalInput(e.target.value) })} inputMode="numeric" pattern="[0-9-]*" maxLength={6} placeholder="00-000" autoComplete="off" />
             </Field>
             <Field label="Miejscowość" error={errors.city}>
-              <input value={s.city} onChange={(e) => set({ city: e.target.value })} autoComplete="off" />
+              <input value={s.city} onChange={(e) => set({ city: e.target.value })} onBlur={() => set({ city: normalizeCity(s.city) })} autoCapitalize="words" autoComplete="off" />
             </Field>
           </div>
           <MapsLinkField state={s} set={set} error={errors.mapsLink} />
@@ -467,6 +502,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
     case 'problem':
       return (
         <div className="form">
+          <MethodsField value={s.methods} onChange={(methods) => set({ methods })} error={errors.methods} />
           <Choice
             label="Szkodnik"
             value={s.pest}
@@ -504,7 +540,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
             <Suggestions state={s} onPick={(sug) => set({ date: sug.date, time: sug.start.slice(11) })} />
           )}
           <div className="form-row">
-            <Field label="Data" error={errors.date} hint={s.date ? undefined : 'Puste: termin do umówienia.'}>
+            <Field label="Data" error={errors.date}>
               <input type="date" value={s.date} onChange={(e) => set({ date: e.target.value })} />
             </Field>
             <Field label="Godzina" error={errors.time}>
@@ -570,6 +606,15 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
             options={Object.entries(INVOICES) as Array<[InvoiceType, string]>}
             onChange={(invoice) => set({ invoice })}
           />
+          <Choice
+            label="Protokół z zabiegu"
+            value={s.protocol ? 'tak' : 'nie'}
+            options={[
+              ['nie', 'Nie'],
+              ['tak', 'Klient chce protokół'],
+            ]}
+            onChange={(v) => set({ protocol: v === 'tak' })}
+          />
           {price && (
             <div className="price-box">
               <strong>{price.net}</strong>
@@ -622,37 +667,21 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
       return (
         <Group>
           <Info label="Adres">{`${orderAddress(draft)}${draft.postalCode ? `, ${draft.postalCode}` : ''} (${BUILDINGS[draft.building].toLowerCase()})`}</Info>
+          <Info label="Co robimy">{s.methods.map((m) => METHOD_LABEL[m]).join(', ')}</Info>
           <Info label="Szkodnik">{draft.pest === 'inne' ? draft.pestOther : PESTS[draft.pest]}</Info>
-          <Info label="Termin">{s.date ? formatTerm(`${s.date}T${s.time}`) : 'Do umówienia'}</Info>
+          <Info label="Termin">{formatTerm(`${s.date}T${s.time}`)}</Info>
           <Info label="Co pryskamy">{scopeText(formTerms(s).scope)}</Info>
           <Info label="Drugi zabieg">
             {s.second === 'umowiony' ? formatTerm(`${s.secondDate}T${s.secondTime}`) : s.second === 'technik' ? 'Technik umówi z klientem' : 'Bez drugiego'}
           </Info>
           {price && <Info label="Widełki">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
           <Info label="Faktura">{INVOICES[draft.invoice]}</Info>
+          <Info label="Protokół">{s.protocol ? 'Tak' : 'Nie'}</Info>
           <Info label="Klient">{`${draft.clientName}\n${draft.phones.map((p) => (p.label ? `${p.number} (${p.label})` : p.number)).join('\n')}`}</Info>
           {draft.pink && <Info label="Kod pink">{draft.pinkNote || 'Tak'}</Info>}
         </Group>
       );
     }
-  }
-}
-
-const QUICK_KEY = 'ddd:zlecenie-szybkie';
-
-function readQuick(): boolean {
-  try {
-    return localStorage.getItem(QUICK_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writeQuick(quick: boolean) {
-  try {
-    localStorage.setItem(QUICK_KEY, quick ? '1' : '0');
-  } catch {
-    // Bez pamięci przeglądarki wybór trybu po prostu nie zostanie zapamiętany.
   }
 }
 
@@ -685,10 +714,11 @@ function QuickForm(props: { state: FormState; set: (patch: Partial<FormState>) =
           </Field>
         )}
         <Field label="Miejscowość" error={errors.city}>
-          <input value={s.city} onChange={(e) => set({ city: e.target.value })} autoComplete="off" />
+          <input value={s.city} onChange={(e) => set({ city: e.target.value })} onBlur={() => set({ city: normalizeCity(s.city) })} autoCapitalize="words" autoComplete="off" />
         </Field>
       </div>
       <MapsLinkField state={s} set={set} error={errors.mapsLink} />
+      <MethodsField value={s.methods} onChange={(methods) => set({ methods })} error={errors.methods} />
       <Choice label="Szkodnik" value={s.pest} options={Object.entries(PESTS) as Array<[PestCategory, string]>} onChange={(pest) => set({ pest })} />
       {s.pest === 'inne' && (
         <Field label="Jaki szkodnik" error={errors.pestOther}>
@@ -696,7 +726,7 @@ function QuickForm(props: { state: FormState; set: (patch: Partial<FormState>) =
         </Field>
       )}
       <div className="form-row">
-        <Field label="Data" error={errors.date} hint="Puste: termin do umówienia.">
+        <Field label="Data" error={errors.date}>
           <input type="date" value={s.date} onChange={(e) => set({ date: e.target.value })} />
         </Field>
         <Field label="Godzina" error={errors.time}>
@@ -717,7 +747,7 @@ function QuickForm(props: { state: FormState; set: (patch: Partial<FormState>) =
           <input value={s.priceMax} onChange={(e) => set({ priceMax: e.target.value })} inputMode="decimal" autoComplete="off" />
         </Field>
       </div>
-      <p className="field-hint">Pozostałe dane (opis, metraż, faktura, drugi zabieg, kod pink) uzupełnisz później w edycji zlecenia.</p>
+      <p className="field-hint">Pozostałe dane (opis, metraż, faktura, protokół, drugi zabieg, kod pink) uzupełnisz później w edycji zlecenia.</p>
     </div>
   );
 }
@@ -726,10 +756,10 @@ export function OrderNewPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { confirm, run, toast } = useFeedback();
-  const [quick, setQuickState] = useState(readQuick);
+  // Zawsze zaczyna się krok po kroku; szybkie zlecenie to wybór na tę jedną zmianę.
+  const [quick, setQuickState] = useState(false);
   const setQuick = (value: boolean) => {
     setQuickState(value);
-    writeQuick(value);
     setErrors({});
   };
   const settings = useLiveQuery(() => getAppSettings());
@@ -773,7 +803,10 @@ export function OrderNewPage() {
     if (delta > 0) {
       const found = validate(step, state);
       setErrors(found);
-      if (Object.keys(found).length) return;
+      if (Object.keys(found).length) {
+        toast('Uzupełnij zaznaczone pola', { tone: 'error' });
+        return;
+      }
       if (!(await askMissing(missing(step, state), 'Dalej bez tego'))) return;
       setErrors({});
     }
@@ -846,7 +879,7 @@ export function OrderNewPage() {
           </button>
         )}
         {step === 'podsumowanie' ? (
-          <button type="button" className="btn btn-primary" onClick={() => void save()}>
+          <button type="button" className="btn btn-primary" onClick={() => void saveNow()}>
             <Icon name="check" /> Zapisz zlecenie
           </button>
         ) : (
@@ -855,11 +888,6 @@ export function OrderNewPage() {
           </button>
         )}
       </div>
-      {step !== 'podsumowanie' && (
-        <button type="button" className="link" onClick={() => void saveNow()}>
-          Zapisz od razu, pomiń pozostałe kroki
-        </button>
-      )}
       </>
       )}
       {hasDraft && stepIndex === 0 && (

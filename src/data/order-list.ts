@@ -6,6 +6,24 @@ export function paymentMissing(visit: Pick<Visit, 'status' | 'payMethod' | 'amou
   return visit.status === 'wykonany' && (!visit.payMethod || !visit.amount);
 }
 
+/** Dlaczego zlecenie jest pilne: zabieg rozpoczęty i niezakończony, brak płatności albo zaległy termin. */
+export type UrgentReason = 'w_trakcie' | 'platnosc' | 'zalegly';
+
+export const URGENT_LABEL: Record<UrgentReason, string> = {
+  w_trakcie: 'Niedokończony',
+  platnosc: 'Brak płatności',
+  zalegly: 'Zaległy termin',
+};
+
+/** Pierwszy powód pilności zlecenia albo null. Zlecenia w archiwum nie są pilne. */
+export function urgentReason(order: Pick<Order, 'archived'>, list: Visit[], today: string): UrgentReason | null {
+  if (isArchived(order, list)) return null;
+  if (list.some((v) => v.status === 'w_trakcie')) return 'w_trakcie';
+  if (list.some(paymentMissing)) return 'platnosc';
+  if (list.some((v) => v.status === 'zaplanowany' && v.start && v.start.slice(0, 10) < today)) return 'zalegly';
+  return null;
+}
+
 /** Zlecenie w archiwum: przeniesione ręcznie albo ze wszystkimi zabiegami odwołanymi. */
 export function isArchived(order: Pick<Order, 'archived'>, list: Visit[]): boolean {
   return Boolean(order.archived) || (list.length > 0 && list.every((v) => v.status === 'odwolany'));

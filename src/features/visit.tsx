@@ -28,7 +28,8 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
-import { ContactBar, PinkBadge, useContactActions, VisitBadge, visitWhen } from './common';
+import { ContactBar, PinkBadge, UlvNotice, useContactActions, VisitBadge, visitWhen } from './common';
+import { doneMethods, METHOD_LABEL, methodOf, orderMethods, recommendationsFor } from '../data/methods';
 import { Photos } from './photos';
 import { VisitSummary } from './visit-summary';
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
@@ -196,10 +197,30 @@ function FinishSheet(props: {
   /** Zakres i cena kolejnego zabiegu: przechodzą z tego zabiegu, zmienia się je potem przy kolejnym zabiegu („Zmień”). */
   initialTerms: VisitTerms;
   invoice: Order['invoice'];
+  order: Order;
   onFinish: (input: { recommendations: string[]; next: NextVisit }) => Promise<void>;
 }) {
   const { visit, later, settings } = props;
-  const [recommendations, setRecommendations] = useState<string[]>(visit.recommendations);
+  // Zalecenia do wykonanych metod są zaznaczone od razu; zalecenia ULV są obowiązkowe.
+  const forMethods = recommendationsFor(doneMethods(visit.treatments, props.order), props.order.pest);
+  const others = settings.recommendations.filter((r) => !forMethods.list.includes(r));
+  const [recommendations, setRecommendations] = useState<string[]>(() =>
+    visit.recommendations.length ? [...new Set([...forMethods.required, ...visit.recommendations])] : forMethods.list,
+  );
+  const recommendationRow = (r: string) => {
+    const required = forMethods.required.includes(r);
+    return (
+      <label key={r} className={required ? 'check check-required' : 'check'}>
+        <input
+          type="checkbox"
+          checked={required || recommendations.includes(r)}
+          disabled={required}
+          onChange={(e) => setRecommendations(e.target.checked ? [...recommendations, r] : recommendations.filter((x) => x !== r))}
+        />
+        {r}
+      </label>
+    );
+  };
   const [mode, setMode] = useState<NextVisit['mode']>(later ? (later.start ? 'umowiony' : 'technik') : visit.seq === 1 ? 'technik' : 'brak');
   const [date, setDate] = useState(later?.start?.slice(0, 10) ?? '');
   const [time, setTime] = useState(later?.start?.slice(11, 16) ?? visit.start?.slice(11, 16) ?? '10:00');
@@ -210,20 +231,17 @@ function FinishSheet(props: {
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
       <div className="form">
+        {doneMethods(visit.treatments, props.order).includes('ulv') && <UlvNotice />}
         <div className="field">
-          <span className="field-label">Zalecenia dla klienta</span>
-          <div className="check-list">
-            {settings.recommendations.map((r) => (
-              <label key={r} className="check">
-                <input
-                  type="checkbox"
-                  checked={recommendations.includes(r)}
-                  onChange={(e) => setRecommendations(e.target.checked ? [...recommendations, r] : recommendations.filter((x) => x !== r))}
-                />
-                {r}
-              </label>
-            ))}
-          </div>
+          <span className="field-label">
+            Zalecenia do wykonanych metod
+            {doneMethods(visit.treatments, props.order).length ? `: ${doneMethods(visit.treatments, props.order).map((m) => METHOD_LABEL[m]).join(', ')}` : ''}
+          </span>
+          <div className="check-list">{forMethods.list.map(recommendationRow)}</div>
+        </div>
+        <div className="field">
+          <span className="field-label">Inne zalecenia</span>
+          <div className="check-list">{others.map(recommendationRow)}</div>
         </div>
         <div className="field">
           <span className="field-label">Zabieg {roman(nextSeq)}</span>
@@ -432,6 +450,12 @@ export function VisitPage() {
           <span>Kod pink{order.pinkNote ? `: ${order.pinkNote}` : ''}</span>
         </div>
       )}
+      {orderMethods(order).length > 0 && (
+        <p className="methods-line">
+          <span className="terms-label">Co robimy</span> {orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')}
+        </p>
+      )}
+      {(orderMethods(order).includes('ulv') || visit.treatments.some((t) => methodOf(t) === 'ulv')) && <UlvNotice />}
 
       {!summary && (
         <div className="terms-bar">
@@ -612,10 +636,23 @@ export function VisitPage() {
           </Group>
 
           <Group title="Wykonane" plain>
-            <ToggleChips options={settings.treatments} selected={visit.treatments} addLabel="Inny zabieg" onChange={(treatments) => save({ treatments })} />
-            <span className="field-label">Miejsca</span>
+            <ToggleChips
+              options={[...Object.values(METHOD_LABEL), ...settings.treatments.filter((t) => !methodOf(t))]}
+              selected={visit.treatments}
+              addLabel="Inny zabieg"
+              onChange={(treatments) => save({ treatments })}
+            />
+            <span className="field-label">Miejsca wykonywania oprysku/żelowania</span>
             <ToggleChips options={settings.places} selected={visit.places} addLabel="Inne miejsce" onChange={(places) => save({ places })} />
             {workSummary(visit) && <p className="field-hint">Do wiadomości: {workSummary(visit)}</p>}
+          </Group>
+
+          <Group title="Dokumenty dla klienta" plain>
+            <label className="check">
+              <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
+              Klient chce protokół z zabiegu
+            </label>
+            <p className="field-hint">Faktura: {INVOICES[order.invoice].toLowerCase()} (zmiana w edycji zlecenia).</p>
           </Group>
 
           <Group title="Zdjęcia" plain>
@@ -690,6 +727,7 @@ export function VisitPage() {
           settings={settings}
           initialTerms={later && (later.scope || later.priceMin !== undefined) ? { scope: later.scope ?? { kind: 'calosc', note: '' }, ...visitPrice(later, order) } : proposeTerms(list.filter((v) => v.seq <= visit.seq), order)}
           invoice={order.invoice}
+          order={order}
           onFinish={finish}
         />
       )}
