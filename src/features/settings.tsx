@@ -31,6 +31,7 @@ import {
   saveRegion,
   setOrderCounter,
   type AppSettings,
+  DEFAULT_SMS,
 } from '../data/settings';
 import type { CompanySettings } from '../data/types';
 import { formatPhoneInput, formatPostalInput, isValidNip } from '../lib/validators';
@@ -331,11 +332,30 @@ function SettingsForm(props: {
 
       <fieldset disabled={props.readOnly}>
         <legend>Wiadomości SMS</legend>
-        <Field label="Przypomnienie o terminie" hint="Wstawki: {data}, {godzina}, {adres}, {numer}.">
+        <p className="field-hint">
+          Wstawki w nawiasach klamrowych aplikacja zamienia na dane zabiegu, np. {'{godzina}'} na „10:00”. Treść każdej wiadomości można
+          też poprawić przed wysłaniem.
+        </p>
+        <Field label="Przypomnienie i prośba o potwierdzenie" hint="Wstawki: {data}, {godzina}, {adres}, {numer} (kod zabiegu).">
           <textarea rows={4} value={s.reminderTemplate} onChange={(e) => set({ reminderTemplate: e.target.value })} />
         </Field>
-        <Field label="Początek podsumowania po zabiegu">
+        <Field label="Spóźnię się" hint="Wstawki: {minuty}, {godzina}, {adres}, {podpis} (imię technika i firma).">
+          <textarea rows={3} value={s.lateTemplate} onChange={(e) => set({ lateTemplate: e.target.value })} />
+        </Field>
+        <Field label="Czy mogę przyjechać wcześniej?" hint="Wstawki: {nowa_godzina}, {godzina}, {minuty}, {adres}, {podpis}.">
+          <textarea rows={3} value={s.earlyTemplate} onChange={(e) => set({ earlyTemplate: e.target.value })} />
+        </Field>
+        <Field label="Podsumowanie po zabiegu: początek">
           <textarea rows={3} value={s.summaryIntro} onChange={(e) => set({ summaryIntro: e.target.value })} />
+        </Field>
+        <Field label="Podsumowanie: obserwacja (ostatnie zalecenie)" hint="Wstawka: {numer} (numer do raportów). Puste: bez tego wiersza.">
+          <textarea rows={2} value={s.observationTemplate} onChange={(e) => set({ observationTemplate: e.target.value })} />
+        </Field>
+        <Field label="Podsumowanie: kontakt" hint="Wstawka: {numer}. Puste: bez tego akapitu.">
+          <textarea rows={3} value={s.contactTemplate} onChange={(e) => set({ contactTemplate: e.target.value })} />
+        </Field>
+        <Field label="Podsumowanie: pożegnanie" hint="Pod nim imię technika i strona firmy.">
+          <input value={s.closing} onChange={(e) => set({ closing: e.target.value })} />
         </Field>
         <Field label="Numer do raportów i kontaktu" hint="W podsumowaniu: obserwacja z raportem SMS co 2 dni i kontakt po 10-14 dniach.">
           <input inputMode="tel" value={s.reportPhone} onChange={(e) => set({ reportPhone: e.target.value })} />
@@ -343,6 +363,9 @@ function SettingsForm(props: {
         <Field label="Strona firmy (pod podpisem)">
           <input inputMode="url" value={s.website} onChange={(e) => set({ website: e.target.value })} />
         </Field>
+        <button type="button" className="link" onClick={() => set(DEFAULT_SMS)}>
+          Przywróć domyślne treści SMS
+        </button>
       </fieldset>
 
       <button type="submit" className="btn btn-primary btn-block" disabled={!props.readOnly && !valid}>

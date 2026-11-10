@@ -158,6 +158,16 @@ export interface AppSettings {
   reportPhone: string;
   /** Strona firmy pod podpisem. */
   website: string;
+  /** „Spóźnię się”: wstawki {minuty}, {godzina}, {adres}, {podpis}. */
+  lateTemplate: string;
+  /** „Czy mogę przyjechać wcześniej?”: wstawki {nowa_godzina}, {godzina}, {minuty}, {adres}, {podpis}. */
+  earlyTemplate: string;
+  /** Wiersz obserwacji w podsumowaniu: wstawka {numer}. */
+  observationTemplate: string;
+  /** Kontakt na końcu podsumowania: wstawka {numer}. */
+  contactTemplate: string;
+  /** Pożegnanie przed podpisem technika. */
+  closing: string;
 }
 
 export const DEFAULT_APP: AppSettings = {
@@ -184,6 +194,22 @@ export const DEFAULT_APP: AppSettings = {
   summaryIntro: 'Dzień dobry,\nPoniżej przesyłam skrócony opis zabiegu oraz najważniejsze zalecenia pozabiegowe.',
   reportPhone: '666 741 317',
   website: 'http://www.pogromcy-insektow.pl',
+  lateTemplate: 'Dzień dobry, przepraszam, spóźnię się około {minuty} minut na zabieg o {godzina} ({adres}). Pozdrawiam, {podpis}',
+  earlyTemplate: 'Dzień dobry, czy mogę przyjechać na zabieg wcześniej, około {nowa_godzina} zamiast {godzina} ({adres})? Proszę o odpowiedź. Pozdrawiam, {podpis}',
+  observationTemplate: 'Obserwacja: wysyłaj SMS z raportem raz na 2 dni pod numer {numer}.',
+  contactTemplate: 'W razie pytań lub ponownego pojawienia się insektów po 10-14 dniach, prosimy o kontakt pod numerem {numer} (lub bezpośrednio na ten numer).',
+  closing: 'Pozdrawiam,',
+};
+
+/** Domyślne treści SMS (przycisk „Przywróć domyślne treści SMS” w Ustawieniach). */
+export const DEFAULT_SMS: Pick<AppSettings, 'reminderTemplate' | 'lateTemplate' | 'earlyTemplate' | 'summaryIntro' | 'observationTemplate' | 'contactTemplate' | 'closing'> = {
+  reminderTemplate: DEFAULT_APP.reminderTemplate,
+  lateTemplate: DEFAULT_APP.lateTemplate,
+  earlyTemplate: DEFAULT_APP.earlyTemplate,
+  summaryIntro: DEFAULT_APP.summaryIntro,
+  observationTemplate: DEFAULT_APP.observationTemplate,
+  contactTemplate: DEFAULT_APP.contactTemplate,
+  closing: DEFAULT_APP.closing,
 };
 
 export async function getAppSettings(): Promise<AppSettings> {

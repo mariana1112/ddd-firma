@@ -1,5 +1,6 @@
 import { visitCode } from './codes';
-import { orderAddress } from './texts';
+import { fill, orderAddress } from './texts';
+import type { AppSettings } from './settings';
 import type { Order, Visit } from './types';
 import { addMinutes, formatTime } from '../lib/dates';
 
@@ -11,16 +12,27 @@ export const EARLY_MINUTES = [15, 30, 45, 60, 90];
 
 const sign = (technician: string) => (technician ? `${technician}, Pogromcy Insektów` : 'Pogromcy Insektów');
 
-/** „Spóźnię się około 15 minut” na umówiony zabieg. */
-export function lateSms(order: Order, visit: Pick<Visit, 'start' | 'seq'>, minutes: number, technician: string): string {
-  const at = visit.start ? ` na zabieg o ${formatTime(visit.start)}` : '';
-  return `Dzień dobry, przepraszam, spóźnię się około ${minutes} minut${at} (${orderAddress(order)}). Pozdrawiam, ${sign(technician)}`;
+/** „Spóźnię się około 15 minut” na umówiony zabieg, z szablonu w Ustawieniach. */
+export function lateSms(order: Order, visit: Pick<Visit, 'start' | 'seq'>, minutes: number, technician: string, settings: Pick<AppSettings, 'lateTemplate'>): string {
+  return fill(settings.lateTemplate, {
+    minuty: String(minutes),
+    godzina: visit.start ? formatTime(visit.start) : '',
+    adres: orderAddress(order),
+    podpis: sign(technician),
+  })
+    .replace(' na zabieg o  (', ' na zabieg (')
+    .trim();
 }
 
-/** Prośba o przyjazd wcześniej: „około 9:30 zamiast 10:00”. */
-export function earlierSms(order: Order, visit: Pick<Visit, 'start' | 'seq'>, minutes: number, technician: string): string {
-  const when = visit.start ? `około ${formatTime(addMinutes(visit.start, -minutes))} zamiast ${formatTime(visit.start)}` : `około ${minutes} minut wcześniej`;
-  return `Dzień dobry, czy mogę przyjechać na zabieg wcześniej, ${when} (${orderAddress(order)})? Proszę o odpowiedź. Pozdrawiam, ${sign(technician)}`;
+/** Prośba o przyjazd wcześniej („około 9:30 zamiast 10:00”), z szablonu w Ustawieniach. */
+export function earlierSms(order: Order, visit: Pick<Visit, 'start' | 'seq'>, minutes: number, technician: string, settings: Pick<AppSettings, 'earlyTemplate'>): string {
+  return fill(settings.earlyTemplate, {
+    minuty: String(minutes),
+    nowa_godzina: visit.start ? formatTime(addMinutes(visit.start, -minutes)) : `${minutes} minut wcześniej`,
+    godzina: visit.start ? formatTime(visit.start) : 'umówionej godziny',
+    adres: orderAddress(order),
+    podpis: sign(technician),
+  }).trim();
 }
 
 /** Zabiegi na jutro, o których klient nie dostał jeszcze przypomnienia z prośbą o potwierdzenie. */

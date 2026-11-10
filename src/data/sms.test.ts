@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_APP } from './settings';
 import { earlierSms, lateSms, remindersDue } from './sms';
 import type { Order, Visit } from './types';
 
@@ -7,8 +8,10 @@ const order = { street: 'Długa', houseNo: '5', flatNo: '', building: 'dom', cit
 describe('wiadomości SMS', () => {
   it('spóźnienie i prośba o wcześniejszy przyjazd z godziną zabiegu', () => {
     const visit = { start: '2026-11-11T10:00', seq: 1 };
-    expect(lateSms(order, visit, 15, 'Maurycy')).toBe('Dzień dobry, przepraszam, spóźnię się około 15 minut na zabieg o 10:00 (Długa 5, Gdańsk). Pozdrawiam, Maurycy, Pogromcy Insektów');
-    expect(earlierSms(order, visit, 30, '')).toContain('około 09:30 zamiast 10:00');
+    expect(lateSms(order, visit, 15, 'Maurycy', DEFAULT_APP)).toBe('Dzień dobry, przepraszam, spóźnię się około 15 minut na zabieg o 10:00 (Długa 5, Gdańsk). Pozdrawiam, Maurycy, Pogromcy Insektów');
+    expect(earlierSms(order, visit, 30, '', DEFAULT_APP)).toContain('około 09:30 zamiast 10:00');
+    // Własny szablon z Ustawień
+    expect(lateSms(order, visit, 20, 'Ola', { lateTemplate: 'Będę {minuty} min później. {podpis}' })).toBe('Będę 20 min później. Ola, Pogromcy Insektów');
   });
 
   it('przypomnienia: tylko jutrzejsze, umówione, niewysłane i z telefonem', () => {

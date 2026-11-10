@@ -183,8 +183,8 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
     const base = visit ?? { start: null, seq: 1 };
     if (kind === 'zalecenia' && done) setText(finishSms(done, next ?? null, data.settings, data.profile.name));
     else if (kind === 'przypomnienie' && planned) setText(reminderSms(order, planned, data.settings));
-    else if (kind === 'spoznienie') setText(lateSms(order, base, minutes, who));
-    else if (kind === 'wczesniej') setText(earlierSms(order, base, minutes, who));
+    else if (kind === 'spoznienie') setText(lateSms(order, base, minutes, who, data.settings));
+    else if (kind === 'wczesniej') setText(earlierSms(order, base, minutes, who, data.settings));
     else if (kind === 'wlasna') setText('');
   }, [kind, minutes, data, props.open, order, visit, planned, done, next]);
 

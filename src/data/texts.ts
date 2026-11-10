@@ -88,7 +88,7 @@ export function workSummary(visit: Pick<Visit, 'treatments' | 'places'>): string
   return `${visit.treatments[0]}${places}${visit.treatments.length > 1 ? `, ${visit.treatments.slice(1).join(', ')}` : ''}`;
 }
 
-function fill(template: string, values: Record<string, string>): string {
+export function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
 }
 
@@ -150,7 +150,7 @@ export function finishSms(visit: Visit, next: Visit | null, settings: AppSetting
   if (work.length) lines.push('Wykonane prace:', ...work.map(bullet), '');
   const recs = [...visit.recommendations];
   if (visit.sealing?.length) recs.push(`Uszczelnienie: ${joinPl(visit.sealing)} w celu zablokowania drogi potencjalnej migracji ze szczelin lub podłogi.`);
-  recs.push(`Obserwacja: wysyłaj SMS z raportem raz na 2 dni pod numer ${settings.reportPhone}.`);
+  if (settings.observationTemplate.trim()) recs.push(fill(settings.observationTemplate.trim(), { numer: settings.reportPhone }));
   lines.push('Zalecenia po zabiegu:', ...recs.map(bullet), '');
   if (next?.start) {
     const ordinal = next.seq === 2 ? 'Drugi' : next.seq === 3 ? 'Trzeci' : `Kolejny (${next.seq})`;
@@ -158,12 +158,8 @@ export function finishSms(visit: Visit, next: Visit | null, settings: AppSetting
   } else if (next) {
     lines.push('Termin kolejnego zabiegu ustalimy telefonicznie.', '');
   }
-  lines.push(
-    `W razie pytań lub ponownego pojawienia się insektów po 10-14 dniach, prosimy o kontakt pod numerem ${settings.reportPhone} (lub bezpośrednio na ten numer).`,
-    '',
-    'Pozdrawiam,',
-    technician.trim() || 'Pogromcy Insektów',
-  );
+  if (settings.contactTemplate.trim()) lines.push(fill(settings.contactTemplate.trim(), { numer: settings.reportPhone }), '');
+  lines.push(settings.closing.trim() || 'Pozdrawiam,', technician.trim() || 'Pogromcy Insektów');
   if (settings.website.trim()) lines.push(settings.website.trim());
   return lines.join('\n');
 }
