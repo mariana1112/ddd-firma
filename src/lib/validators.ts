@@ -24,21 +24,54 @@ export function matchesSearch(query: string, ...fields: Array<string | null | un
     .every((word) => haystack.includes(word));
 }
 
+/** Polski numer komórkowy i stacjonarny ma 9 cyfr po kierunkowym +48. */
+export const PL_DIGITS = 9;
+
 /**
- * Numer telefonu w trakcie wpisywania, w grupach po trzy cyfry: „500 600 700”, „+48 500 600 700”.
- * Zostają tylko cyfry i „+” na początku, więc wklejony numer z myślnikami też się porządkuje.
+ * Numer telefonu zawsze z kierunkowym: wpisane „500600700” to „+48 500 600 700”, a „0048…” i „48…” (11 cyfr) też
+ * dostają „+48”. Polski numer ma najwyżej 9 cyfr po +48, więc dłuższego nie da się wpisać. Numer zagraniczny
+ * (np. „+44 …”) zostaje z własnym kierunkowym, w sumie do 15 cyfr. Zostają tylko cyfry i „+”, więc wklejony numer
+ * z myślnikami też się porządkuje.
  */
 export function formatPhoneInput(value: string): string {
-  const plus = value.trim().startsWith('+');
-  let digits = value.replace(/\D/g, '').slice(0, 15);
-  let prefix = '';
-  if (plus) {
-    // Kierunkowy kraju: dla Polski 48, inne zostają jako 2 cyfry po „+”.
-    prefix = `+${digits.slice(0, 2)}`;
+  const raw = value.trim();
+  let digits = raw.replace(/\D/g, '');
+  let plus = raw.startsWith('+');
+  if (!plus && digits.startsWith('00')) {
     digits = digits.slice(2);
+    plus = true;
   }
-  const groups = digits.match(/.{1,3}/g) ?? [];
-  return [prefix, ...groups].filter(Boolean).join(' ');
+  let country = '48';
+  let national: string;
+  if (plus) {
+    // Kierunkowy w trakcie wpisywania („+”, „+4”): zostaje, żeby dało się wpisać też numer zagraniczny.
+    if (digits.length < 2) return `+${digits}`;
+    country = digits.slice(0, 2);
+    national = digits.slice(2);
+  } else if (digits.length > PL_DIGITS && digits.startsWith('48')) {
+    national = digits.slice(2);
+  } else {
+    national = digits;
+  }
+  national = national.slice(0, country === '48' ? PL_DIGITS : 13);
+  if (!national) return plus ? `+${country}` : '';
+  return [`+${country}`, ...(national.match(/.{1,3}/g) ?? [])].join(' ');
+}
+
+/** Błąd numeru telefonu do pokazania przy polu albo undefined, gdy numer jest pusty albo poprawny. */
+export function phoneError(value: string): string | undefined {
+  const formatted = formatPhoneInput(value);
+  const digits = formatted.replace(/\D/g, '');
+  if (!digits) return undefined;
+  if (formatted.startsWith('+48')) {
+    return digits.length - 2 === PL_DIGITS ? undefined : `Numer musi mieć ${PL_DIGITS} cyfr po +48 (np. +48 500 600 700)`;
+  }
+  return digits.length >= 8 && digits.length <= 15 ? undefined : 'Numer zagraniczny jest za krótki albo za długi';
+}
+
+/** Numer do kalendarza, SMS-a i dzwonienia: zawsze z +48 (także numery zapisane wcześniej bez kierunkowego). */
+export function withCountryCode(phone: string): string {
+  return phone.trim() ? formatPhoneInput(phone) : '';
 }
 
 /** Kod pocztowy w trakcie wpisywania: same cyfry, myślnik po dwóch („00-000”). */

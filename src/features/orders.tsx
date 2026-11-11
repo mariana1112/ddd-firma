@@ -488,7 +488,8 @@ export function OrderDetailPage() {
     if (!ok) return;
     await run(async () => {
       await deleteOrder(id);
-      navigate('/zlecenia', { replace: true });
+      // Zlecenie z archiwum: powrót do archiwum, a nie do listy zleceń.
+      navigate(isArchived(order, data.visits) ? '/archiwum' : '/zlecenia', { replace: true });
       toast('Zlecenie jest w koszu', { action: { label: 'Cofnij', onClick: () => void run(() => restoreRecord('orders', id)) } });
     });
   };
@@ -508,7 +509,7 @@ export function OrderDetailPage() {
     }
     await run(async () => {
       await decideOrderDeletion(id, approve);
-      if (approve) navigate('/zlecenia', { replace: true });
+      if (approve) navigate(isArchived(order, data.visits) ? '/archiwum' : '/zlecenia', { replace: true });
       toast(approve ? 'Zlecenie usunięte (w koszu)' : 'Prośba o usunięcie odrzucona');
     });
   };

@@ -277,7 +277,7 @@ function SettingsForm(props: {
       <fieldset>
         <legend>Region i kody zleceń</legend>
         <Field label="Mój numer telefonu" hint="Numer, na którym teraz jesteś. Pokazuje się na wizytówce. Ustawienie tego urządzenia.">
-          <input type="tel" inputMode="tel" placeholder="500 600 700" value={myPhone} onChange={(e) => setMyPhone(formatPhoneInput(e.target.value))} />
+          <input type="tel" inputMode="tel" placeholder="+48 500 600 700" value={myPhone} onChange={(e) => setMyPhone(formatPhoneInput(e.target.value))} />
         </Field>
         {props.regionLocked ? (
           <p className="field-hint">

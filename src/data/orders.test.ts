@@ -163,7 +163,7 @@ describe('teksty', () => {
     const o = draft();
     expect(orderAddress(o)).toBe('ul. Świętojańska 12/5, Gdynia');
     expect(mapsUrl(o)).toContain('destination=ul.%20%C5%9Awi%C4%99toja%C5%84ska%2012%2C%2081-368%20Gdynia');
-    expect(smsUrl('600 700 800', 'Dzień dobry')).toBe('sms:600700800&body=Dzie%C5%84%20dobry');
+    expect(smsUrl('600 700 800', 'Dzień dobry')).toBe('sms:+48600700800&body=Dzie%C5%84%20dobry');
   });
 
   it('podsumowanie pracy i SMS po zabiegu', () => {

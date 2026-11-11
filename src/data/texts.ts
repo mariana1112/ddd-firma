@@ -1,5 +1,6 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
 import { methodOf } from './methods';
+import { withCountryCode } from '../lib/validators';
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
 import { roman, visitCode } from './codes';
 import { normalizeInterview } from './interview';
@@ -58,11 +59,11 @@ export function mapsUrl(order: Pick<Order, 'street' | 'houseNo' | 'flatNo' | 'bu
 
 /** Link do aplikacji Wiadomości z gotową treścią. */
 export function smsUrl(phone: string, body: string): string {
-  return `sms:${phone.replace(/[^\d+]/g, '')}&body=${encodeURIComponent(body)}`;
+  return `sms:${withCountryCode(phone).replace(/[^\d+]/g, '')}&body=${encodeURIComponent(body)}`;
 }
 
 export function telUrl(phone: string): string {
-  return `tel:${phone.replace(/[^\d+]/g, '')}`;
+  return `tel:${withCountryCode(phone).replace(/[^\d+]/g, '')}`;
 }
 
 const zl = (grosze: number) =>

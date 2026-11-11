@@ -14,7 +14,7 @@ import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
-import { formatPhoneInput, formatPostalInput, isValidNip } from '../lib/validators';
+import { formatPhoneInput, formatPostalInput, isValidNip, phoneError } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Field, Group, Info, Loading, NotFound, Page, Sheet, goBack } from '../ui/kit';
@@ -160,8 +160,9 @@ function fromOrder(order: Order): FormState {
 }
 
 function toDraft(s: FormState): OrderDraft {
-  const phones = s.phone1.trim() ? [{ number: s.phone1.trim(), label: '' }] : [];
-  if (s.phone2.trim()) phones.push({ number: s.phone2.trim(), label: s.phone2Label.trim() });
+  // Numery zawsze z kierunkowym +48.
+  const phones = s.phone1.trim() ? [{ number: formatPhoneInput(s.phone1), label: '' }] : [];
+  if (s.phone2.trim()) phones.push({ number: formatPhoneInput(s.phone2), label: s.phone2Label.trim() });
   return {
     building: s.building,
     street: s.street.trim(),
@@ -257,9 +258,12 @@ function validate(step: StepId, s: FormState): Errors {
   }
   if (step === 'telefon') {
     if (!s.phone1.trim()) e.phone1 = 'Podaj numer telefonu';
-    else if (s.phone1.replace(/\D/g, '').length < 9) e.phone1 = 'Numer ma za mało cyfr';
+    else e.phone1 = phoneError(s.phone1);
+    if (!e.phone1) delete e.phone1;
   }
   if (step === 'klient') {
+    const second = phoneError(s.phone2);
+    if (second) e.phone2 = second;
     // E-mail, imię albo nazwa firmy są potrzebne tylko do faktury albo protokołu; bez nich pola są nieobowiązkowe.
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
     else if (needsDocuments(s) && !s.email.trim()) e.email = s.invoice !== 'brak' ? 'Do faktury potrzebny jest e-mail' : 'Do protokołu potrzebny jest e-mail';
@@ -633,7 +637,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
       return (
         <div className="form">
           <Field label="Telefon" error={errors.phone1} hint="Stały klient: aplikacja podpowie jego dane i adres.">
-            <input type="tel" inputMode="tel" value={s.phone1} placeholder="500 600 700" onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })} autoComplete="off" />
+            <input type="tel" inputMode="tel" value={s.phone1} placeholder="+48 500 600 700" onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })} autoComplete="off" />
           </Field>
           <ReturningClient
             phone={s.phone1}
@@ -670,8 +674,8 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
             <input value={s.clientName} onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
           </Field>
           <div className="form-row">
-            <Field label="Drugi telefon">
-              <input type="tel" inputMode="tel" value={s.phone2} placeholder="500 600 700" onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })} autoComplete="off" />
+            <Field label="Drugi telefon" error={errors.phone2}>
+              <input type="tel" inputMode="tel" value={s.phone2} placeholder="+48 500 600 700" onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })} autoComplete="off" />
             </Field>
             <Field label="Dopisek" hint="Np. tata, tutaj dzwonić">
               <input value={s.phone2Label} onChange={(e) => set({ phone2Label: e.target.value })} autoComplete="off" />

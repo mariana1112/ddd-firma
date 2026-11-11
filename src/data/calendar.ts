@@ -1,4 +1,5 @@
 import { roman, visitCode } from './codes';
+import { withCountryCode } from '../lib/validators';
 import { invoiceHolder } from './invoice';
 import { mainPhone } from './order-search';
 import { pestName } from './texts';
@@ -39,7 +40,8 @@ function scopeShort(visit: Pick<Visit, 'scope'>): string {
 export function googleCalendarUrl(order: Order, visit: Pick<Visit, 'seq' | 'start' | 'durationMin' | 'scope' | 'priceMin' | 'priceMax'>): string | null {
   if (!visit.start) return null;
   const end = addMinutes(visit.start, visit.durationMin || 60);
-  const phone = mainPhone(order);
+  // Telefon w kalendarzu zawsze z +48, także w zleceniach zapisanych wcześniej bez kierunkowego.
+  const phone = withCountryCode(mainPhone(order));
   const flat = order.building === 'blok' ? order.flatNo.trim() : '';
   const street = `${order.street.trim()} ${order.houseNo.trim()}`.trim();
   const title = [roman(visit.seq), pestName(order).toLowerCase(), priceText(order, visit), scopeShort(visit)].filter(Boolean).join(' ');
