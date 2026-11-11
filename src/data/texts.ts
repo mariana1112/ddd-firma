@@ -132,6 +132,14 @@ export function bookedBy(visit: Pick<Visit, 'bookedByName' | 'seq' | 'start'>, o
   return visit.seq === 1 && visit.start ? order.ownerName || '' : '';
 }
 
+/**
+ * Samo imię („Maciej” z „Maciej Kowalski”): w SMS-ach, na wizytówce, w czacie i na ekranach. Pełne imię i nazwisko
+ * zostaje w raportach i kilometrówce.
+ */
+export function firstName(name: string | null | undefined): string {
+  return (name ?? '').trim().split(/\s+/)[0] ?? '';
+}
+
 export function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
 }
@@ -202,7 +210,7 @@ export function finishSms(visit: Visit, next: Visit | null, settings: AppSetting
     lines.push('Termin kolejnego zabiegu ustalimy telefonicznie.', '');
   }
   if (settings.contactTemplate.trim()) lines.push(fill(settings.contactTemplate.trim(), { numer: settings.reportPhone }), '');
-  lines.push(settings.closing.trim() || 'Pozdrawiam,', technician.trim() || 'Pogromcy Insektów');
+  lines.push(settings.closing.trim() || 'Pozdrawiam,', firstName(technician) || 'Pogromcy Insektów');
   if (settings.website.trim()) lines.push(settings.website.trim());
   return lines.join('\n');
 }

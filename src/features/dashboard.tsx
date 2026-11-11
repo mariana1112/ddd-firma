@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
 import { getLastBackupAt, getProfile, getSyncState } from '../data/settings';
-import { orderAddress, pestName } from '../data/texts';
+import { orderAddress, pestName, firstName } from '../data/texts';
 import type { Order, Visit } from '../data/types';
 import { addDays, formatDate, formatDateLong, formatTime, todayWarsaw } from '../lib/dates';
 import { Icon } from '../ui/icons';
@@ -160,7 +160,7 @@ export function DashboardPage() {
   const backupDue = hasData && !data.synced && (!data.lastBackup || data.lastBackup.slice(0, 10) < addDays(today, -BACKUP_REMINDER_DAYS));
 
   return (
-    <Page title={data.profile.name ? `Cześć, ${data.profile.name}` : 'Pulpit'}>
+    <Page title={data.profile.name ? `Cześć, ${firstName(data.profile.name)}` : 'Pulpit'}>
       <RegionLine />
       <p className="page-date">{formatDateLong(today)}</p>
 

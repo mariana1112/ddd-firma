@@ -5,7 +5,7 @@ import { chatChannels, chatPeople, insertMention, lastMessage, markRead, markRea
 import { db } from '../data/db';
 import { buildNotifications, type AppNotification } from '../data/notifications';
 import { decideOrderDeletion } from '../data/orders';
-import { clockInWarsaw, dayInWarsaw } from '../data/texts';
+import { clockInWarsaw, dayInWarsaw, firstName } from '../data/texts';
 import { messages, orders, visits } from '../data/repo';
 import { getProfile, getRegions, getSyncState } from '../data/settings';
 import { formatDate, todayWarsaw } from '../lib/dates';
@@ -197,7 +197,7 @@ export function ChatPage() {
               icon="message"
               onClick={() => setParams({ k: c.id })}
               title={c.label}
-              sub={last ? `${last.authorId === data.me ? 'Ty' : last.authorName}: ${last.text}` : 'Brak wiadomości'}
+              sub={last ? `${last.authorId === data.me ? 'Ty' : firstName(last.authorName)}: ${last.text}` : 'Brak wiadomości'}
               trailing={
                 <span className="chat-list-meta">
                   {last && <span className="row-sub">{when(last.createdAt).slice(-5)}</span>}
@@ -256,8 +256,9 @@ function ChatConversation(props: {
     el.style.height = `${Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.4))}px`;
   }, [text]);
 
-  const people = chatPeople(realMessages(data.messages), members, data.me);
-  const names = [...people.map((p) => p.name), ...list.map((m) => m.authorName)];
+  // Na czacie samo imię (oznaczanie „@Maciej”); pełne imię i nazwisko jest w raportach.
+  const people = chatPeople(realMessages(data.messages), members, data.me).map((p) => ({ ...p, name: firstName(p.name) }));
+  const names = [...people.map((p) => p.name), ...list.map((m) => firstName(m.authorName))];
   const query = mentionQuery(text);
   const showPicker = picking || query !== null;
   const suggestions = people.filter((p) => !query || p.name.toLocaleLowerCase('pl').startsWith(query.toLocaleLowerCase('pl')));
@@ -278,7 +279,7 @@ function ChatConversation(props: {
           const readers = mine ? readersOf(m, data.messages) : [];
           return (
             <div key={m.id} className={`chat-msg${mine ? ' chat-mine' : ''}${tagged ? ' chat-tagged' : ''}`}>
-              {!mine && <span className="chat-author">{m.authorName}</span>}
+              {!mine && <span className="chat-author">{firstName(m.authorName)}</span>}
               <span className="chat-text">
                 {splitMentions(m.text, names).map((part, i) =>
                   part.mention ? (
@@ -293,7 +294,7 @@ function ChatConversation(props: {
               <span className="chat-time">{when(m.createdAt)}</span>
               {mine && (
                 <span className="chat-read">
-                  {readers.length ? `Przeczytane: ${readers.map((r) => `${r.name} ${when(r.at).slice(-5)}`).join(', ')}` : 'Wysłane, jeszcze nieprzeczytane'}
+                  {readers.length ? `Przeczytane: ${readers.map((r) => `${firstName(r.name)} ${when(r.at).slice(-5)}`).join(', ')}` : 'Wysłane, jeszcze nieprzeczytane'}
                 </span>
               )}
             </div>

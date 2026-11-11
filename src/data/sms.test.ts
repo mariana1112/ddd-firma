@@ -12,6 +12,8 @@ describe('wiadomości SMS', () => {
     expect(earlierSms(order, visit, 30, '', DEFAULT_APP)).toContain('około 09:30 zamiast 10:00');
     // Własny szablon z Ustawień
     expect(lateSms(order, visit, 20, 'Ola', { lateTemplate: 'Będę {minuty} min później. {podpis}' })).toBe('Będę 20 min później. Ola, Pogromcy Insektów');
+    // Pełne imię i nazwisko jest w raportach; w SMS-ie podpis samym imieniem.
+    expect(lateSms(order, visit, 20, 'Ola Nowak', { lateTemplate: '{podpis}' })).toBe('Ola, Pogromcy Insektów');
   });
 
   it('przypomnienia: tylko jutrzejsze, umówione, niewysłane i z telefonem', () => {

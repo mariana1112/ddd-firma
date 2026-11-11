@@ -1,6 +1,6 @@
 import { unread, type Channel } from './chat';
 import { orderCode, visitCode } from './codes';
-import { orderAddress } from './texts';
+import { orderAddress, firstName } from './texts';
 import type { Message, Order, Visit } from './types';
 import { addDays, formatTime } from '../lib/dates';
 
@@ -78,7 +78,7 @@ export function buildNotifications(input: {
       out.push({
         id: `oznaczenie:${m.id}`,
         kind: 'oznaczenie',
-        title: `${m.authorName} oznacza Cię: ${channel.label}`,
+        title: `${firstName(m.authorName)} oznacza Cię: ${channel.label}`,
         text: m.text,
         at: m.createdAt,
         to: `/czat?k=${encodeURIComponent(channel.id)}`,
@@ -89,7 +89,7 @@ export function buildNotifications(input: {
       id: `czat:${channel.id}:${last.id}`,
       kind: 'czat',
       title: `${channel.label}: ${fresh.length === 1 ? 'nowa wiadomość' : `nowe wiadomości (${fresh.length})`}`,
-      text: `${last.authorName}: ${last.text}`,
+      text: `${firstName(last.authorName)}: ${last.text}`,
       at: last.createdAt,
       to: `/czat?k=${encodeURIComponent(channel.id)}`,
     });

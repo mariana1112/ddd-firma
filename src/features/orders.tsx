@@ -12,7 +12,7 @@ import { archiveOrder, cancelOrderDeletionRequest, decideOrderDeletion, deleteOr
 import { getSyncState } from '../data/settings';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getProfile } from '../data/settings';
-import { accessDetails, BUILDINGS, INVOICES, orderAddress, pestName, priceRange, bookedBy } from '../data/texts';
+import { accessDetails, BUILDINGS, INVOICES, orderAddress, pestName, priceRange, bookedBy, firstName } from '../data/texts';
 import type { Order, PayMethod, Visit } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
@@ -588,7 +588,7 @@ export function OrderDetailPage() {
               </>
             }
             sub={`${v.status === 'wykonany' ? `Wykonany ${formatDate(v.doneOn ?? v.start)}` : visitWhen(v)} · ${termsText({ scope: v.scope ?? { kind: 'calosc', note: '' }, ...visitPrice(v, order) }, order.invoice, settings.vatRate)}`}
-            meta={[bookedBy(v, order) && `umówione przez: ${bookedBy(v, order)}`, v.status !== 'zaplanowany' && v.technicianName ? `technik: ${v.technicianName}` : ''].filter(Boolean).join(' · ') || undefined}
+            meta={[bookedBy(v, order) && `umówione przez: ${firstName(bookedBy(v, order))}`, v.status !== 'zaplanowany' && v.technicianName ? `technik: ${firstName(v.technicianName)}` : ''].filter(Boolean).join(' · ') || undefined}
             trailing={
               <span className="row-end">
                 <VisitBadge visit={v} />

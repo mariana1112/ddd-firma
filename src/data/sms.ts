@@ -1,5 +1,5 @@
 import { visitCode } from './codes';
-import { fill, orderAddress } from './texts';
+import { fill, orderAddress, firstName } from './texts';
 import type { AppSettings } from './settings';
 import type { Order, Visit } from './types';
 import { addMinutes, formatTime } from '../lib/dates';
@@ -10,7 +10,8 @@ export type SmsKind = 'zalecenia' | 'przypomnienie' | 'spoznienie' | 'wczesniej'
 export const LATE_MINUTES = [10, 15, 20, 30, 45, 60];
 export const EARLY_MINUTES = [15, 30, 45, 60, 90];
 
-const sign = (technician: string) => (technician ? `${technician}, Pogromcy Insektów` : 'Pogromcy Insektów');
+// W SMS-ie podpis samym imieniem: „Maciej, Pogromcy Insektów”.
+const sign = (technician: string) => (firstName(technician) ? `${firstName(technician)}, Pogromcy Insektów` : 'Pogromcy Insektów');
 
 /** „Spóźnię się około 15 minut” na umówiony zabieg, z szablonu w Ustawieniach. */
 export function lateSms(order: Order, visit: Pick<Visit, 'start' | 'seq'>, minutes: number, technician: string, settings: Pick<AppSettings, 'lateTemplate'>): string {

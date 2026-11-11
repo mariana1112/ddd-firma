@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { firstName } from '../data/texts';
 import { Link } from 'react-router-dom';
 import { cardText, formatAccount, formatNip, transferText } from '../data/card';
 import { getCompany, getMyPhone, getProfile } from '../data/settings';
@@ -34,13 +35,14 @@ export function CardPage() {
   const recipient = company.taxpayerName?.trim() || company.name;
   const hasTransfer = Boolean(company.bankAccount.trim());
   const blik = company.blikPhone?.trim() ?? '';
-  const card = { company, name: profile.name, phone };
+  // Wizytówka dla klienta: samo imię technika.
+  const card = { company, name: firstName(profile.name), phone };
 
   return (
     <Page title="Wizytówka" back="/wiecej">
       <div className="card-hero">
         <h2>{company.name}</h2>
-        {profile.name && <p>{profile.name}</p>}
+        {profile.name && <p>{firstName(profile.name)}</p>}
         {phone ? (
           <a className="card-phone" href={`tel:${phone.replace(/[^\d+]/g, '')}`}>
             <Icon name="phone" size={18} /> {phone}
