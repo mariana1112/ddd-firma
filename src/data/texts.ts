@@ -122,6 +122,15 @@ export function startToSave(startedAt: string | null, finishedAt: string): strin
   return hours > MAX_VISIT_HOURS || hours < 0 ? finishedAt : startedAt;
 }
 
+/**
+ * Kto umówił zabieg: zapisany przy umawianiu, a w starszych zabiegach pierwszy zabieg umówił ten, kto przyjął zlecenie.
+ * Pusty, gdy nie wiadomo (stary zabieg II, III bez tej informacji) albo termin nie jest jeszcze umówiony.
+ */
+export function bookedBy(visit: Pick<Visit, 'bookedByName' | 'seq' | 'start'>, order: Pick<Order, 'ownerName'>): string {
+  if (visit.bookedByName) return visit.bookedByName;
+  return visit.seq === 1 && visit.start ? order.ownerName || '' : '';
+}
+
 export function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
 }

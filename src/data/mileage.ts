@@ -108,7 +108,9 @@ export function driverSummary(trips: Trip[], driverName: (t: Trip) => string): D
   for (const t of trips) {
     const key = driverKey(t);
     const row = out.get(key) ?? { driver: driverName(t), vehicles: [], sluzbowy: 0, prywatny: 0 };
-    row[t.kind] += tripKm(t);
+    // Do VAT wszystko jako służbowe; prywatne osobno, do wglądu.
+    row.sluzbowy += tripKm(t);
+    if (t.kind === 'prywatny') row.prywatny += tripKm(t);
     const plate = normalizePlate(t.vehicle);
     if (plate && !row.vehicles.includes(plate)) row.vehicles.push(plate);
     out.set(key, row);
@@ -123,7 +125,8 @@ export function mileageSheets(
   month: string,
   driverName: (t: Trip) => string,
 ): Array<{ vehicle: string; entries: MileageEntry[] }> {
-  const chosen = trips.filter((t) => t.kind === kind && t.date.startsWith(`${month}-`));
+  // Ewidencja VAT obejmuje wszystkie przejazdy (prywatne też jako służbowe); wydruk prywatnych tylko prywatne.
+  const chosen = trips.filter((t) => (kind === 'sluzbowy' || t.kind === kind) && t.date.startsWith(`${month}-`));
   return byVehicle(chosen).map((g) => ({ vehicle: g.vehicle, entries: mileageEntries(g.trips, driverName) }));
 }
 

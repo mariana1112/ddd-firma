@@ -17,7 +17,12 @@ export const KIND_NAMES: Record<TripKind, string> = { sluzbowy: 'Służbowy', pr
 
 export function kmSummary(list: Trip[], from: string, to: string): Record<TripKind, number> {
   const out: Record<TripKind, number> = { sluzbowy: 0, prywatny: 0 };
-  for (const t of list) if (t.date >= from && t.date <= to) out[t.kind] += tripKm(t);
+  for (const t of list) {
+    if (t.date < from || t.date > to) continue;
+    // Do VAT każdy przejazd jest służbowy; prywatne liczone dodatkowo, do wglądu.
+    out.sluzbowy += tripKm(t);
+    if (t.kind === 'prywatny') out.prywatny += tripKm(t);
+  }
   return out;
 }
 
@@ -140,7 +145,7 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
       <p className="field-hint">
         {kind === 'sluzbowy'
           ? 'Służbowy: trafia do ewidencji przebiegu dla celów VAT.'
-          : 'Prywatny: tylko do wglądu firmy, osobno od ewidencji VAT. Licznik jest ten sam dla obu rodzajów.'}
+          : 'Prywatny: w aplikacji zapisany jako prywatny (do wglądu), ale do ewidencji VAT wchodzi jako służbowy. Licznik jest ten sam dla obu rodzajów.'}
       </p>
       <div className="form-row form-row-3">
         <Field label="Dzień">
@@ -290,10 +295,10 @@ export function TripsPage() {
         </button>
       </div>
       <div className="stats">
-        <Stat label="Służbowo w miesiącu" value={`${summary.sluzbowy} km`} />
-        <Stat label="Prywatnie w miesiącu" value={`${summary.prywatny} km`} />
-        <Stat label={`Służbowo w ${year}`} value={`${yearSummary.sluzbowy} km`} />
-        <Stat label={`Prywatnie w ${year}`} value={`${yearSummary.prywatny} km`} />
+        <Stat label="Służbowo (VAT) w miesiącu" value={`${summary.sluzbowy} km`} />
+        <Stat label="w tym prywatne" value={`${summary.prywatny} km`} />
+        <Stat label={`Służbowo (VAT) w ${year}`} value={`${yearSummary.sluzbowy} km`} />
+        <Stat label="w tym prywatne" value={`${yearSummary.prywatny} km`} />
       </div>
       <div className="btn-stack">
         <button type="button" className="btn" disabled={busy} onClick={() => void print('sluzbowy')}>

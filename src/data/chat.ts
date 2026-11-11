@@ -99,5 +99,47 @@ export function markRead(channel: string, at = new Date().toISOString()): void {
 /** Nieprzeczytane wiadomości od innych osób w kanale. */
 export function unread(list: Message[], channel: string, me: string | null, read: Record<string, string>): Message[] {
   const since = read[channel] ?? '';
-  return list.filter((m) => m.channel === channel && m.authorId !== me && m.createdAt > since && !m.deletedAt);
+  return list.filter((m) => m.channel === channel && m.authorId !== me && m.createdAt > since && !m.deletedAt && m.kind !== 'odczyt');
+}
+
+// ---------- Kto przeczytał ----------
+
+/** Znacznik „przeczytane” (synchronizowany), nie wiadomość do pokazania. */
+export const isReadMarker = (m: Pick<Message, 'kind'>) => m.kind === 'odczyt';
+
+/** Wiadomości bez znaczników „przeczytane”. */
+export const realMessages = (list: Message[]) => list.filter((m) => !isReadMarker(m) && !m.deletedAt);
+
+const markerId = (channel: string, userId: string) => `odczyt-${channel}-${userId}`;
+
+/**
+ * Zapisuje, że ta osoba przeczytała kanał (widzą to inni: „Przeczytane: Ania 14:05”). Zapis tylko wtedy, gdy od
+ * ostatniego czytania przyszło coś od innych, żeby nie wysyłać zmian przy każdym otwarciu.
+ */
+export async function markReadForOthers(channel: string, list: Message[], at = new Date().toISOString()): Promise<void> {
+  const profile = await getProfile();
+  if (!profile.userId) return;
+  const id = markerId(channel, profile.userId);
+  const existing = await messages.get(id);
+  const newest = realMessages(list)
+    .filter((m) => m.channel === channel && m.authorId !== profile.userId)
+    .reduce((max, m) => (m.createdAt > max ? m.createdAt : max), '');
+  if (!newest || (existing && !existing.deletedAt && (existing.readAt ?? '') >= newest)) return;
+  if (existing) await messages.update(id, { readAt: at, authorName: profile.name || existing.authorName });
+  else await messages.create({ channel, authorId: profile.userId, authorName: profile.name || 'Bez imienia', text: '', kind: 'odczyt', readAt: at }, id);
+}
+
+/** Kto przeczytał wiadomość i kiedy (bez autora wiadomości). */
+export function readersOf(message: Message, list: Message[]): Array<{ name: string; at: string }> {
+  return list
+    .filter((m) => isReadMarker(m) && !m.deletedAt && m.channel === message.channel && m.authorId !== message.authorId && (m.readAt ?? '') >= message.createdAt)
+    .map((m) => ({ name: m.authorName, at: m.readAt! }))
+    .sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/** Ostatnia prawdziwa wiadomość kanału (do listy rozmów). */
+export function lastMessage(list: Message[], channel: string): Message | undefined {
+  return realMessages(list)
+    .filter((m) => m.channel === channel)
+    .reduce<Message | undefined>((last, m) => (!last || m.createdAt > last.createdAt ? m : last), undefined);
 }

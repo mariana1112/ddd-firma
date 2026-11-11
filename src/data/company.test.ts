@@ -60,7 +60,7 @@ describe('regiony', () => {
     const text = companyText(buildReport(period, data), ranking).split('\n');
     expect(text[0]).toBe('Podsumowanie firmy 02.11.26r. - 08.11.26r.');
     expect(text).toContain('Obrót - 1 700 zł');
-    expect(text).toContain('Kilometry - 200 km służbowo, 0 km prywatnie');
+    expect(text).toContain('Kilometry - 200 km służbowo (VAT), w tym 0 km prywatnie');
     expect(text).toContain('1. Łódzkie (LDZ) - 1 000 zł, zabiegi: 2, koszty: 120 zł, km: 80, wynik gotówka: 880 zł');
     expect(text).toContain('2. Pomorskie (GDA) - 700 zł, zabiegi: 2, koszty: 50 zł, km: 120, wynik gotówka: 650 zł');
   });

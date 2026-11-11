@@ -125,7 +125,12 @@ export function buildReport(
 
   const activeDates = [...dayMap.keys(), ...expenses.map((e) => e.date)].sort();
   const km = { sluzbowy: 0, prywatny: 0 };
-  for (const t of trips) km[t.kind] += Math.max(0, t.odometerEnd - t.odometerStart);
+  // Każdy przejazd liczy się do ewidencji VAT jako służbowy; prywatne są dodatkowo pokazane osobno (w tym prywatne).
+  for (const t of trips) {
+    const distance = Math.max(0, t.odometerEnd - t.odometerStart);
+    km.sluzbowy += distance;
+    if (t.kind === 'prywatny') km.prywatny += distance;
+  }
 
   return {
     period,

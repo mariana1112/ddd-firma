@@ -276,6 +276,9 @@ export interface Message extends BaseRecord {
   text: string;
   /** Oznaczone osoby (identyfikatory kont): dostają powiadomienie pod dzwoneczkiem. */
   mentions?: string[];
+  /** Znacznik „przeczytane”: jeden na osobę i kanał, z chwilą ostatniego czytania (nie jest wiadomością). */
+  kind?: 'odczyt';
+  readAt?: string;
 }
 
 export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';
@@ -309,6 +312,10 @@ export interface Visit extends BaseRecord {
   status: VisitStatus;
   technicianId: string | null;
   technicianName: string;
+  /** Kto umówił termin z klientem (imię) i kiedy. Starsze zabiegi tego nie mają. */
+  bookedById?: string | null;
+  bookedByName?: string;
+  bookedAt?: string;
   startedAt: string | null;
   finishedAt: string | null;
   /** Dzień rozliczenia: data wykonania w Europe/Warsaw. */

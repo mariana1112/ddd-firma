@@ -17,7 +17,7 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { formatPhoneInput, formatPostalInput, isValidNip } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Field, Group, Info, Loading, NotFound, Page } from '../ui/kit';
+import { Field, Group, Info, Loading, NotFound, Page, Sheet, goBack } from '../ui/kit';
 
 interface FormState {
   building: BuildingType;
@@ -728,6 +728,7 @@ export function OrderNewPage() {
   });
   const [stepIndex, setStepIndex] = useState(0);
   const [errors, setErrors] = useState<Errors>({});
+  const [leaving, setLeaving] = useState(false);
   const steps: StepId[] = [...ALL_STEPS, 'podsumowanie'];
   const step = steps[stepIndex];
   const hasDraft = useMemo(() => JSON.stringify(state) !== JSON.stringify(EMPTY), [state]);
@@ -799,8 +800,42 @@ export function OrderNewPage() {
 
   if (!settings) return <Loading />;
 
+  // Wyjście ze szkicu: dokończyć później (szkic zostaje, widać go na Pulpicie) albo usunąć.
+  const leave = () => (hasDraft ? setLeaving(true) : goBack(navigate, '/zlecenia'));
+
   return (
-    <Page title="Nowe zlecenie" back="/zlecenia">
+    <Page title="Nowe zlecenie" back="/zlecenia" onBack={leave}>
+      <Sheet open={leaving} title="Wyjść z nowego zlecenia?" onClose={() => setLeaving(false)}>
+        <div className="form">
+          <p className="sheet-text">Wpisane dane są zapisane w szkicu. Możesz dokończyć zlecenie później (szkic czeka na Pulpicie) albo je usunąć.</p>
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            onClick={() => {
+              setLeaving(false);
+              toast('Szkic zapisany. Dokończysz go z Pulpitu.');
+              goBack(navigate, '/zlecenia');
+            }}
+          >
+            <Icon name="clipboard" /> Dokończ potem
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger-quiet btn-block"
+            onClick={() => {
+              saveDraft(null);
+              setLeaving(false);
+              toast('Szkic usunięty');
+              goBack(navigate, '/zlecenia');
+            }}
+          >
+            <Icon name="trash" /> Usuń szkic
+          </button>
+          <button type="button" className="btn btn-block" onClick={() => setLeaving(false)}>
+            Zostań i wypełniaj dalej
+          </button>
+        </div>
+      </Sheet>
       <div className="wizard-progress" aria-label={`Krok ${stepIndex + 1} z ${steps.length}`}>
         {steps.map((s, i) => (
           <span key={s} className={i <= stepIndex ? 'done' : ''} />

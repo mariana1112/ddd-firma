@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { haptic } from '../lib/haptics';
 import { BackupError } from '../data/backup';
 import { DomainError } from '../data/domain';
 import { CryptoError } from '../data/sync/crypto';
@@ -65,12 +66,17 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback<FeedbackApi['toast']>((message, options) => {
     window.clearTimeout(timer.current);
+    // Każde zakończone działanie (zapis, wysłanie, usunięcie) i każdy błąd czuć w dłoni.
+    haptic(options?.tone === 'error' ? 'error' : 'success');
     setToast({ id: nextId.current++, message, tone: options?.tone ?? 'default', action: options?.action });
     timer.current = window.setTimeout(() => setToast(null), options?.action ? 7000 : 3500);
   }, []);
 
   const confirm = useCallback<FeedbackApi['confirm']>(
-    (options) => new Promise((resolve) => setConfirm({ ...options, resolve })),
+    (options) => {
+      haptic('light');
+      return new Promise((resolve) => setConfirm({ ...options, resolve }));
+    },
     [],
   );
 
@@ -155,7 +161,10 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           <button
             type="button"
             className={confirmState?.danger ? 'btn btn-danger' : 'btn btn-primary'}
-            onClick={() => closeConfirm(true)}
+            onClick={() => {
+              haptic('success');
+              closeConfirm(true);
+            }}
           >
             {confirmState?.confirmLabel}
           </button>

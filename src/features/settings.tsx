@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { normalizePrefix, orderCode, PREFIX_MAX, roman, visitCode } from '../data/codes';
 import {
   exportBackup,
@@ -63,7 +63,7 @@ export function MorePage() {
         <Row to="/archiwum" icon="clipboard" title="Archiwum" sub="Odwołane zlecenia i usunięte regiony" />
         {sync && sync.role === 'owner' && <Row to="/admin" icon="building" title="Panel admina" sub="Wszystkie regiony, raporty firmy, ranking, prefiksy" />}
         {sync && sync.role === 'owner' && <Row to="/ksiegowosc" icon="receipt" title="Księgowość" sub="Faktury i protokoły, poprawki raportów" />}
-        {sync && sync.role !== 'owner' && sync.branchName && <Row to="/konto" icon="building" title={`Region: ${sync.branchName}`} sub="Urządzenie zalogowane na stałe do regionu" />}
+        {sync && sync.role !== 'owner' && <Row to="/region" icon="building" title={sync.branchName ? `Region: ${sync.branchName}` : 'Region'} sub="Kto jest w regionie, szef, podsumowanie dnia, tygodnia i miesiąca" />}
       </Group>
       <Group title="Aplikacja">
         <Row to="/ustawienia" icon="gear" title="Ustawienia" sub="Imię, premia, zalecenia, treść SMS" />
@@ -202,31 +202,56 @@ function SettingsForm(props: {
   const nextValue = Number(next);
   const valid = bonusValue !== null && Number.isInteger(nextValue) && nextValue > 0 && s.vatRate >= 0 && !nipError && !accountError;
 
+  /** Zapis wszystkiego poza prefiksem i numerem zlecenia (te zapisują się po wyjściu z pola). */
   const save = () =>
     run(async () => {
       await saveMyPhone(myPhone);
-      if (!props.regionLocked) await saveRegion({ prefix });
-      if (prefix) await offerPrefixForOldOrders(prefix);
-      // Zalecenia, zabiegi i treści SMS każdy ustawia sobie sam.
-      await savePersonalSettings(s);
-      if (props.readOnly) {
-        toast('Zapisano');
-        return;
+      // Rozliczenie (bez premii), zalecenia, zabiegi i treści SMS każdy ustawia sobie sam.
+      await savePersonalSettings({ ...s, bossName: s.bossName.trim() });
+      if (!props.readOnly) {
+        if (!props.synced) await saveProfile({ ...(await getProfile()), name: name.trim() });
+        await saveAppSettings({ ...s, bossName: s.bossName.trim(), thirdVisitBonus: bonusValue! });
+        await saveCompany({
+          ...company,
+          taxpayerName: (company.taxpayerName ?? '').trim(),
+          bankAccount: formatAccount(company.bankAccount),
+          blikPhone: (company.blikPhone ?? '').trim(),
+          nip: company.nip.trim(),
+          street: company.street.trim(),
+          postalCode: company.postalCode.trim(),
+          city: company.city.trim(),
+        });
       }
-      if (!props.synced) await saveProfile({ ...(await getProfile()), name: name.trim() });
-      await saveAppSettings({ ...s, bossName: s.bossName.trim(), thirdVisitBonus: bonusValue! });
-      await saveCompany({
-        ...company,
-        taxpayerName: (company.taxpayerName ?? '').trim(),
-        bankAccount: formatAccount(company.bankAccount),
-        blikPhone: (company.blikPhone ?? '').trim(),
-        nip: company.nip.trim(),
-        street: company.street.trim(),
-        postalCode: company.postalCode.trim(),
-        city: company.city.trim(),
-      });
-      if (nextValue - 1 > props.counter) await setOrderCounter(nextValue - 1);
-      toast('Zapisano ustawienia');
+      toast('Zapisano automatycznie');
+    });
+
+  // Zmiany zapisują się same chwilę po ostatnim wpisanym znaku (bez przycisku „Zapisz”).
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    if (!valid) return;
+    const timer = setTimeout(() => void save(), 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s, myPhone, company, bonus, name]);
+
+  /** Prefiks zapisuje się po wyjściu z pola: wtedy można też nadać go wcześniejszym zleceniom. */
+  const savePrefix = () =>
+    run(async () => {
+      if (props.regionLocked || prefix === props.prefix) return;
+      await saveRegion({ prefix });
+      if (prefix) await offerPrefixForOldOrders(prefix);
+      toast('Zapisano automatycznie');
+    });
+
+  const saveNextNumber = () =>
+    run(async () => {
+      if (!Number.isInteger(nextValue) || nextValue - 1 <= props.counter) return;
+      await setOrderCounter(nextValue - 1);
+      toast('Zapisano automatycznie');
     });
 
   /** Zlecenia przyjęte przed ustawieniem prefiksu dostają go za zgodą, tylko własne. */
@@ -244,13 +269,11 @@ function SettingsForm(props: {
   };
 
   return (
-    <form
-      className="form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (valid) void save();
-      }}
-    >
+    <form className="form" onSubmit={(e) => e.preventDefault()}>
+      <p className="notice notice-info">
+        <Icon name="check" />
+        <span>Zmiany zapisują się same. Po zapisie na dole ekranu pojawia się „Zapisano automatycznie”.</span>
+      </p>
       <fieldset>
         <legend>Region i kody zleceń</legend>
         <Field label="Mój numer telefonu" hint="Numer, na którym teraz jesteś. Pokazuje się na wizytówce. Ustawienie tego urządzenia.">
@@ -267,34 +290,42 @@ function SettingsForm(props: {
             label="Prefiks regionu"
             hint={`Litery, do ${PREFIX_MAX} znaków, np. LDZ. Nowe zlecenia dostaną kod ${orderCode({ number: props.counter + 1, prefix })}, a ich zabiegi ${visitCode({ number: props.counter + 1, prefix }, 1)}, ${visitCode({ number: props.counter + 1, prefix }, 2)} itd. Ustawienie tego urządzenia; przy koncie firmowym prefiks regionu nadaje admin.`}
           >
-            <input value={prefix} maxLength={PREFIX_MAX} autoCapitalize="characters" placeholder="Np. LDZ" onChange={(e) => setPrefix(normalizePrefix(e.target.value))} />
+            <input value={prefix} maxLength={PREFIX_MAX} autoCapitalize="characters" placeholder="Np. LDZ" onChange={(e) => setPrefix(normalizePrefix(e.target.value))} onBlur={() => void savePrefix()} />
           </Field>
         )}
       </fieldset>
 
-      {props.readOnly && <p className="notice notice-info">Rozliczenie i dane firmy zmienia admin. Zalecenia i treści SMS niżej ustawiasz sobie sam.</p>}
-      <fieldset disabled={props.readOnly}>
+      <fieldset>
         <legend>Rozliczenie</legend>
-        <Field label="Twoje imię" hint={props.synced ? 'Przy synchronizacji imię pochodzi z konta.' : 'Pojawia się w raportach i danych dla centrali.'}>
-          <input value={name} disabled={props.synced} onChange={(e) => setName(e.target.value)} autoComplete="given-name" />
-        </Field>
-        <Field label="Gotówkę rozliczam z (dopełniacz)" hint="W raporcie: „Wynik gotówka dla Piotrka”.">
+        {/* Przy koncie firmy imię pochodzi z konta, więc tu go nie ma. */}
+        {!props.synced && (
+          <Field label="Twoje imię" hint="Pojawia się w raportach i danych dla centrali.">
+            <input value={name} onChange={(e) => setName(e.target.value)} autoComplete="given-name" />
+          </Field>
+        )}
+        <Field label="Gotówkę rozliczam z (dopełniacz)" hint={`W raporcie: „Wynik gotówka dla ${s.bossName.trim() || '…'}”. Każdy technik ustawia to sobie sam.`}>
           <input value={s.bossName} onChange={(e) => set({ bossName: e.target.value })} />
         </Field>
         <div className="form-row">
-          <Field label="Premia za 3. zabieg (zł)" error={bonusValue === null ? 'Podaj kwotę' : undefined}>
-            <input inputMode="decimal" value={bonus} onChange={(e) => setBonus(e.target.value)} />
-          </Field>
+          {/* Premię ustala admin dla całej firmy: technik jej tu nie widzi. */}
+          {!props.readOnly && (
+            <Field label="Premia za 3. zabieg (zł)" error={bonusValue === null ? 'Podaj kwotę' : undefined} hint="Dla wszystkich techników.">
+              <input inputMode="decimal" value={bonus} onChange={(e) => setBonus(e.target.value)} />
+            </Field>
+          )}
           <Field label="VAT (%)">
             <input inputMode="numeric" value={String(s.vatRate)} onChange={(e) => set({ vatRate: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
           </Field>
         </div>
-        <Field label="Następny numer zlecenia" hint={`Ostatni nadany: ${orderCode({ number: props.counter, prefix })}. Numer można tylko podnieść; numery nie powtarzają się w całej firmie.`}>
-          <input inputMode="numeric" value={next} onChange={(e) => setNext(e.target.value.replace(/\D/g, ''))} />
-        </Field>
+        {!props.readOnly && (
+          <Field label="Następny numer zlecenia" hint={`Ostatni nadany: ${orderCode({ number: props.counter, prefix })}. Numer można tylko podnieść; numery nie powtarzają się w całej firmie.`}>
+            <input inputMode="numeric" value={next} onChange={(e) => setNext(e.target.value.replace(/\D/g, ''))} onBlur={() => void saveNextNumber()} />
+          </Field>
+        )}
       </fieldset>
 
-      <fieldset disabled={props.readOnly}>
+      {!props.readOnly && (
+      <fieldset>
         <legend>Dane firmy: kilometrówka i płatności</legend>
         <p className="field-hint">Nagłówek „Dane podatnika” w ewidencji przebiegu pojazdu dla celów VAT oraz dane do przelewu i BLIK-a na wizytówce.</p>
         <Field label="Nazwa podatnika" hint="Np. P.H.U. Nazwa Imię Nazwisko. Gdy puste, na wydruku jest Pogromcy Insektów.">
@@ -326,6 +357,7 @@ function SettingsForm(props: {
           <input type="tel" inputMode="tel" placeholder="+48 500 600 700" value={company.blikPhone ?? ''} onChange={(e) => setC({ blikPhone: formatPhoneInput(e.target.value) })} />
         </Field>
       </fieldset>
+      )}
 
       <fieldset>
         <legend>Zabieg (Twoje ustawienia)</legend>
@@ -373,9 +405,7 @@ function SettingsForm(props: {
         </button>
       </fieldset>
 
-      <button type="submit" className="btn btn-primary btn-block" disabled={!props.readOnly && !valid}>
-        Zapisz ustawienia
-      </button>
+      {!valid && <p className="notice notice-warn">Popraw zaznaczone pole: dopóki jest błędne, zmiany się nie zapisują.</p>}
     </form>
   );
 }

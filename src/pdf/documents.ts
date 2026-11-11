@@ -148,7 +148,7 @@ export function reportDocument(report: Report, names: { technician: string; boss
       { text: 'Koszty', style: 'section' },
       costs,
       { text: 'Kilometry', style: 'section' },
-      { text: `Służbowe: ${report.km.sluzbowy} km, prywatne: ${report.km.prywatny} km` },
+      { text: `Służbowe (do ewidencji VAT): ${report.km.sluzbowy} km, w tym prywatne: ${report.km.prywatny} km` },
     ],
   } as TDocumentDefinitions;
 }
@@ -447,6 +447,7 @@ function sheetPages(opts: MileageOptions, sheet: MileageSheet, firstOfDocument: 
 
 function summaryPage(month: string, summary: DriverSummary[]): Content {
   const th = (text: string, align: 'left' | 'right' = 'left'): TableCell => ({ text, bold: true, fontSize: 8.5, alignment: align, fillColor: '#ecebe6' });
+  // Służbowo (VAT) obejmuje wszystkie kilometry; prywatne to ich część, pokazana do wglądu.
   const total = summary.reduce((acc, r) => ({ s: acc.s + r.sluzbowy, p: acc.p + r.prywatny }), { s: 0, p: 0 });
   return {
     pageBreak: 'before',
@@ -457,17 +458,11 @@ function summaryPage(month: string, summary: DriverSummary[]): Content {
         layout: gridLayout,
         table: {
           headerRows: 1,
-          widths: ['*', 110, 70, 70, 70],
+          widths: ['*', 110, 90, 90],
           body: [
-            [th('Kierowca'), th('Pojazdy'), th('Służbowo km', 'right'), th('Prywatnie km', 'right'), th('Razem km', 'right')],
-            ...summary.map((r) => [
-              r.driver || '—',
-              r.vehicles.join(', ') || '—',
-              right(String(r.sluzbowy)),
-              right(String(r.prywatny)),
-              right(String(r.sluzbowy + r.prywatny), { bold: true }),
-            ]),
-            [{ text: 'Razem', bold: true }, '', right(String(total.s), { bold: true }), right(String(total.p), { bold: true }), right(String(total.s + total.p), { bold: true })],
+            [th('Kierowca'), th('Pojazdy'), th('Służbowo (VAT) km', 'right'), th('w tym prywatne km', 'right')],
+            ...summary.map((r) => [r.driver || '—', r.vehicles.join(', ') || '—', right(String(r.sluzbowy), { bold: true }), right(String(r.prywatny))]),
+            [{ text: 'Razem', bold: true }, '', right(String(total.s), { bold: true }), right(String(total.p), { bold: true })],
           ],
         },
       },
@@ -508,8 +503,8 @@ export function companyDocument(
     ['Zabiegi wykonane', String(total.visits.length)],
     ['Koszty', formatPln(total.costs)],
     ['Premie', formatPln(total.bonus)],
-    ['Km służbowo', `${total.km.sluzbowy} km`],
-    ['Km prywatnie', `${total.km.prywatny} km`],
+    ['Km służbowo (VAT)', `${total.km.sluzbowy} km`],
+    ['w tym prywatne', `${total.km.prywatny} km`],
     ['Wynik gotówka', formatPln(total.cashForBoss), true],
   ];
   return {
@@ -541,7 +536,7 @@ export function companyDocument(
                   right(formatPln(r.report.turnover), { bold: true }),
                   right(String(r.visits)),
                   right(formatPln(r.report.costs + r.report.bonus)),
-                  right(String(r.report.km.sluzbowy + r.report.km.prywatny)),
+                  right(String(r.report.km.sluzbowy)),
                   right(formatPln(r.report.cashForBoss)),
                 ]),
               ],

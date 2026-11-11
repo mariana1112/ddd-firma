@@ -24,6 +24,11 @@ export interface PlannedVisit {
   terms?: VisitTerms;
 }
 
+/** Kto i kiedy umówił termin zabiegu z klientem. */
+function booking(person: { id: string | null; name: string }): Pick<Visit, 'bookedById' | 'bookedByName' | 'bookedAt'> {
+  return { bookedById: person.id, bookedByName: person.name, bookedAt: new Date().toISOString() };
+}
+
 function newVisit(orderId: string, seq: number, plan: PlannedVisit, technician: { id: string | null; name: string }): NewRecord<Visit> {
   return {
     orderId,
@@ -33,6 +38,7 @@ function newVisit(orderId: string, seq: number, plan: PlannedVisit, technician: 
     status: 'zaplanowany',
     technicianId: technician.id,
     technicianName: technician.name,
+    ...(plan.start ? booking(technician) : {}),
     startedAt: null,
     finishedAt: null,
     doneOn: null,
@@ -137,7 +143,7 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
     let bonus = 0;
     if (input.next.mode === 'umowiony') {
       if (later) {
-        await visits.update(later.id, { start: input.next.start, durationMin: input.next.durationMin, ...termsPatch(input.next.terms) });
+        await visits.update(later.id, { start: input.next.start, durationMin: input.next.durationMin, ...termsPatch(input.next.terms), ...booking({ id: profile.userId, name: profile.name }) });
         next = { ...later, start: input.next.start, ...termsPatch(input.next.terms) };
       } else {
         next = await visits.create(
@@ -186,8 +192,9 @@ export async function scheduleNextVisit(orderId: string, plan: PlannedVisit): Pr
     const all = (await orderVisits(orderId)).filter((v) => v.status !== 'odwolany');
     const waiting = all.find((v) => v.status === 'zaplanowany' && !v.start);
     if (waiting) {
-      await visits.update(waiting.id, { start: plan.start, durationMin: plan.durationMin, ...termsPatch(plan.terms) });
-      return { ...waiting, start: plan.start, durationMin: plan.durationMin, ...termsPatch(plan.terms) };
+      const booked = booking({ id: profile.userId, name: profile.name });
+      await visits.update(waiting.id, { start: plan.start, durationMin: plan.durationMin, ...termsPatch(plan.terms), ...booked });
+      return { ...waiting, start: plan.start, durationMin: plan.durationMin, ...termsPatch(plan.terms), ...booked };
     }
     const seq = Math.max(0, ...(await orderVisits(orderId)).map((v) => v.seq)) + 1;
     const last = all[all.length - 1];

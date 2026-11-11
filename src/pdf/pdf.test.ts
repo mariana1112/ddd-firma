@@ -148,15 +148,14 @@ describe('dokumenty PDF', () => {
     list.push({ ...trip('2026-10-11', 'prywatny', 1000, 1040), ownerId: 'u2', from: 'Gdańsk', to: 'Sopot', vehicle: 'GD 12345', driver: 'Jan Nowak' });
     const name = (t: Trip) => t.driver ?? '';
 
+    // Ewidencja VAT obejmuje też przejazdy prywatne (jako służbowe): oba auta, a w WE1KR10 także prywatny wypad.
     const sheets = mileageSheets(list, 'sluzbowy', '2026-10', name);
-    expect(sheets).toHaveLength(1);
-    expect(sheets[0].vehicle).toBe('WE1KR10');
-    const entries = sheets[0].entries;
-    expect(entries).toHaveLength(25);
+    expect(sheets.map((s) => s.vehicle)).toEqual(['GD12345', 'WE1KR10']);
+    expect(sheets[0].entries.reduce((s, e) => s + e.km, 0)).toBe(40);
+    const entries = sheets[1].entries;
+    expect(entries).toHaveLength(26);
     expect(entries[0].route).toBe('Łódź');
-    expect(entries[3].route).toBe('Łódź - Konin - Koło - Łódź');
-    expect(entries.slice(0, 17).reduce((s, e) => s + e.km, 0)).toBe(3217);
-    expect(entries.slice(17).reduce((s, e) => s + e.km, 0)).toBe(2331);
+    expect(entries.reduce((s, e) => s + e.km, 0)).toBe(5548);
 
     const taxpayer = 'P.H.U. TEST Jan Kowalski, ul. Piotrkowska 1, 90-001 Łódź, NIP 7251234567';
     const vat = mileageDocument({ kind: 'sluzbowy', month: '2026-10', taxpayer, sheets });
@@ -168,7 +167,8 @@ describe('dokumenty PDF', () => {
     expect(privateSheets.map((s) => s.vehicle)).toEqual(['GD12345', 'WE1KR10']);
     const summary = driverSummary(list, name);
     expect(summary.find((r) => r.driver === 'Teodorczyk')).toMatchObject({ sluzbowy: 5548, prywatny: 0 });
-    expect(summary.find((r) => r.driver === 'Jan Nowak')).toMatchObject({ sluzbowy: 0, prywatny: 40 });
+    // Prywatne kilometry wchodzą do VAT jako służbowe, a osobno widać, ile z nich to prywatne.
+    expect(summary.find((r) => r.driver === 'Jan Nowak')).toMatchObject({ sluzbowy: 40, prywatny: 40 });
     expect(JSON.stringify(mileageDocument({ kind: 'prywatny', month: '2026-10', taxpayer, sheets: privateSheets }).content)).toContain('Teodorczyk');
     expect(
       isPdf(await render(mileageDocument({ kind: 'prywatny', month: '2026-10', taxpayer, sheets: privateSheets, summary }), 'kilometrowka-prywatne.pdf')),

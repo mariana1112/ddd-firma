@@ -106,8 +106,8 @@ export function ReportsPage() {
         ))}
         <Stat label="Koszty" value={formatPln(report.costs)} />
         <Stat label="Premia" value={formatPln(report.bonus)} />
-        <Stat label="Km służbowo" value={`${report.km.sluzbowy} km`} />
-        <Stat label="Km prywatnie" value={`${report.km.prywatny} km`} />
+        <Stat label="Km służbowo (VAT)" value={`${report.km.sluzbowy} km`} />
+        <Stat label="w tym prywatne" value={`${report.km.prywatny} km`} />
       </div>
       {report.unpaid > 0 && <Badge tone="warn">Zabiegi bez zapisanej płatności: {report.unpaid}</Badge>}
 

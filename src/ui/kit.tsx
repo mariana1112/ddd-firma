@@ -2,14 +2,17 @@ import { cloneElement, createContext, isValidElement, useContext, useEffect, use
 import { Link, useNavigate } from 'react-router-dom';
 import { Icon, type IconName } from './icons';
 
-export function BackButton({ fallback }: { fallback: string }) {
+/** Powrót do poprzedniego ekranu, a gdy aplikacja otworzyła się od razu tutaj, na ekran zapasowy. */
+export function goBack(navigate: ReturnType<typeof useNavigate>, fallback: string): void {
+  // Aplikacja zainstalowana na iPhonie nie ma przycisku wstecz, więc to jedyna droga powrotu.
+  const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+  if (idx > 0) navigate(-1);
+  else navigate(fallback, { replace: true });
+}
+
+export function BackButton({ fallback, onBack }: { fallback: string; onBack?: () => void }) {
   const navigate = useNavigate();
-  const onClick = () => {
-    // Aplikacja zainstalowana na iPhonie nie ma przycisku wstecz, więc to jedyna droga powrotu.
-    const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    if (idx > 0) navigate(-1);
-    else navigate(fallback, { replace: true });
-  };
+  const onClick = () => (onBack ? onBack() : goBack(navigate, fallback));
   return (
     <button type="button" className="icon-btn back-btn" onClick={onClick} aria-label="Wstecz">
       <Icon name="back" size={26} />
@@ -23,7 +26,7 @@ export const ScopeBannerContext = createContext<ReactNode>(null);
 /** Element w nagłówku każdego ekranu (dzwoneczek powiadomień), podawany przez aplikację. */
 export const HeaderExtraContext = createContext<ReactNode>(null);
 
-export function Page(props: { title: string; back?: string; actions?: ReactNode; children: ReactNode }) {
+export function Page(props: { title: string; back?: string; onBack?: () => void; actions?: ReactNode; children: ReactNode }) {
   const banner = useContext(ScopeBannerContext);
   const extra = useContext(HeaderExtraContext);
   useEffect(() => {
@@ -34,7 +37,7 @@ export function Page(props: { title: string; back?: string; actions?: ReactNode;
     <div className={props.back ? 'page page-sub' : 'page'}>
       {banner}
       <header className="page-head">
-        {props.back && <BackButton fallback={props.back} />}
+        {props.back && <BackButton fallback={props.back} onBack={props.onBack} />}
         <h1>{props.title}</h1>
         <div className="page-actions">
           {props.actions}

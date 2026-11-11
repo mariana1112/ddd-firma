@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { chatChannels, chatPeople, insertMention, markRead, mentionQuery, mentionsIn, readMap, sendMessage, splitMentions, unread, type Person } from '../data/chat';
+import { chatChannels, chatPeople, insertMention, lastMessage, markRead, markReadForOthers, mentionQuery, mentionsIn, readersOf, readMap, realMessages, sendMessage, splitMentions, unread, type Person } from '../data/chat';
 import { db } from '../data/db';
 import { buildNotifications, type AppNotification } from '../data/notifications';
 import { decideOrderDeletion } from '../data/orders';
@@ -9,9 +9,10 @@ import { clockInWarsaw, dayInWarsaw } from '../data/texts';
 import { messages, orders, visits } from '../data/repo';
 import { getProfile, getRegions, getSyncState } from '../data/settings';
 import { formatDate, todayWarsaw } from '../lib/dates';
+import type { Message } from '../data/types';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Chips, Empty, Group, Loading, Page } from '../ui/kit';
+import { Badge, Empty, Group, Loading, Page, Row } from '../ui/kit';
 
 const SEEN_KEY = 'ddd:powiadomienia-widziane';
 
@@ -166,9 +167,58 @@ export function NotificationsPage() {
   );
 }
 
-/** Czat: kanały „Księgowość”, „Cała firma” i regionu; wiadomości synchronizują się jak zlecenia. */
+/**
+ * Czat: najpierw lista rozmów („Księgowość”, „Cała firma”, regiony) z liczbą nieprzeczytanych, po dotknięciu rozmowa.
+ * Wiadomości synchronizują się jak zlecenia; pod własną wiadomością widać, kto ją przeczytał i kiedy.
+ */
 export function ChatPage() {
   const [params, setParams] = useSearchParams();
+  const data = useLiveQuery(async () => ({
+    state: await getSyncState(),
+    me: (await getProfile()).userId,
+    regions: await getRegions(),
+    messages: await messages.allRegions(),
+  }));
+  if (!data) return <Loading />;
+  const channels = chatChannels(data.state, data.regions);
+  const open = channels.find((c) => c.id === params.get('k'));
+  if (open) return <ChatConversation channel={open} data={data} onBack={() => setParams({}, { replace: true })} />;
+
+  const read = readMap();
+  return (
+    <Page title="Czat" back="/">
+      <Group>
+        {channels.map((c) => {
+          const last = lastMessage(data.messages, c.id);
+          const fresh = unread(data.messages, c.id, data.me, read).length;
+          return (
+            <Row
+              key={c.id}
+              icon="message"
+              onClick={() => setParams({ k: c.id })}
+              title={c.label}
+              sub={last ? `${last.authorId === data.me ? 'Ty' : last.authorName}: ${last.text}` : 'Brak wiadomości'}
+              trailing={
+                <span className="chat-list-meta">
+                  {last && <span className="row-sub">{when(last.createdAt).slice(-5)}</span>}
+                  {fresh > 0 && <span className="bell-count chat-list-count">{fresh > 9 ? '9+' : fresh}</span>}
+                </span>
+              }
+            />
+          );
+        })}
+      </Group>
+      {!data.state && <p className="field-hint">Czat działa po zalogowaniu do konta firmy.</p>}
+    </Page>
+  );
+}
+
+function ChatConversation(props: {
+  channel: { id: string; label: string };
+  data: { state: Awaited<ReturnType<typeof getSyncState>>; me: string | null; messages: Message[] };
+  onBack: () => void;
+}) {
+  const { data, channel } = props;
   const { run } = useFeedback();
   const [text, setText] = useState('');
   // Oznaczone osoby (@Imię) wybrane z podpowiedzi; przy wysyłaniu liczą się te, które zostały w tekście.
@@ -177,32 +227,26 @@ export function ChatPage() {
   const [members, setMembers] = useState<Person[]>([]);
   const field = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
-  const data = useLiveQuery(async () => ({
-    state: await getSyncState(),
-    me: (await getProfile()).userId,
-    regions: await getRegions(),
-    messages: await messages.allRegions(),
-  }));
-  const channels = data ? chatChannels(data.state, data.regions) : [];
-  const channel = params.get('k') && channels.some((c) => c.id === params.get('k')) ? params.get('k')! : (channels[0]?.id ?? 'ksiegowosc');
-  const list = (data?.messages ?? []).filter((m) => m.channel === channel).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const orgId = data?.state?.orgId;
+  const list = realMessages(data.messages)
+    .filter((m) => m.channel === channel.id)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const orgId = data.state?.orgId;
 
   // Konta firmy do oznaczania (technik widzi swój region); bez internetu zostają osoby, które pisały na czacie.
   useEffect(() => {
     if (!orgId) return;
     void import('../data/sync/supabase')
       .then((api) => api.listMembers(orgId))
-      .then((list) => setMembers(list.filter((m) => m.approved && !m.suspended).map((m) => ({ id: m.userId, name: m.displayName }))))
+      .then((all) => setMembers(all.filter((m) => m.approved && !m.suspended).map((m) => ({ id: m.userId, name: m.displayName }))))
       .catch(() => setMembers([]));
   }, [orgId]);
 
-  // Otwarty kanał jest przeczytany; widok przewija się do najnowszej wiadomości.
+  // Otwarta rozmowa jest przeczytana (u mnie i dla innych: „Przeczytane”); widok przewija się do najnowszej.
   useEffect(() => {
-    if (!data) return;
-    markRead(channel);
+    markRead(channel.id);
+    void markReadForOthers(channel.id, data.messages).catch(() => undefined);
     end.current?.scrollIntoView({ block: 'end' });
-  }, [channel, data, list.length]);
+  }, [channel.id, data.messages, list.length]);
 
   // Pole rośnie razem z tekstem (do ok. 40% ekranu), dalej przewija się w środku.
   useEffect(() => {
@@ -212,10 +256,8 @@ export function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.4))}px`;
   }, [text]);
 
-  if (!data) return <Loading />;
-  const read = readMap();
-  const people = chatPeople(data.messages, members, data.me);
-  const names = [...people.map((p) => p.name), ...data.messages.map((m) => m.authorName)];
+  const people = chatPeople(realMessages(data.messages), members, data.me);
+  const names = [...people.map((p) => p.name), ...list.map((m) => m.authorName)];
   const query = mentionQuery(text);
   const showPicker = picking || query !== null;
   const suggestions = people.filter((p) => !query || p.name.toLocaleLowerCase('pl').startsWith(query.toLocaleLowerCase('pl')));
@@ -227,17 +269,13 @@ export function ChatPage() {
   };
 
   return (
-    <Page title="Czat" back="/">
-      <Chips
-        value={channel}
-        onChange={(k: string) => setParams({ k }, { replace: true })}
-        options={channels.map((c) => ({ value: c.id, label: c.label, count: c.id === channel ? undefined : unread(data.messages, c.id, data.me, read).length || undefined }))}
-      />
+    <Page title={channel.label} back="/czat" onBack={props.onBack}>
       <div className="chat">
         {list.length === 0 && <Empty icon="message" title="Brak wiadomości. Napisz pierwszą." />}
         {list.map((m) => {
           const mine = m.authorId === data.me;
           const tagged = Boolean(data.me && m.mentions?.includes(data.me));
+          const readers = mine ? readersOf(m, data.messages) : [];
           return (
             <div key={m.id} className={`chat-msg${mine ? ' chat-mine' : ''}${tagged ? ' chat-tagged' : ''}`}>
               {!mine && <span className="chat-author">{m.authorName}</span>}
@@ -253,6 +291,11 @@ export function ChatPage() {
                 )}
               </span>
               <span className="chat-time">{when(m.createdAt)}</span>
+              {mine && (
+                <span className="chat-read">
+                  {readers.length ? `Przeczytane: ${readers.map((r) => `${r.name} ${when(r.at).slice(-5)}`).join(', ')}` : 'Wysłane, jeszcze nieprzeczytane'}
+                </span>
+              )}
             </div>
           );
         })}
@@ -264,7 +307,7 @@ export function ChatPage() {
           e.preventDefault();
           if (!text.trim()) return;
           void run(async () => {
-            await sendMessage(channel, text, mentionsIn(text, picked));
+            await sendMessage(channel.id, text, mentionsIn(text, picked));
             setText('');
             setPicked([]);
             setPicking(false);
@@ -300,7 +343,6 @@ export function ChatPage() {
           </button>
         </div>
       </form>
-      {!data.state && <p className="field-hint">Czat działa po zalogowaniu do konta firmy.</p>}
     </Page>
   );
 }

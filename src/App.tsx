@@ -19,7 +19,9 @@ import { CardPage } from './features/card';
 import { AccountingOrderPage, AccountingPage, CorrectionsPage } from './features/accounting';
 import { ChatButton, ChatPage, NotificationBell, NotificationsPage } from './features/communication';
 import { VisitPage } from './features/visit';
+import { RegionPage } from './features/regions';
 import { FeedbackProvider } from './ui/feedback';
+import { PullToRefresh } from './ui/pull-refresh';
 import { Icon, type IconName } from './ui/icons';
 import { HeaderExtraContext, Loading } from './ui/kit';
 
@@ -31,7 +33,7 @@ const TABS: Array<{ to: string; label: string; icon: IconName; end?: boolean; al
   { to: '/kalendarz', label: 'Kalendarz', icon: 'calendar' },
   { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard', also: ['/zabieg'] },
   { to: '/raporty', label: 'Raporty', icon: 'chart' },
-  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto', '/czat', '/powiadomienia', '/archiwum'] },
+  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto', '/czat', '/powiadomienia', '/archiwum', '/region'] },
 ];
 
 /** Księgowa nie dodaje kosztów ani przejazdów: zamiast Pulpitu i Kalendarza ma swój panel. */
@@ -139,6 +141,7 @@ function AppRoutes() {
       <Route path="/kosz" element={<TrashPage />} />
       <Route path="/konto" element={<AccountPage />} />
       <Route path="/oddzialy" element={<BranchesPage />} />
+      <Route path="/region" element={<RegionPage />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/admin/bezpieczenstwo" element={<AdminSecurityPage />} />
       <Route path="/admin/technik/:id" element={<AdminTechnicianPage />} />
@@ -227,6 +230,7 @@ function Shell() {
       <Navigation />
       <div className="content">
         <UpdatePrompt />
+        <PullToRefresh />
         <HeaderExtraContext.Provider
           value={
             state ? (

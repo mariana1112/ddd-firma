@@ -1003,7 +1003,8 @@ function SyncStatus({ state }: { state: SyncState }) {
               </button>
             </div>
           )}
-          <RegionSwitcher state={state} />
+          {/* Technik zmienia region na ekranie „Region” (Więcej), tu zostaje tylko konto i synchronizacja. */}
+          {state.role === 'owner' && <RegionSwitcher state={state} />}
           {state.role === 'owner' && <ChangePassphrase />}
           <button type="button" className="btn btn-primary btn-block" disabled={running} onClick={() => void syncNow()}>
             {running ? 'Synchronizuję…' : 'Synchronizuj teraz'}

@@ -64,13 +64,13 @@ export function companyText(total: Report, ranking: RegionRow[]): string {
     `Blik - ${formatPln(total.byMethod.blik)}`,
     `Przelew - ${formatPln(total.byMethod.przelew)}`,
     `Koszty z premiami - ${formatPln(total.costs + total.bonus)} (koszty ${formatPln(total.costs)}, premie ${formatPln(total.bonus)})`,
-    `Kilometry - ${total.km.sluzbowy} km służbowo, ${total.km.prywatny} km prywatnie`,
+    `Kilometry - ${total.km.sluzbowy} km służbowo (VAT), w tym ${total.km.prywatny} km prywatnie`,
     `Wynik gotówka - ${formatPln(total.cashForBoss)}`,
     '',
     'Ranking regionów (obrót):',
     ...ranking.map(
       (r, i) =>
-        `${i + 1}. ${r.name}${r.prefix ? ` (${r.prefix})` : ''} - ${formatPln(r.report.turnover)}, zabiegi: ${r.visits}, koszty: ${formatPln(r.report.costs + r.report.bonus)}, km: ${r.report.km.sluzbowy + r.report.km.prywatny}, wynik gotówka: ${formatPln(r.report.cashForBoss)}`,
+        `${i + 1}. ${r.name}${r.prefix ? ` (${r.prefix})` : ''} - ${formatPln(r.report.turnover)}, zabiegi: ${r.visits}, koszty: ${formatPln(r.report.costs + r.report.bonus)}, km: ${r.report.km.sluzbowy}, wynik gotówka: ${formatPln(r.report.cashForBoss)}`,
     ),
   ];
   return lines.join('\n');

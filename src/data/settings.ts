@@ -213,6 +213,9 @@ export const DEFAULT_SMS: Pick<AppSettings, 'reminderTemplate' | 'lateTemplate' 
  * miejsca, numer do raportów i strona. Wspólne dla firmy zostają: imię szefa, premia, VAT.
  */
 export const PERSONAL_KEYS = [
+  // Rozliczenie: z kim technik rozlicza gotówkę i jaki VAT dolicza. Premię ustala admin dla całej firmy.
+  'bossName',
+  'vatRate',
   'recommendations',
   'treatments',
   'places',

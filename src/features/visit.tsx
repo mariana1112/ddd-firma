@@ -19,6 +19,7 @@ import {
   pestName,
   priceRange,
   workSummary,
+  bookedBy,
 } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
@@ -520,6 +521,7 @@ export function VisitPage() {
         <p>
           {pestName(order)} · {visitWhen(visit)}
         </p>
+        {bookedBy(visit, order) && <p className="visit-booked">Umówione przez: {bookedBy(visit, order)}</p>}
       </div>
 
       <ContactBar

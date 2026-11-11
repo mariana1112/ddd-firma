@@ -746,8 +746,8 @@ export function AdminPage() {
         <Stat label="Zabiegi" value={String(report.visits.length)} />
         <Stat label="Koszty z premiami" value={formatPln(report.costs + report.bonus)} />
         <Stat label="Wynik gotówka" value={formatPln(report.cashForBoss)} tone={report.cashForBoss < 0 ? 'danger' : 'ok'} />
-        <Stat label="Km służbowo" value={`${report.km.sluzbowy} km`} />
-        <Stat label="Km prywatnie" value={`${report.km.prywatny} km`} />
+        <Stat label="Km służbowo (VAT)" value={`${report.km.sluzbowy} km`} />
+        <Stat label="w tym prywatne" value={`${report.km.prywatny} km`} />
       </div>
       <button type="button" className="btn btn-block" disabled={pdfBusy} onClick={() => void reportPdf()}>
         <Icon name="file" /> {pdfBusy ? 'Przygotowuję PDF…' : `Raport PDF: ${kind === 'dzien' ? 'dzień' : kind === 'tydzien' ? 'tydzień' : 'miesiąc'}`}
