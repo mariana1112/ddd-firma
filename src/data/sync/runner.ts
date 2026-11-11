@@ -36,6 +36,39 @@ export function loadServer(): Promise<SyncServer> {
 }
 
 let roleCheckedAt = 0;
+let accountCheckedAt = 0;
+
+/** Telefon, z którego konta admin usunął konto: tu zapisujemy, żeby ekran logowania powiedział dlaczego. */
+export const ACCOUNT_REMOVED_KEY = 'ddd:konto-usuniete';
+
+/**
+ * Co minutę sprawdza, czy konto nadal jest w firmie. Usunięte konto (albo usunięte z firmy) jest od razu wylogowane,
+ * a dane firmy znikają z telefonu: nie zostaje wgląd do starych zleceń.
+ */
+async function checkAccount(): Promise<boolean> {
+  if (Date.now() - accountCheckedAt < 60 * 1000) return true;
+  accountCheckedAt = Date.now();
+  const state = await getSyncState();
+  if (!state) return true;
+  const api = await import('./supabase');
+  let status: Awaited<ReturnType<typeof api.accountStatus>>;
+  try {
+    status = await api.accountStatus(state.orgId);
+  } catch {
+    return true;
+  }
+  if (status !== 'removed') return true;
+  await api.signOut().catch(() => undefined);
+  const { disableSync } = await import('./engine');
+  await disableSync({ wipe: true });
+  try {
+    for (const key of Object.keys(localStorage)) if (key.startsWith('ddd:')) localStorage.removeItem(key);
+    localStorage.setItem(ACCOUNT_REMOVED_KEY, new Date().toISOString());
+  } catch {
+    // Bez pamięci przeglądarki ekran logowania po prostu nie poda powodu.
+  }
+  return false;
+}
 
 /** Co kilka minut sprawdza rolę konta na serwerze: nadanie albo odebranie admina działa bez ponownego logowania. */
 async function refreshRole(): Promise<void> {
@@ -68,6 +101,8 @@ export function syncInBackground(): Promise<void> {
       loadServer(),
     ]);
     try {
+      // Usunięte konto: dane są już skasowane z telefonu, synchronizacji nie ma czego robić.
+      if (!(await checkAccount())) return;
       await syncNow(server);
       await refreshRole();
     } catch (error) {

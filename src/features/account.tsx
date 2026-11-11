@@ -7,7 +7,7 @@ import { getDataKey, getSyncState, ownedBy, saveProfile, setDataKey, setSyncStat
 import { checkServerConnection, isSyncConfigured } from '../data/sync/config';
 import { CODE_LENGTH, createDataKey, formatSignupCode, MIN_PASSPHRASE, parseSignupCode, unwrapDataKey } from '../data/sync/crypto';
 import type { Account } from '../data/sync/engine';
-import { getSyncStatus, loadServer, subscribeSyncStatus, syncInBackground } from '../data/sync/runner';
+import { ACCOUNT_REMOVED_KEY, getSyncStatus, loadServer, subscribeSyncStatus, syncInBackground } from '../data/sync/runner';
 import type { Branch, Member, Membership } from '../data/sync/supabase';
 import { formatPln, periodOf } from '../data/reports';
 import { orders, visits } from '../data/repo';
@@ -31,9 +31,53 @@ export function useSyncRunning(): boolean {
  * e-mailem i hasłem z kodem od admina; potem urządzenie zostaje zalogowane na stałe.
  */
 export function LoginGate() {
+  const [removedAt] = useState(() => {
+    try {
+      return localStorage.getItem(ACCOUNT_REMOVED_KEY);
+    } catch {
+      return null;
+    }
+  });
   return (
     <Page title="Logowanie">
+      {removedAt && (
+        <p className="notice notice-warn">
+          <Icon name="alert" />
+          <span>Admin usunął Twoje konto. Wylogowano Cię, a dane firmy zostały usunięte z tego telefonu.</span>
+        </p>
+      )}
       <Connect />
+    </Page>
+  );
+}
+
+/**
+ * Sesja logowania zniknęła (np. konto usunięte albo hasło zmienione na innym telefonie): aplikacja jest zablokowana,
+ * dopóki ta osoba nie zaloguje się ponownie. Bez tego usunięte konto miałoby dalej wgląd do starych zleceń.
+ */
+export function SessionLock({ state }: { state: SyncState }) {
+  const { confirm, run, toast } = useFeedback();
+  const wipe = async () => {
+    const ok = await confirm({
+      title: 'Usunąć dane z telefonu?',
+      message: 'Zlecenia, zdjęcia i ustawienia firmy znikną z tego telefonu. Niewysłane zmiany przepadną. Potem zalogujesz się od nowa.',
+      confirmLabel: 'Usuń dane',
+      danger: true,
+    });
+    if (!ok) return;
+    await run(async () => {
+      await (await supabaseApi()).signOut().catch(() => undefined);
+      await (await engineApi()).disableSync({ wipe: true });
+      toast('Dane usunięte z telefonu');
+    });
+  };
+  return (
+    <Page title="Zaloguj się ponownie">
+      <Relogin state={state} />
+      <p className="field-hint">Dopóki nie zalogujesz się ponownie, zlecenia firmy na tym telefonie są niedostępne.</p>
+      <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void wipe()}>
+        <Icon name="trash" /> Usuń dane firmy z tego telefonu
+      </button>
     </Page>
   );
 }

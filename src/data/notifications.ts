@@ -8,10 +8,10 @@ import { addDays, formatTime } from '../lib/dates';
  * Powiadomienia pod dzwoneczkiem. Liczą się na telefonie z danych, które i tak są zsynchronizowane:
  * - prośby o usunięcie zlecenia (dla admina, do zatwierdzenia),
  * - decyzje admina w sprawie moich próśb,
- * - nowe wiadomości na czacie,
+ * - nowe wiadomości na czacie i oznaczenia mnie (@Imię) w nieprzeczytanych wiadomościach,
  * - nowe zlecenia na dziś i jutro dodane przez kogoś innego.
  */
-export type NotificationKind = 'usuniecie' | 'decyzja' | 'czat' | 'nowe';
+export type NotificationKind = 'usuniecie' | 'decyzja' | 'czat' | 'oznaczenie' | 'nowe';
 
 export interface AppNotification {
   id: string;
@@ -73,6 +73,17 @@ export function buildNotifications(input: {
   for (const channel of input.channels) {
     const fresh = unread(input.messages, channel.id, me, input.read);
     if (fresh.length === 0) continue;
+    for (const m of fresh) {
+      if (!me || !m.mentions?.includes(me)) continue;
+      out.push({
+        id: `oznaczenie:${m.id}`,
+        kind: 'oznaczenie',
+        title: `${m.authorName} oznacza Cię: ${channel.label}`,
+        text: m.text,
+        at: m.createdAt,
+        to: `/czat?k=${encodeURIComponent(channel.id)}`,
+      });
+    }
     const last = fresh.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
     out.push({
       id: `czat:${channel.id}:${last.id}`,

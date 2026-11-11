@@ -1,8 +1,9 @@
-import { Component, lazy, Suspense, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { HashRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { watchForUpdates } from './lib/updates';
-import { AccountPage, BranchesPage, ClaimAccountPage, LoginGate } from './features/account';
+import { AccountPage, BranchesPage, ClaimAccountPage, LoginGate, SessionLock } from './features/account';
+import type { SyncState } from './data/types';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getSyncState } from './data/settings';
 import { isSyncConfigured } from './data/sync/config';
@@ -155,10 +156,39 @@ function AppRoutes() {
 /** Ekrany dostępne bez zalogowania: ustawienie nowego hasła z linku w e-mailu. */
 const PUBLIC_PATHS = ['/admin/odzyskiwanie'];
 
+/**
+ * Czy urządzenie z kontem firmy straciło sesję logowania (np. admin usunął konto). Sprawdzane przy starcie i po każdym
+ * błędzie synchronizacji; po ponownym zalogowaniu błąd znika i aplikacja się odblokowuje.
+ */
+function useSessionLost(state: SyncState | null | undefined): boolean {
+  const [lost, setLost] = useState(false);
+  const active = Boolean(isSyncConfigured && state);
+  useEffect(() => {
+    if (!active) {
+      setLost(false);
+      return;
+    }
+    let cancelled = false;
+    let stop: (() => void) | undefined;
+    void import('./data/sync/supabase').then((api) => {
+      if (cancelled) return;
+      const check = () => setLost(!api.sessionStored());
+      check();
+      stop = api.onAuthChange(check);
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [active, state?.userId, state?.lastError]);
+  return lost;
+}
+
 /** Bez konta firmy aplikacja pokazuje tylko logowanie (przy skonfigurowanym serwerze). */
 function Shell() {
   const { pathname } = useLocation();
   const state = useLiveQuery(async () => (await getSyncState()) ?? null);
+  const sessionLost = useSessionLost(state);
   if (isSyncConfigured && state === undefined) return <Loading />;
   const locked = isSyncConfigured && state === null && !PUBLIC_PATHS.includes(pathname);
   // Konto z loginem tymczasowym: najpierw własny e-mail i hasło.
@@ -168,6 +198,16 @@ function Shell() {
         <div className="content">
           <UpdatePrompt />
           <ClaimAccountPage state={state} />
+        </div>
+      </div>
+    );
+  }
+  if (sessionLost && state && !PUBLIC_PATHS.includes(pathname)) {
+    return (
+      <div className="shell shell-locked">
+        <div className="content">
+          <UpdatePrompt />
+          <SessionLock state={state} />
         </div>
       </div>
     );

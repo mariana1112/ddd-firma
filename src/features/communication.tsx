@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { chatChannels, markRead, readMap, sendMessage, unread } from '../data/chat';
+import { chatChannels, chatPeople, insertMention, markRead, mentionQuery, mentionsIn, readMap, sendMessage, splitMentions, unread, type Person } from '../data/chat';
 import { db } from '../data/db';
 import { buildNotifications, type AppNotification } from '../data/notifications';
 import { decideOrderDeletion } from '../data/orders';
@@ -10,7 +10,7 @@ import { getProfile, getRegions, getSyncState } from '../data/settings';
 import { formatDate, todayWarsaw } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Chips, Empty, Group, Loading, Page, lockScroll, unlockScroll } from '../ui/kit';
+import { Badge, Chips, Empty, Group, Loading, Page } from '../ui/kit';
 
 const SEEN_KEY = 'ddd:powiadomienia-widziane';
 
@@ -67,7 +67,7 @@ function useNotifications(): { list: AppNotification[]; unseen: AppNotification[
     }).filter((x) => x.kind !== 'czat');
     const seen = new Set(readSeen());
     // Prośby o usunięcie i czat liczą się, dopóki admin nie zdecyduje albo kanał nie zostanie przeczytany.
-    const unseen = list.filter((n) => n.kind === 'usuniecie' || n.kind === 'czat' || !seen.has(n.id));
+    const unseen = list.filter((n) => n.kind === 'usuniecie' || n.kind === 'oznaczenie' || !seen.has(n.id));
     return { list, unseen, refresh: () => setTick((t) => t + 1) };
   }, [data, tick]);
 }
@@ -106,6 +106,7 @@ const KIND_LABEL: Record<AppNotification['kind'], string> = {
   usuniecie: 'Do zatwierdzenia',
   decyzja: 'Decyzja admina',
   czat: 'Czat',
+  oznaczenie: 'Oznaczenie',
   nowe: 'Nowe zlecenie',
 };
 
@@ -118,7 +119,7 @@ export function NotificationsPage() {
 
   // Otwarcie listy oznacza powiadomienia jako przeczytane (dzwoneczek się zeruje), ale lista zostaje widoczna.
   useEffect(() => {
-    if (n) saveSeen(n.list.filter((x) => x.kind !== 'usuniecie' && x.kind !== 'czat').map((x) => x.id));
+    if (n) saveSeen(n.list.filter((x) => x.kind !== 'usuniecie' && x.kind !== 'oznaczenie').map((x) => x.id));
   }, [n]);
 
   if (!n) return <Loading />;
@@ -139,10 +140,10 @@ export function NotificationsPage() {
       <Group>
         {n.list.length === 0 && <Empty icon="bell" title="Brak powiadomień" />}
         {n.list.map((item) => (
-          <div key={item.id} className={`notification${shown.has(item.id) && item.kind !== 'usuniecie' && item.kind !== 'czat' ? '' : ' notification-new'}`}>
+          <div key={item.id} className={`notification${shown.has(item.id) && item.kind !== 'usuniecie' && item.kind !== 'oznaczenie' ? '' : ' notification-new'}`}>
             <button type="button" className="notification-main" onClick={() => navigate(item.to)}>
               <span className="notification-head">
-                <Badge tone={item.kind === 'usuniecie' ? 'danger' : item.kind === 'czat' ? 'info' : 'primary'}>{KIND_LABEL[item.kind]}</Badge>
+                <Badge tone={item.kind === 'usuniecie' ? 'danger' : item.kind === 'czat' || item.kind === 'oznaczenie' ? 'info' : 'primary'}>{KIND_LABEL[item.kind]}</Badge>
                 <span className="row-sub">{when(item.at)}</span>
               </span>
               <strong>{item.title}</strong>
@@ -170,26 +171,12 @@ export function ChatPage() {
   const [params, setParams] = useSearchParams();
   const { run } = useFeedback();
   const [text, setText] = useState('');
-  // Dotknięcie pola wiadomości powiększa je na cały ekran: wygodne pisanie i poprawianie dłuższego tekstu.
-  const [big, setBig] = useState(false);
+  // Oznaczone osoby (@Imię) wybrane z podpowiedzi; przy wysyłaniu liczą się te, które zostały w tekście.
+  const [picked, setPicked] = useState<Person[]>([]);
+  const [picking, setPicking] = useState(false);
+  const [members, setMembers] = useState<Person[]>([]);
   const field = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!big) return;
-    lockScroll();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setBig(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      unlockScroll();
-    };
-  }, [big]);
-  const shrink = () => {
-    setBig(false);
-    field.current?.blur();
-  };
   const data = useLiveQuery(async () => ({
     state: await getSyncState(),
     me: (await getProfile()).userId,
@@ -199,6 +186,16 @@ export function ChatPage() {
   const channels = data ? chatChannels(data.state, data.regions) : [];
   const channel = params.get('k') && channels.some((c) => c.id === params.get('k')) ? params.get('k')! : (channels[0]?.id ?? 'ksiegowosc');
   const list = (data?.messages ?? []).filter((m) => m.channel === channel).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const orgId = data?.state?.orgId;
+
+  // Konta firmy do oznaczania (technik widzi swój region); bez internetu zostają osoby, które pisały na czacie.
+  useEffect(() => {
+    if (!orgId) return;
+    void import('../data/sync/supabase')
+      .then((api) => api.listMembers(orgId))
+      .then((list) => setMembers(list.filter((m) => m.approved && !m.suspended).map((m) => ({ id: m.userId, name: m.displayName }))))
+      .catch(() => setMembers([]));
+  }, [orgId]);
 
   // Otwarty kanał jest przeczytany; widok przewija się do najnowszej wiadomości.
   useEffect(() => {
@@ -207,11 +204,30 @@ export function ChatPage() {
     end.current?.scrollIntoView({ block: 'end' });
   }, [channel, data, list.length]);
 
+  // Pole rośnie razem z tekstem (do ok. 40% ekranu), dalej przewija się w środku.
+  useEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.4))}px`;
+  }, [text]);
+
   if (!data) return <Loading />;
   const read = readMap();
+  const people = chatPeople(data.messages, members, data.me);
+  const names = [...people.map((p) => p.name), ...data.messages.map((m) => m.authorName)];
+  const query = mentionQuery(text);
+  const showPicker = picking || query !== null;
+  const suggestions = people.filter((p) => !query || p.name.toLocaleLowerCase('pl').startsWith(query.toLocaleLowerCase('pl')));
+  const pick = (person: Person) => {
+    setText(insertMention(text, person));
+    setPicked((prev) => [...prev.filter((p) => p.id !== person.id), person]);
+    setPicking(false);
+    field.current?.focus();
+  };
 
   return (
-    <Page title="Czat" back="/wiecej">
+    <Page title="Czat" back="/">
       <Chips
         value={channel}
         onChange={(k: string) => setParams({ k }, { replace: true })}
@@ -221,10 +237,21 @@ export function ChatPage() {
         {list.length === 0 && <Empty icon="message" title="Brak wiadomości. Napisz pierwszą." />}
         {list.map((m) => {
           const mine = m.authorId === data.me;
+          const tagged = Boolean(data.me && m.mentions?.includes(data.me));
           return (
-            <div key={m.id} className={mine ? 'chat-msg chat-mine' : 'chat-msg'}>
+            <div key={m.id} className={`chat-msg${mine ? ' chat-mine' : ''}${tagged ? ' chat-tagged' : ''}`}>
               {!mine && <span className="chat-author">{m.authorName}</span>}
-              <span className="chat-text">{m.text}</span>
+              <span className="chat-text">
+                {splitMentions(m.text, names).map((part, i) =>
+                  part.mention ? (
+                    <strong key={i} className="chat-mention">
+                      {part.text}
+                    </strong>
+                  ) : (
+                    <span key={i}>{part.text}</span>
+                  ),
+                )}
+              </span>
               <span className="chat-time">{when(m.createdAt)}</span>
             </div>
           );
@@ -232,37 +259,46 @@ export function ChatPage() {
         <div ref={end} />
       </div>
       <form
-        className={big ? 'chat-form chat-form-big' : 'chat-form'}
+        className="chat-form"
         onSubmit={(e) => {
           e.preventDefault();
           if (!text.trim()) return;
           void run(async () => {
-            await sendMessage(channel, text);
+            await sendMessage(channel, text, mentionsIn(text, picked));
             setText('');
-            shrink();
+            setPicked([]);
+            setPicking(false);
           });
         }}
       >
-        {big && (
-          <div className="chat-big-head">
-            <button type="button" className="btn btn-sm" onClick={shrink}>
-              <Icon name="back" /> Zmniejsz
-            </button>
-            <span className="chat-big-channel">{channels.find((c) => c.id === channel)?.label}</span>
+        {showPicker && (
+          <div className="chat-picker" role="listbox" aria-label="Oznacz osobę">
+            {suggestions.length === 0 ? (
+              <span className="field-hint">{people.length === 0 ? 'Nie ma jeszcze kogo oznaczyć.' : 'Nikt o takim imieniu.'}</span>
+            ) : (
+              suggestions.map((p) => (
+                <button key={p.id} type="button" className="chip" role="option" aria-selected={false} onClick={() => pick(p)}>
+                  @{p.name}
+                </button>
+              ))
+            )}
           </div>
         )}
-        <textarea
-          ref={field}
-          rows={big ? 8 : 2}
-          value={text}
-          placeholder="Napisz wiadomość"
-          aria-label="Wiadomość"
-          onFocus={() => setBig(true)}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button type="submit" className="btn btn-primary" disabled={!text.trim()}>
-          <Icon name="message" /> Wyślij
-        </button>
+        <div className="chat-form-row">
+          <button
+            type="button"
+            className={showPicker ? 'btn chat-at active' : 'btn chat-at'}
+            aria-label="Oznacz osobę"
+            aria-pressed={showPicker}
+            onClick={() => (query !== null ? setText(text.slice(0, text.length - query.length - 1)) : setPicking(!picking))}
+          >
+            @
+          </button>
+          <textarea ref={field} rows={1} value={text} placeholder="Napisz wiadomość" aria-label="Wiadomość" onChange={(e) => setText(e.target.value)} />
+          <button type="submit" className="btn btn-primary" disabled={!text.trim()} aria-label="Wyślij">
+            <Icon name="message" /> Wyślij
+          </button>
+        </div>
       </form>
       {!data.state && <p className="field-hint">Czat działa po zalogowaniu do konta firmy.</p>}
     </Page>

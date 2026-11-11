@@ -274,6 +274,8 @@ export interface Message extends BaseRecord {
   authorId: string | null;
   authorName: string;
   text: string;
+  /** Oznaczone osoby (identyfikatory kont): dostają powiadomienie pod dzwoneczkiem. */
+  mentions?: string[];
 }
 
 export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';

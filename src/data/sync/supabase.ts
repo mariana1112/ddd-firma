@@ -19,9 +19,30 @@ import { SyncError, type PushChange, type RemoteRecord, type SyncServer } from '
 
 let client: SupabaseClient | undefined;
 
+/** Klucz, pod którym telefon trzyma sesję logowania. */
+const AUTH_STORAGE_KEY = 'ddd-firma-auth';
+
+/**
+ * Czy telefon ma zapisaną sesję logowania. Bez internetu wygasła sesja zostaje zapisana (odświeży się później);
+ * znika dopiero, gdy serwer ją odrzuci, np. po usunięciu konta przez admina.
+ */
+export function sessionStored(): boolean {
+  try {
+    return localStorage.getItem(AUTH_STORAGE_KEY) !== null;
+  } catch {
+    return true;
+  }
+}
+
+/** Powiadamia o zalogowaniu, wylogowaniu i odświeżeniu sesji (także gdy serwer odrzuci sesję). */
+export function onAuthChange(listener: () => void): () => void {
+  const { data } = supabase().auth.onAuthStateChange(() => listener());
+  return () => data.subscription.unsubscribe();
+}
+
 function supabase(): SupabaseClient {
   client ??= createClient(SYNC_URL, SYNC_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'ddd-firma-auth' },
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: AUTH_STORAGE_KEY },
   });
   return client;
 }
@@ -262,6 +283,24 @@ export async function currentUser(): Promise<SignedIn | null> {
 export async function signOut(): Promise<void> {
   // Wylogowanie lokalne działa także bez internetu.
   await supabase().auth.signOut({ scope: 'local' });
+}
+
+/**
+ * Czy konto tego urządzenia nadal należy do firmy. „removed”, gdy serwer potwierdza, że konto usunięto (albo usunięto
+ * je z tej firmy); „unknown” przy braku internetu albo innym błędzie, żeby nie kasować danych przez chwilowy problem.
+ */
+export async function accountStatus(orgId: string): Promise<'ok' | 'removed' | 'no-session' | 'unknown'> {
+  const { data: session } = await supabase().auth.getSession();
+  if (!session.session) return 'no-session';
+  const { data, error } = await supabase().auth.getUser();
+  if (error) {
+    const code = (error as { code?: string }).code ?? '';
+    return code === 'user_not_found' || /user from sub claim|user not found/i.test(error.message) ? 'removed' : 'unknown';
+  }
+  if (!data.user) return 'unknown';
+  const { data: rows, error: rowsError } = await supabase().from('memberships').select('org_id').eq('user_id', data.user.id).eq('org_id', orgId);
+  if (rowsError) return 'unknown';
+  return (rows ?? []).length === 0 ? 'removed' : 'ok';
 }
 
 export async function myMemberships(): Promise<Membership[]> {
