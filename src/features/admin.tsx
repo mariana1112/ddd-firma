@@ -375,6 +375,8 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
   const [saved, setSaved] = useState<string | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CodeResult | null>(null);
+  // Błąd zostaje pod przyciskiem (powiadomienie znika po chwili), żeby było widać, co poszło nie tak.
+  const [error, setError] = useState('');
 
   useEffect(() => {
     void getAdminSecrets()
@@ -382,12 +384,16 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
       .catch(() => setSaved(null));
   }, []);
 
-  const region = props.regions.find((r) => r.id === target);
-  const ready = (target === ADMIN_TARGET || target === ACCOUNTANT_TARGET || Boolean(region)) && (Boolean(saved) || companyPassword.length >= 12);
+  const region = props.fixedRegion ?? props.regions.find((r) => r.id === target);
+  const hasTarget = target === ADMIN_TARGET || target === ACCOUNTANT_TARGET || Boolean(region);
+  const hasPassword = Boolean(saved) || companyPassword.trim().length > 0;
+  const ready = hasTarget && hasPassword;
+  const missing = !hasTarget ? 'Wybierz, dla kogo jest kod.' : !hasPassword ? 'Wpisz hasło szyfrowania firmy.' : '';
 
   const generate = () =>
     run(async () => {
       setBusy(true);
+      setError('');
       try {
         const api = await supabaseApi();
         const orgWrapped = (await api.myMemberships()).find((m) => m.orgId === props.state.orgId)?.dataKey;
@@ -434,24 +440,27 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
           ].join('\n'),
         });
         if (!props.fixedRegion) setTarget('');
+      } catch (failure) {
+        const { describeError } = await supabaseApi();
+        setError(describeError(failure));
+        throw failure;
       } finally {
         setBusy(false);
       }
     });
 
   return (
-    <Group title={props.fixedRegion ? 'Kod dla nowej osoby w regionie' : 'Kody dla nowych osób'}>
+    <Group title={props.fixedRegion ? `Dodaj technika do regionu ${props.fixedRegion.name}` : 'Kod dla admina lub księgowej'}>
       <div className="form group-pad" id="kody">
-        <p className="field-hint">Osoba sama zakłada konto swoim e-mailem i hasłem i wpisuje kod. Bez kodu konta nie założy.</p>
+        <p className="field-hint">
+          {props.fixedRegion
+            ? 'Wygeneruj kod i wyślij go technikowi. Technik sam zakłada konto swoim e-mailem i hasłem i wpisuje kod: trafi od razu do tego regionu.'
+            : 'Osoba sama zakłada konto swoim e-mailem i hasłem i wpisuje kod. Technika dodasz w jego regionie: dotknij region na liście wyżej.'}
+        </p>
         {!props.fixedRegion && (
           <div className="field">
             <span className="field-label">Dla kogo</span>
             <div className="choice">
-              {props.regions.map((r) => (
-                <button key={r.id} type="button" className={target === r.id ? 'choice-item active' : 'choice-item'} aria-pressed={target === r.id} onClick={() => setTarget(r.id)}>
-                  Technik: {regionLabel(r)}
-                </button>
-              ))}
               <button type="button" className={target === ADMIN_TARGET ? 'choice-item active' : 'choice-item'} aria-pressed={target === ADMIN_TARGET} onClick={() => setTarget(ADMIN_TARGET)}>
                 Admin
               </button>
@@ -482,8 +491,15 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
           </Field>
         )}
         <button type="button" className="btn btn-primary btn-block" disabled={!ready || busy} onClick={() => void generate()}>
-          <Icon name="plus" /> {busy ? 'Generuję…' : 'Wygeneruj kod'}
+          <Icon name="plus" /> {busy ? 'Generuję…' : props.fixedRegion ? 'Wygeneruj kod dla technika' : 'Wygeneruj kod'}
         </button>
+        {!ready && !busy && missing && <p className="field-hint">{missing}</p>}
+        {error && (
+          <p className="notice notice-warn" role="alert">
+            <Icon name="alert" />
+            <span>Nie udało się wygenerować kodu: {error}</span>
+          </p>
+        )}
       </div>
       <Sheet open={Boolean(result)} title={result?.title ?? ''} onClose={() => setResult(null)}>
         {result && <CodeDetails result={result} onClose={() => setResult(null)} />}
@@ -644,7 +660,7 @@ function RegionSettings(props: {
       ) : (
         <Row icon="building" title="Pracuj w tym regionie na tym telefonie" sub="Zlecenia, kalendarz i raporty pokażą ten region" onClick={props.onEnter} />
       )}
-      <Row icon="close" title="Usuń region" sub="Zlecenia zostaną bez regionu, widoczne tylko dla admina" onClick={props.onDelete} />
+      <Row icon="close" title="Usuń region" sub="Zlecenia trafią do archiwum (folder „Usunięty region”)" onClick={props.onDelete} />
     </Group>
   );
 }
@@ -737,10 +753,10 @@ export function AdminPage() {
         <button type="button" className="btn btn-block" onClick={() => navigate('/admin')}>
           <Icon name="back" /> Wszystkie regiony
         </button>
+        <CodesSection key={selected.id} state={state} regions={regionsApi.regions} fixedRegion={selected} />
+        <MembersSection state={state} regions={regionsApi.regions} regionId={selected.id} />
         {periodBlock}
         {screens}
-        <MembersSection state={state} regions={regionsApi.regions} regionId={selected.id} />
-        <CodesSection state={state} regions={regionsApi.regions} fixedRegion={selected} />
         <RegionSettings
           region={selected}
           active={state.branchId === selected.id}
@@ -798,6 +814,7 @@ export function AdminPage() {
         }
       >
         {!regionsApi.online && <p className="field-hint group-pad">Bez internetu: lista z ostatniego połączenia, dodawanie regionów niedostępne.</p>}
+        {ranking.length > 0 && <p className="field-hint group-pad">Dotknij region, żeby dodać technika, zobaczyć konta i ustawienia regionu.</p>}
         {ranking.length === 0 && <Empty title="Nie ma jeszcze żadnego regionu" />}
         {ranking.map((r, i) => (
           <Row
@@ -818,7 +835,7 @@ export function AdminPage() {
           onCreate={(name, prefix) =>
             run(async () => {
               const created = await regionsApi.createRegion(name, prefix);
-              toast(`Region ${created.name} utworzony. Wygeneruj w nim kod dla nowej osoby.`);
+              toast(`Region ${created.name} utworzony. Dodaj technika: wygeneruj kod na górze ekranu regionu.`);
               openRegion(created.id);
             })
           }
