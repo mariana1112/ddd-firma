@@ -27,8 +27,8 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
-import { ContactBar, PinkBadge, SmsSheet, UlvNotice, VisitBadge, visitWhen } from './common';
-import { doneMethods, EXTRA_TREATMENTS, hasFogging, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
+import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen } from './common';
+import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
 import { Photos } from './photos';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
 import { isValidNip } from '../lib/validators';
@@ -146,7 +146,7 @@ function SummarySentBox({ visit, order }: { visit: Visit; order: Order }) {
           </button>
         </div>
       )}
-      {open && <SmsSheet order={order} visit={visit} open={open} initial="zalecenia" onClose={() => setOpen(false)} />}
+      {open && <SmsSheet order={order} visit={visit} open={open} initial="zalecenia" only onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -313,7 +313,6 @@ function FinishSheet(props: {
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
       <div className="form">
-        {hasFogging(doneMethods(visit.treatments, props.order)) && <UlvNotice />}
         <div className="field">
           <span className="field-label">
             Zalecenia proponowane
@@ -545,7 +544,6 @@ export function VisitPage() {
           <span className="terms-label">Co robimy</span> {orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')}
         </p>
       )}
-      {hasFogging([...orderMethods(order), ...visit.treatments.map(methodOf).filter((m): m is NonNullable<typeof m> => m !== null)]) && <UlvNotice />}
 
       {!summary && (
         <div className="terms-bar">

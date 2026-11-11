@@ -1,5 +1,4 @@
 import { orderCode, roman } from '../data/codes';
-import { ULV_NOTICE } from '../data/methods';
 import type { NextVisitState } from '../data/order-list';
 // Elementy wspólne ekranów zleceń: etykiety, akcje kontaktu z klientem i udostępnianie tekstu.
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
@@ -160,7 +159,7 @@ export function NavigateSheet(props: { order: Order; open: boolean; onClose: () 
  * Menu „SMS”: przypomnienie z prośbą o potwierdzenie, „spóźnię się” (ile minut), prośba o przyjazd wcześniej
  * (ile minut) albo własna wiadomość. Tekst można poprawić przed wysłaniem; „Wyślij” otwiera Wiadomości.
  */
-export function SmsSheet(props: { order: Order; visit?: Visit | null; open: boolean; onClose: () => void; initial?: SmsKind }) {
+export function SmsSheet(props: { order: Order; visit?: Visit | null; open: boolean; onClose: () => void; initial?: SmsKind; /** Tylko ta jedna wiadomość, bez wyboru innych. */ only?: boolean }) {
   const { order, visit } = props;
   const data = useLiveQuery(async () => ({ settings: await getAppSettings(), profile: await getProfile() }));
   const phones = order.phones.filter((p) => p.number.trim());
@@ -207,7 +206,7 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
     window.location.href = smsUrl(phone.number, text);
   };
   return (
-    <Sheet open={props.open} title="SMS do klienta" onClose={props.onClose}>
+    <Sheet open={props.open} title={props.only && kind === 'zalecenia' ? 'SMS z zaleceniami' : 'SMS do klienta'} onClose={props.onClose}>
       <div className="form">
         {phones.length > 1 && (
           <div className="choice">
@@ -219,6 +218,7 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
             ))}
           </div>
         )}
+        {!props.only && (
         <div className="sms-options">
           {options.map(([value, label]) => (
             <button key={value} type="button" className={kind === value ? 'choice-item active' : 'choice-item'} aria-pressed={kind === value} onClick={() => setKind(value)}>
@@ -226,6 +226,7 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
             </button>
           ))}
         </div>
+        )}
         {(kind === 'spoznienie' || kind === 'wczesniej') && (
           <div className="field">
             <span className="field-label">{kind === 'spoznienie' ? 'Ile minut spóźnienia (mniej więcej)?' : 'Ile minut wcześniej?'}</span>
@@ -275,12 +276,3 @@ export function ContactBar(props: { order: Order; visit?: Visit | null }) {
   );
 }
 
-/** Uwaga przy zamgławianiu ULV: zawsze widoczna przy zleceniu, zabiegu i w formularzu. */
-export function UlvNotice() {
-  return (
-    <div className="notice notice-warn notice-ulv">
-      <Icon name="alert" />
-      <span>{ULV_NOTICE}</span>
-    </div>
-  );
-}

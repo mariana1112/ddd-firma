@@ -10,8 +10,7 @@ zaszyfrowane.
 - **Kreator zlecenia** krok po kroku (jedna ścieżka):
   - adres z rodzajem budynku: dom, bliźniak albo blok (w bloku lokal, piętro i klatka) oraz opis dojazdu; miejscowość
     poprawia się sama („gdansk” → „Gdańsk”),
-  - co robimy (oprysk ciśnieniowy, ULV, zamgławianie, żelowanie, zalanie odpływów; od tego zależą zalecenia, przy ULV i zamgławianiu
-    zawsze widać uwagę o opuszczeniu lokalu i sprzątaniu), szkodnik, metraż i kod pink,
+  - co robimy (oprysk ciśnieniowy, ULV, zamgławianie, żelowanie, zalanie odpływów; od tego zależą zalecenia), szkodnik, metraż i kod pink,
   - termin z czasem zabiegu i propozycjami blisko innych zleceń z szacowanym dojazdem; o kolejnym zabiegu decyduje się
     przy zakończeniu pierwszego,
   - widełki cenowe (przy fakturze VAT netto i brutto), faktura i protokół,

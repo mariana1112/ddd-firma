@@ -5,7 +5,7 @@ import { mainPhone, orderMatches } from '../data/order-search';
 import { orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, sortOrderRows, URGENT_LABEL, urgentReason, visitInFilter, visitUrgent, type ListFilter, type OrderSort } from '../data/order-list';
-import { documentTags, hasFogging, METHOD_LABEL, orderMethods, tagDone } from '../data/methods';
+import { documentTags, METHOD_LABEL, orderMethods, tagDone } from '../data/methods';
 import { accountingNote } from '../data/accounting';
 import { googleCalendarUrl } from '../data/calendar';
 import { archiveOrder, deleteOrder, orderVisits, restoreOrder, scheduleNextVisit } from '../data/orders';
@@ -21,7 +21,7 @@ import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Pa
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
-import { ContactBar, NextVisitPill, PayBadge, PinkBadge, UlvNotice, VisitBadge, visitWhen } from './common';
+import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen } from './common';
 
 type StatusFilter = ListFilter;
 type PayFilter = 'wszystkie' | PayMethod;
@@ -472,7 +472,6 @@ export function OrderDetailPage() {
       </div>
 
       <ContactBar order={order} visit={nextPlanned ?? current} />
-      {hasFogging(orderMethods(order)) && <UlvNotice />}
 
       {order.pink && order.pinkNote && (
         <div className="notice notice-pink">

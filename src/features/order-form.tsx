@@ -8,9 +8,8 @@ import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
 import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind, TreatmentMethod } from '../data/types';
-import { hasFogging, METHOD_LABEL, METHODS } from '../data/methods';
+import { METHOD_LABEL, METHODS } from '../data/methods';
 import { normalizeCity } from '../data/cities';
-import { UlvNotice } from './common';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
@@ -349,7 +348,6 @@ function MethodsField(props: { value: TreatmentMethod[]; onChange: (value: Treat
         ))}
       </div>
       {props.error && <span className="field-message">{props.error}</span>}
-      {hasFogging(props.value) && <UlvNotice />}
     </div>
   );
 }
