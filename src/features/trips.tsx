@@ -79,19 +79,23 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
 
-  // Licznik startowy to stan po ostatnim przejeździe tym autem.
-  useEffect(() => {
-    void (async () => {
-      const last = await lastOdometer((await getProfile()).userId, vehicle.plate);
-      setStart(last !== null ? String(last) : '');
-    })();
+  // Licznik startowy to stan po ostatnim przejeździe tym autem, służbowym albo prywatnym: jeden licznik dla obu.
+  // Odświeża się, gdy dojdzie przejazd (także z innego urządzenia).
+  const last = useLiveQuery(async () => {
+    const count = await trips.all();
+    return { value: await lastOdometer((await getProfile()).userId, vehicle.plate), count: count.length };
   }, [vehicle.plate]);
+  useEffect(() => {
+    if (last?.value != null) setStart(String(last.value));
+  }, [last?.value]);
 
-  const startKm = Number(start);
+  // Puste „Licznik przed”: bierzemy stan po poprzednim przejeździe.
+  const effectiveStart = start || (last?.value != null ? String(last.value) : '');
+  const startKm = Number(effectiveStart);
   const endKm = Number(end);
-  const km = start && end ? endKm - startKm : null;
+  const km = effectiveStart && end ? endKm - startKm : null;
   const error = km !== null && km < 0 ? 'Licznik po przejeździe jest mniejszy niż przed' : undefined;
-  const ready = /^\d+$/.test(start) && /^\d+$/.test(end) && !error && from.trim() && to.trim();
+  const ready = /^\d+$/.test(effectiveStart) && /^\d+$/.test(end) && !error && from.trim() && to.trim();
 
   return (
     <form
@@ -133,6 +137,11 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
           </button>
         ))}
       </div>
+      <p className="field-hint">
+        {kind === 'sluzbowy'
+          ? 'Służbowy: trafia do ewidencji przebiegu dla celów VAT.'
+          : 'Prywatny: tylko do wglądu firmy, osobno od ewidencji VAT. Licznik jest ten sam dla obu rodzajów.'}
+      </p>
       <div className="form-row form-row-3">
         <Field label="Dzień">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -157,8 +166,8 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
       </Field>
       {(from.trim() || to.trim()) && <p className="field-hint">Trasa w ewidencji: {routeText([from, ...via.split(','), to]) || '—'}</p>}
       <div className="form-row">
-        <Field label="Licznik przed (km)">
-          <input inputMode="numeric" value={start} onChange={(e) => setStart(e.target.value.replace(/\D/g, ''))} />
+        <Field label="Licznik przed (km)" hint={last?.value != null ? `Puste: ${last.value} km z poprzedniej jazdy.` : undefined}>
+          <input inputMode="numeric" value={start} placeholder={last?.value != null ? String(last.value) : ''} onChange={(e) => setStart(e.target.value.replace(/\D/g, ''))} />
         </Field>
         <Field label="Licznik po (km)" error={error}>
           <input inputMode="numeric" value={end} onChange={(e) => setEnd(e.target.value.replace(/\D/g, ''))} />

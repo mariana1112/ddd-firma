@@ -240,6 +240,10 @@ export interface Order extends BaseRecord {
   methods?: TreatmentMethod[];
   /** Klient chce protokół z zabiegu (zaznacza technik albo przyjmujący zlecenie). */
   protocol?: boolean;
+  /** Folder w archiwum, np. „Usunięty region: Gdańsk”. */
+  archivedNote?: string;
+  /** Zlecenie z usuniętego regionu: w archiwum, poza raportami i rankingiem. */
+  regionDeleted?: boolean;
   /** Księgowość: faktura wystawiona i jej numer. */
   invoiceDone?: boolean;
   invoiceNumber?: string;
@@ -310,6 +314,8 @@ export interface Visit extends BaseRecord {
   remindedAt?: string | null;
   /** Co trzeba uszczelnić (np. kratki wentylacyjne/piony, listwy przypodłogowe); pusty: nie trzeba. */
   sealing?: string[];
+  /** Kiedy technik wysłał klientowi SMS z podsumowaniem i zaleceniami (otwarcie Wiadomości z gotową treścią). */
+  summarySentAt?: string | null;
   /** Księgowość: kiedy wystawiono fakturę za ten zabieg (null: jeszcze nie) i jej numer. */
   invoicedAt?: string | null;
   invoiceNumber?: string;

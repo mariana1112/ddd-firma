@@ -200,8 +200,9 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
   const send = async () => {
     if (!phone) return;
     await copyText(text);
-    // Przypomnienie znika z listy „do wysłania” na Pulpicie.
+    // Przypomnienie znika z listy „do wysłania” na Pulpicie; podsumowanie oznacza zabieg jako „zalecenia wysłane”.
     if (kind === 'przypomnienie' && planned) await visitRepo.update(planned.id, { remindedAt: new Date().toISOString() });
+    if (kind === 'zalecenia' && done) await visitRepo.update(done.id, { summarySentAt: new Date().toISOString() });
     props.onClose();
     window.location.href = smsUrl(phone.number, text);
   };

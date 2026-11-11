@@ -497,3 +497,37 @@ describe('wywiad', () => {
     expect(interviewLines(now)).toEqual(['Opis sytuacji: Pluskwy w sypialni', 'Ugryzienia: tak', 'Widziane owady: nie', 'Środki na własną rękę: tak']);
   });
 });
+
+describe('usunięcie regionu', () => {
+  it('zlecenia regionu do archiwum („Usunięty region”), poza raportami; koszty i przejazdy do kosza', async () => {
+    const { order, visits: [first] } = await createOrder(draft(), { start: '2026-11-10T10:00', durationMin: 60 }, { start: '2026-11-24T10:00', durationMin: 60 });
+    await startVisit(first.id);
+    await visits.update(first.id, { payMethod: 'gotowka', amount: 30000 });
+    await finishVisit(first.id, { payMethod: 'gotowka', amount: 30000, treatments: [], places: [], findings: '', problems: '', recommendations: [], next: { mode: 'brak' } });
+    const other = await createOrder(draft({ clientName: 'Inny region' }), { start: '2026-11-11T10:00', durationMin: 60 }, null);
+    const cost = await expenses.create({ date: '2026-11-10', category: 'Paliwo', amount: 5000, description: '', docNo: '', movementId: null, ownerId: null });
+    const trip = await trips.create({ ownerId: null, date: '2026-11-10', kind: 'sluzbowy', timeFrom: '', timeTo: '', from: 'A', to: 'B', purpose: '', odometerStart: 1, odometerEnd: 11 });
+    // Rekordy regionu „r1” (znacznik, który normalnie nadaje synchronizacja).
+    await db.orders.update(order.id, { branchId: 'r1' });
+    await db.expenses.update(cost.id, { branchId: 'r1' });
+    await db.trips.update(trip.id, { branchId: 'r1' });
+
+    const { archiveRegionData } = await import('./orders');
+    const moved = await archiveRegionData('r1', 'Testowy');
+    expect(moved).toEqual({ orders: 1, expenses: 1, trips: 1 });
+    const archived = await orders.get(order.id);
+    expect(archived).toMatchObject({ archived: true, archivedNote: 'Usunięty region: Testowy', regionDeleted: true });
+    expect((await orderVisits(order.id)).map((v) => v.status)).toEqual(['wykonany', 'odwolany']);
+    expect((await orders.get(other.order.id))?.archived).toBeFalsy();
+    expect((await expenses.get(cost.id))?.deletedAt).toBeTruthy();
+    expect((await trips.get(trip.id))?.deletedAt).toBeTruthy();
+
+    const report = buildReport(periodOf('tydzien', '2026-11-10'), {
+      visits: await visits.allRegions(),
+      orders: await orders.allRegions(),
+      expenses: await expenses.allRegions(),
+      trips: await trips.allRegions(),
+    });
+    expect(report.turnover).toBe(0);
+  });
+});

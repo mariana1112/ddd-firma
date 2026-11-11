@@ -6,7 +6,7 @@ import { newId } from '../lib/ids';
 import { db, writeTransaction } from './db';
 import { DomainError } from './domain';
 import { normalizePlate, tripKm } from './mileage';
-import { attachments, orders, visits, trips, type NewRecord } from './repo';
+import { attachments, expenses, orders, visits, trips, type NewRecord } from './repo';
 import { getAppSettings, getProfile, getRegion, nextOrderNumber, ownedBy } from './settings';
 import { EMPTY_INTERVIEW } from './interview';
 import type { Order, PayMethod, Visit } from './types';
@@ -223,6 +223,30 @@ export async function archiveOrder(id: string): Promise<void> {
     }
     await orders.update(id, { archived: true, closed: true });
   });
+}
+
+/**
+ * Przed usunięciem regionu: jego zlecenia trafiają do archiwum (folder „Usunięty region: …”, poza raportami),
+ * niezrobione zabiegi są odwoływane, a koszty i przejazdy regionu trafiają do kosza (można je przywrócić).
+ */
+export async function archiveRegionData(branchId: string, regionName: string): Promise<{ orders: number; expenses: number; trips: number }> {
+  const note = `Usunięty region: ${regionName}`;
+  const regionOrders = (await orders.allRegions()).filter((o) => o.branchId === branchId);
+  const allVisits = await visits.allRegions();
+  await writeTransaction([db.orders, db.visits], async () => {
+    for (const order of regionOrders) {
+      for (const v of allVisits.filter((x) => x.orderId === order.id)) {
+        if (v.status === 'zaplanowany' || v.status === 'w_trakcie') await visits.update(v.id, { status: 'odwolany' });
+      }
+      await orders.update(order.id, { archived: true, closed: true, archivedNote: note, regionDeleted: true });
+    }
+  });
+  const at = new Date().toISOString();
+  const regionExpenses = (await expenses.allRegions()).filter((e) => e.branchId === branchId);
+  const regionTrips = (await trips.allRegions()).filter((t) => t.branchId === branchId);
+  for (const e of regionExpenses) await expenses.softDelete(e.id, at);
+  for (const t of regionTrips) await trips.softDelete(t.id, at);
+  return { orders: regionOrders.length, expenses: regionExpenses.length, trips: regionTrips.length };
 }
 
 /** Przywraca zlecenie z archiwum. Odwołane zabiegi zostają odwołane; kolejny umawia się „Umów kolejny zabieg”. */

@@ -100,7 +100,8 @@ export function buildReport(
 ): Report {
   const orderById = new Map(data.orders.map((o) => [o.id, o]));
   const done = data.visits
-    .filter((v) => v.status === 'wykonany' && inPeriod(v.doneOn, period))
+    // Zlecenia z usuniętego regionu (dane testowe, stary region) nie liczą się do raportów.
+    .filter((v) => v.status === 'wykonany' && inPeriod(v.doneOn, period) && !orderById.get(v.orderId)?.regionDeleted)
     .sort((a, b) => (a.finishedAt ?? '').localeCompare(b.finishedAt ?? ''));
   const expenses = data.expenses.filter((e) => inPeriod(e.date, period)).sort((a, b) => a.date.localeCompare(b.date));
   const trips = data.trips.filter((t) => inPeriod(t.date, period));

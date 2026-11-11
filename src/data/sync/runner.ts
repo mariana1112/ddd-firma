@@ -89,13 +89,21 @@ function schedule(delayMs: number) {
 
 export function startSyncRunner(): void {
   if (!isSyncConfigured) return;
-  onLocalChange(() => schedule(3000));
+  // Zapis wysyła się po sekundzie, a inne urządzenia pobierają zmiany co 20 sekund i przy każdym przejściu
+  // między ekranami (najwyżej raz na 10 sekund), więc karty zleceń i raporty są aktualne.
+  onLocalChange(() => schedule(1000));
+  let lastNav = 0;
+  window.addEventListener('hashchange', () => {
+    if (Date.now() - lastNav < 10_000) return;
+    lastNav = Date.now();
+    schedule(0);
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') schedule(0);
   });
   window.addEventListener('online', () => schedule(0));
   setInterval(() => {
     if (document.visibilityState === 'visible') schedule(0);
-  }, 60_000);
+  }, 20_000);
   schedule(0);
 }

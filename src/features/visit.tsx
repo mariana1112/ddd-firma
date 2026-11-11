@@ -27,7 +27,7 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
-import { ContactBar, PinkBadge, UlvNotice, VisitBadge, visitWhen } from './common';
+import { ContactBar, PinkBadge, SmsSheet, UlvNotice, VisitBadge, visitWhen } from './common';
 import { doneMethods, EXTRA_TREATMENTS, hasFogging, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
 import { Photos } from './photos';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
@@ -112,6 +112,42 @@ function AutoText(props: {
         onBlur={flush}
       />
     </Field>
+  );
+}
+
+/**
+ * Czy klient dostał SMS z podsumowaniem i zaleceniami. Brak: wyraźna uwaga i „Wyślij teraz”; wysłane: data i godzina.
+ * „Wysłane” znaczy, że technik otworzył Wiadomości z gotową treścią (aplikacja nie widzi, czy SMS faktycznie poszedł).
+ */
+function SummarySentBox({ visit, order }: { visit: Visit; order: Order }) {
+  const [open, setOpen] = useState(false);
+  const phone = order.phones.some((p) => p.number.trim());
+  if (!phone) return null;
+  return (
+    <>
+      {visit.summarySentAt ? (
+        <div className="notice notice-info">
+          <Icon name="check" />
+          <span>
+            Zalecenia wysłane klientowi {formatDate(visit.summarySentAt)}, godz. {visit.summarySentAt ? new Date(visit.summarySentAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }) : ''}.
+          </span>
+          <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>
+            Wyślij ponownie
+          </button>
+        </div>
+      ) : (
+        <div className="notice notice-warn">
+          <Icon name="alert" />
+          <span>
+            <strong>Zalecenia nie zostały wysłane klientowi.</strong>
+          </span>
+          <button type="button" className="btn btn-sm btn-primary" onClick={() => setOpen(true)}>
+            Wyślij teraz
+          </button>
+        </div>
+      )}
+      {open && <SmsSheet order={order} visit={visit} open={open} initial="zalecenia" onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
@@ -593,6 +629,7 @@ export function VisitPage() {
 
       {summary && (
         <>
+          <SummarySentBox visit={visit} order={order} />
           {visit.doneOn === todayWarsaw() && <TomorrowReminders afterLastToday />}
           <VisitSummary order={order} visit={visit} vatRate={settings.vatRate} later={later} photos={<Photos visitId={visit.id} readOnly />} />
           <div className="btn-stack">

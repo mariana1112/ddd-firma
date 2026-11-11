@@ -192,6 +192,22 @@ export function OrdersPage() {
             <Group>
               <Empty title="Brak zleceń w tym widoku" />
             </Group>
+          ) : status === 'archiwum' && !searching ? (
+            // Archiwum w folderach: „Usunięty region: …” i zwykłe odwołane zlecenia.
+            [...new Set(rows.map((r) => r.order.archivedNote ?? 'Odwołane'))].map((folder) => {
+              const inFolder = rows.filter((r) => (r.order.archivedNote ?? 'Odwołane') === folder);
+              return (
+                <section key={folder} className="group day-group">
+                  <h2 className="day-head">
+                    <span>
+                      <Icon name="clipboard" size={16} /> {folder}
+                    </span>
+                    <span className="day-head-count">{inFolder.length}</span>
+                  </h2>
+                  <div className="group-body">{inFolder.map(renderRow)}</div>
+                </section>
+              );
+            })
           ) : sort === 'numer' ? (
             <Group>{rows.map(renderRow)}</Group>
           ) : (

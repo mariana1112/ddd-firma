@@ -3,6 +3,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { clearRecoveryLink, takeLinkInfo, takeRecoveryLink, tokenUser } from '../lib/auth-link';
 import { syncInBackground } from '../data/sync/runner';
+import { archiveRegionData } from '../data/orders';
 import { normalizePrefix, PREFIX_MAX, roman, visitCode } from '../data/codes';
 import { companyText, regionRanking, regionData, type RegionRef } from '../data/company';
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
@@ -313,6 +314,10 @@ function useRegions(state: SyncState | null | undefined) {
 
   const deleteRegion = (id: string) =>
     run(async () => {
+      const name = regions.find((r) => r.id === id)?.name ?? 'region';
+      const moved = await archiveRegionData(id, name);
+      // Zmiany idą na serwer, zanim region zniknie (potem rekordy zostają bez regionu, widoczne dla admina).
+      await syncInBackground().catch(() => undefined);
       await (await supabaseApi()).deleteBranch(id);
       const all = await getRegions();
       delete all[id];
@@ -321,7 +326,7 @@ function useRegions(state: SyncState | null | undefined) {
       // Aktywny region tego urządzenia mógł zniknąć.
       const latest = await getSyncState();
       if (latest?.branchId === id) await setSyncState({ ...latest, branchId: null, branchName: '', regionsTagged: false });
-      toast('Region usunięty');
+      toast(`Region ${name} usunięty. W archiwum: ${moved.orders} zleceń (folder „Usunięty region: ${name}”), koszty i przejazdy w koszu.`);
     });
 
   // Nazwy regionów z serwera trafiają też do ustawień firmy, żeby urządzenia znały je bez internetu.
@@ -956,7 +961,7 @@ export function AdminPage() {
             const ok = await confirm({
               title: `Usunąć region ${selected.name}?`,
               message:
-                'Konta stracą dostęp do tego regionu, a kody do niego przestaną działać. Zlecenia regionu zostaną bez regionu i będzie je widział tylko admin.',
+                'Wszystkie zlecenia regionu trafią do archiwum (folder „Usunięty region”) i przestaną liczyć się do raportów. Koszty i przejazdy regionu trafią do kosza. Konta stracą dostęp do regionu, a kody do niego przestaną działać.',
               confirmLabel: 'Usuń region',
               danger: true,
             });
