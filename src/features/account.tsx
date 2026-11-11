@@ -315,8 +315,7 @@ function UnlockForm(props: { busyLabel: string; onUnlock: (passphrase: string) =
 }
 
 /**
- * „Nie pamiętam hasła” na ekranie logowania: link na e-mail konta. Link otwiera w aplikacji ekran nowego hasła;
- * konto admina z ustawionymi pytaniami pomocniczymi odpowiada na nie przed ustawieniem hasła.
+ * „Nie pamiętam hasła” na ekranie logowania: link na e-mail konta. Link otwiera w aplikacji ekran nowego hasła.
  */
 /**
  * Zmiana hasła szyfrowania przez admina na urządzeniu, które ma klucz. Nowe hasło wpisuje admin; aplikacja wysyła

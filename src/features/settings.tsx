@@ -26,6 +26,7 @@ import {
   ownedBy,
   localOrderCounter,
   saveAppSettings,
+  savePersonalSettings,
   saveProfile,
   saveMyPhone,
   saveRegion,
@@ -205,6 +206,8 @@ function SettingsForm(props: {
       await saveMyPhone(myPhone);
       if (!props.regionLocked) await saveRegion({ prefix });
       if (prefix) await offerPrefixForOldOrders(prefix);
+      // Zalecenia, zabiegi i treści SMS każdy ustawia sobie sam.
+      await savePersonalSettings(s);
       if (props.readOnly) {
         toast('Zapisano');
         return;
@@ -268,7 +271,7 @@ function SettingsForm(props: {
         )}
       </fieldset>
 
-      {props.readOnly && <p className="notice notice-info">Pozostałe ustawienia firmy zmienia szef. Zmiany docierają tu przy synchronizacji.</p>}
+      {props.readOnly && <p className="notice notice-info">Rozliczenie i dane firmy zmienia admin. Zalecenia i treści SMS niżej ustawiasz sobie sam.</p>}
       <fieldset disabled={props.readOnly}>
         <legend>Rozliczenie</legend>
         <Field label="Twoje imię" hint={props.synced ? 'Przy synchronizacji imię pochodzi z konta.' : 'Pojawia się w raportach i danych dla centrali.'}>
@@ -323,15 +326,16 @@ function SettingsForm(props: {
         </Field>
       </fieldset>
 
-      <fieldset disabled={props.readOnly}>
-        <legend>Zabieg</legend>
+      <fieldset>
+        <legend>Zabieg (Twoje ustawienia)</legend>
+        <p className="field-hint">Każda osoba ustawia to sobie sama, na swoim telefonie.</p>
         <ListEditor label="Zalecenia dla klienta" items={s.recommendations} placeholder="Nowe zalecenie" onChange={(recommendations) => set({ recommendations })} />
         <ListEditor label="Rodzaje zabiegu" items={s.treatments} placeholder="Np. Oprysk ciśnieniowy" onChange={(treatments) => set({ treatments })} />
         <ListEditor label="Miejsca" items={s.places} placeholder="Np. listwy" onChange={(places) => set({ places })} />
       </fieldset>
 
-      <fieldset disabled={props.readOnly}>
-        <legend>Wiadomości SMS</legend>
+      <fieldset>
+        <legend>Wiadomości SMS (Twoje ustawienia)</legend>
         <p className="field-hint">
           Wstawki w nawiasach klamrowych aplikacja zamienia na dane zabiegu, np. {'{godzina}'} na „10:00”. Treść każdej wiadomości można
           też poprawić przed wysłaniem.
@@ -369,7 +373,7 @@ function SettingsForm(props: {
       </fieldset>
 
       <button type="submit" className="btn btn-primary btn-block" disabled={!props.readOnly && !valid}>
-        {props.readOnly ? 'Zapisz prefiks' : 'Zapisz ustawienia'}
+        Zapisz ustawienia
       </button>
     </form>
   );

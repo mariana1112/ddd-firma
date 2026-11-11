@@ -37,6 +37,7 @@ export function isDeviceMetaKey(key: string): boolean {
     key === 'profile' ||
     key === 'vehicle' ||
     key === 'adminSecrets' ||
+    key === 'myApp' ||
     key.startsWith('geo:') ||
     key.startsWith('numbers:') ||
     key.startsWith('counter:offline:')
@@ -212,12 +213,44 @@ export const DEFAULT_SMS: Pick<AppSettings, 'reminderTemplate' | 'lateTemplate' 
   closing: DEFAULT_APP.closing,
 };
 
+/**
+ * Ustawienia, które każda osoba ustawia sobie sama (na swoim telefonie): treści SMS, zalecenia, rodzaje zabiegu,
+ * miejsca, numer do raportów i strona. Wspólne dla firmy zostają: imię szefa, premia, VAT.
+ */
+export const PERSONAL_KEYS = [
+  'recommendations',
+  'treatments',
+  'places',
+  'reminderTemplate',
+  'lateTemplate',
+  'earlyTemplate',
+  'summaryIntro',
+  'observationTemplate',
+  'contactTemplate',
+  'closing',
+  'reportPhone',
+  'website',
+  'finishGreeting',
+] as const satisfies ReadonlyArray<keyof AppSettings>;
+
+export type PersonalSettings = Pick<AppSettings, (typeof PERSONAL_KEYS)[number]>;
+
+/** Ustawienia firmy z nałożonymi ustawieniami osobistymi tej osoby. */
 export async function getAppSettings(): Promise<AppSettings> {
-  return { ...DEFAULT_APP, ...(await getMeta<Partial<AppSettings>>('app')) };
+  return { ...DEFAULT_APP, ...(await getMeta<Partial<AppSettings>>('app')), ...(await getMeta<Partial<PersonalSettings>>('myApp')) };
 }
 
+/** Wspólne ustawienia firmy (zmienia admin); osobiste pola zapisują się osobno. */
 export async function saveAppSettings(settings: AppSettings): Promise<void> {
-  await setMeta('app', settings);
+  const company: Partial<AppSettings> = { ...settings };
+  for (const key of PERSONAL_KEYS) delete company[key];
+  await setMeta('app', { ...(await getMeta<Partial<AppSettings>>('app')), ...company });
+}
+
+/** Ustawienia osobiste tej osoby (tylko na tym telefonie). */
+export async function savePersonalSettings(settings: PersonalSettings): Promise<void> {
+  const personal = Object.fromEntries(PERSONAL_KEYS.map((key) => [key, settings[key]]));
+  await db.meta.put({ key: 'myApp', value: personal, updatedAt: new Date().toISOString() });
 }
 
 /** Kim jest użytkownik tego urządzenia. Przy synchronizacji imię pochodzi z konta. */

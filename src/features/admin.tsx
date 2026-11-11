@@ -49,45 +49,8 @@ async function accountEmails(state: SyncState): Promise<string[]> {
   return [state.email, current?.userId === state.userId ? current.email : ''].filter(Boolean).map((e) => e.toLowerCase());
 }
 
-/** Trzy odpowiedzi na pytania pomocnicze. Wielkość liter i nadmiarowe spacje nie mają znaczenia. */
-function QuestionsForm(props: { submitLabel: string; hint?: string; onSubmit: (answers: [string, string, string]) => Promise<unknown> }) {
-  const [answers, setAnswers] = useState<[string, string, string]>(['', '', '']);
-  const [busy, setBusy] = useState(false);
-  const ready = answers.every((a) => a.trim().length >= 2);
-  return (
-    <form
-      className="form"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        if (!ready) return;
-        setBusy(true);
-        try {
-          await props.onSubmit(answers);
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      {props.hint && <p className="field-hint">{props.hint}</p>}
-      {RECOVERY_QUESTIONS.map((q, i) => (
-        <Field key={q} label={q}>
-          <input
-            value={answers[i]}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            onChange={(e) => setAnswers((prev) => prev.map((a, j) => (j === i ? e.target.value : a)) as [string, string, string])}
-          />
-        </Field>
-      ))}
-      <button type="submit" className="btn btn-primary btn-block" disabled={busy || !ready}>
-        {busy ? 'Sprawdzam…' : props.submitLabel}
-      </button>
-    </form>
-  );
-}
 
-/** Po potwierdzeniu pytaniami pobieramy dane od nowa: w czasie blokady urządzenie widziało tylko swój region. */
+/** Po ustawieniu nowego hasła pobieramy dane od nowa, żeby panel miał aktualne zlecenia wszystkich regionów. */
 async function refetchAfterRecovery(): Promise<void> {
   const latest = await getSyncState();
   if (latest) await setSyncState({ ...latest, regionsTagged: false });
@@ -109,7 +72,7 @@ function AdminLogin(props: { state: SyncState; onUnlocked: () => void }) {
     });
   }, []);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<'login' | 'reset' | 'questions'>('login');
+  const [mode, setMode] = useState<'login' | 'reset'>('login');
 
   const checkEmail = async () => {
     // Inny e-mail podmieniłby konto zalogowane na urządzeniu, więc sprawdzamy go przed wysłaniem czegokolwiek.
@@ -130,12 +93,6 @@ function AdminLogin(props: { state: SyncState; onUnlocked: () => void }) {
         if (user.userId !== props.state.userId) throw new Error('Nieprawidłowe konto.');
         await saveAdminSecret('panel', remember ? password : '').catch(() => undefined);
         setPassword('');
-        // Po prośbie o reset hasła uprawnienia admina czekają na odpowiedzi na pytania pomocnicze.
-        const status = await api.recoveryStatus();
-        if (status.pending) {
-          setMode('questions');
-          return;
-        }
         unlockedUntil = Date.now() + UNLOCK_MS;
         props.onUnlocked();
       } finally {
@@ -156,29 +113,6 @@ function AdminLogin(props: { state: SyncState; onUnlocked: () => void }) {
       }
     });
 
-  if (mode === 'questions') {
-    return (
-      <div className="card">
-        <QuestionsForm
-          submitLabel="Potwierdź i wejdź"
-          hint="Od ostatniego logowania ktoś prosił o reset hasła tego konta. Uprawnienia admina wrócą po odpowiedzi na pytania pomocnicze."
-          onSubmit={(answers) =>
-            run(async () => {
-              const result = await (await supabaseApi()).verifyRecoveryAnswers(answers);
-              if (result === 'ok' || result === 'brak') {
-                if (result === 'ok') await refetchAfterRecovery();
-                unlockedUntil = Date.now() + UNLOCK_MS;
-                props.onUnlocked();
-              } else {
-                toast(result === 'blokada' ? 'Za dużo błędnych odpowiedzi. Spróbuj za godzinę.' : 'Odpowiedzi się nie zgadzają.', { tone: 'error' });
-              }
-            })
-          }
-        />
-      </div>
-    );
-  }
-
   if (mode === 'reset') {
     return (
       <form
@@ -189,8 +123,7 @@ function AdminLogin(props: { state: SyncState; onUnlocked: () => void }) {
         }}
       >
         <p className="field-hint">
-          Wyślemy link do ustawienia nowego hasła na e-mail admina. Po otwarciu linku aplikacja zapyta też o odpowiedzi na pytania
-          pomocnicze.
+          Wyślemy link do ustawienia nowego hasła na e-mail admina. Otwórz go na tym urządzeniu.
         </p>
         <Field label="Login (e-mail)">
           <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -1045,8 +978,7 @@ export function AdminPage() {
       </Group>
 
       <Group title="Firma">
-        <Row to="/ustawienia" icon="gear" title="Ustawienia firmy" sub="Premia, zalecenia, SMS, dane do kilometrówki" />
-        <Row to="/admin/bezpieczenstwo" icon="gear" title="Login, hasło i pytania pomocnicze" sub="Zmiana danych logowania do panelu i odzyskiwania" />
+        <Row to="/admin/bezpieczenstwo" icon="gear" title="Login i hasło" sub="Zmiana e-maila i hasła konta admina" />
         <Row to="/konto" icon="users" title="Konto admina" sub="Synchronizacja i regiony tego telefonu" />
       </Group>
     </Page>
@@ -1162,12 +1094,11 @@ export function AdminScoped({ children }: { children: ReactNode }) {
 
 // ---------- Bezpieczeństwo konta admina ----------
 
-/** Zmiana loginu (e-mail), hasła i odpowiedzi na pytania pomocnicze. Dostępne po odblokowaniu panelu. */
+/** Zmiana loginu (e-mail) i hasła konta admina. Dostępne po odblokowaniu panelu. */
 export function AdminSecurityPage() {
   const gate = useAdminGate();
   const { run, toast } = useFeedback();
   const [info] = useState(() => takeLinkInfo());
-  const [status, setStatus] = useState<{ configured: boolean } | null>(null);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [repeat, setRepeat] = useState('');
@@ -1176,10 +1107,6 @@ export function AdminSecurityPage() {
 
   useEffect(() => {
     touchUnlock();
-    void supabaseApi()
-      .then((api) => api.recoveryStatus())
-      .then(setStatus)
-      .catch(() => setStatus(null));
   }, []);
 
   if (gate.state === undefined) return <Loading />;
@@ -1245,22 +1172,6 @@ export function AdminSecurityPage() {
         </button>
       </form>
 
-      <Group title={`Pytania pomocnicze${status ? (status.configured ? ' · ustawione' : ' · nieustawione') : ''}`} plain>
-        <div className="card">
-          <QuestionsForm
-            submitLabel={status?.configured ? 'Zmień odpowiedzi' : 'Zapisz odpowiedzi'}
-            hint="Używane przy odzyskiwaniu hasła, razem z linkiem z e-maila. Na serwerze zapisują się tylko zaszyfrowane skróty; wielkość liter nie ma znaczenia."
-            onSubmit={(answers) =>
-              run(async () => {
-                const api = await supabaseApi();
-                await api.setRecoveryAnswers(answers);
-                setStatus(await api.recoveryStatus());
-                toast('Zapisano odpowiedzi na pytania pomocnicze.');
-              })
-            }
-          />
-        </div>
-      </Group>
     </Page>
   );
 }
@@ -1268,16 +1179,15 @@ export function AdminSecurityPage() {
 // ---------- Odzyskiwanie hasła z linku ----------
 
 /**
- * Ekran z linku „Nie pamiętam hasła”: najpierw pytania pomocnicze (sprawdzane na serwerze), potem nowe hasło.
+ * Ekran z linku „Nie pamiętam hasła”: ustawienie nowego hasła.
  * Działa tylko dla konta zalogowanego na tym urządzeniu albo na urządzeniu bez konta firmowego.
  */
 export function AdminRecoveryPage() {
   const navigate = useNavigate();
   const { run, toast } = useFeedback();
   const [link] = useState(() => takeRecoveryLink());
-  const [step, setStep] = useState<'start' | 'questions' | 'password' | 'error'>('start');
+  const [step, setStep] = useState<'start' | 'password' | 'error'>('start');
   const [message, setMessage] = useState('');
-  const [noQuestions, setNoQuestions] = useState(false);
   const [next, setNext] = useState('');
   const [repeat, setRepeat] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1300,9 +1210,7 @@ export function AdminRecoveryPage() {
       try {
         const api = await supabaseApi();
         await api.startRecoverySession(link.accessToken, link.refreshToken);
-        const status = await api.recoveryStatus();
-        setNoQuestions(!status.configured);
-        setStep(status.configured ? 'questions' : 'password');
+        setStep('password');
       } catch (error) {
         clearRecoveryLink();
         setMessage(error instanceof Error ? error.message : 'Link wygasł albo był już użyty. Poproś o nowy.');
@@ -1323,21 +1231,6 @@ export function AdminRecoveryPage() {
           </Link>
         </Empty>
       )}
-      {step === 'questions' && (
-        <div className="card">
-          <QuestionsForm
-            submitLabel="Dalej"
-            hint="Krok 1 z 2: odpowiedz na pytania pomocnicze."
-            onSubmit={(answers) =>
-              run(async () => {
-                const result = await (await supabaseApi()).verifyRecoveryAnswers(answers);
-                if (result === 'ok' || result === 'brak') setStep('password');
-                else toast(result === 'blokada' ? 'Za dużo błędnych odpowiedzi. Spróbuj za godzinę.' : 'Odpowiedzi się nie zgadzają.', { tone: 'error' });
-              })
-            }
-          />
-        </div>
-      )}
       {step === 'password' && (
         <form
           className="form card"
@@ -1357,11 +1250,7 @@ export function AdminRecoveryPage() {
             }).finally(() => setBusy(false));
           }}
         >
-          <p className="field-hint">
-            {noQuestions
-              ? 'Pytania pomocnicze nie są ustawione. Ustaw nowe hasło, a potem pytania w panelu: Login, hasło i pytania pomocnicze.'
-              : 'Krok 2 z 2: ustaw nowe hasło.'}
-          </p>
+          <p className="field-hint">Ustaw nowe hasło do konta.</p>
           <Field label="Nowe hasło" error={passwordError}>
             <input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
           </Field>

@@ -28,6 +28,7 @@ zaszyfrowane.
 - **Usunięcie regionu** (panel admina): zlecenia regionu trafiają do archiwum, do folderu „Usunięty region: nazwa”, i nie liczą się do raportów; koszty i przejazdy regionu trafiają do kosza. Tak można wyczyścić dane testowe przed startem.
 - **Kilometrówka**: jeden licznik dla jazd służbowych i prywatnych; puste „Licznik przed” bierze stan po poprzedniej jeździe. Prywatne są tylko do wglądu, osobno od ewidencji VAT.
 - **Odświeżanie**: zapis idzie na serwer po sekundzie, a inne urządzenia pobierają zmiany co 20 sekund i przy przechodzeniu między ekranami.
+- **Ustawienia osobiste**: zalecenia, rodzaje zabiegu, miejsca i wszystkie treści SMS każda osoba ustawia sobie sama w Ustawieniach (zapis na tym telefonie). Premię, VAT, imię szefa i dane firmy zmienia admin. Pytań pomocniczych do odzyskiwania hasła nie ma: wystarcza link z e-maila (migracja ).
 - **Nowe zlecenie na dziś**: zlecenie na dziś albo jutro dodane przez kogoś innego (np. szefa) pokazuje się na górze Pulpitu, aż technik kliknie „Widzę, OK”. Pulpit nie pokazuje już wykonanych zabiegów.
 - **Kalendarz Google** (zabieg i karta zlecenia): wpis w formacie firmy, np. „II pluskwy 600 Netto full, +48 573 324 034”, z adresem, dniem i godziną, danymi do faktury i opisem.
 - **Płatność przy zabiegu jest wymagana**: przyciski formy płatności są szare, wybrany świeci na zielono. „Zakończ
@@ -126,7 +127,7 @@ usuwa ich z firmy i tworzy kod zaproszenia do wybranego regionu. Prefiks regionu
 technika z tego regionu.
 
 **Login i hasło admina** nie są zapisane w aplikacji ani w repozytorium: sprawdza je Supabase Auth (hasło tylko jako
-skrót). W panelu admina, w „Login, hasło i pytania pomocnicze”, admin zmienia e-mail (z linkiem potwierdzającym), hasło
+skrót). W panelu admina, w „Login i hasło”, admin zmienia e-mail (z linkiem potwierdzającym), hasło
 (z podaniem obecnego, co najmniej 12 znaków) i odpowiedzi na trzy pytania pomocnicze (ulubiona gra, nazwisko panieńskie
 matki, imię pierwszego psa; wielkość liter bez znaczenia, na serwerze tylko skróty bcrypt).
 
