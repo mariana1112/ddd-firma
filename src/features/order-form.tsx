@@ -215,12 +215,14 @@ type Errors = Partial<Record<keyof FormState, string>>;
 function missing(step: StepId, s: FormState): Array<[keyof FormState, string]> {
   const m: Array<[keyof FormState, string]> = [];
   if (step === 'adres' && s.building === 'blok' && !s.flatNo.trim()) m.push(['flatNo', 'numer lokalu']);
-  if (step === 'klient' && !s.clientName.trim()) m.push(['clientName', 'imię lub firma']);
   return m;
 }
 
 // Telefon na początku: stały klient od razu podpowiada swoje dane i adres.
 const ALL_STEPS: StepId[] = ['telefon', 'adres', 'problem', 'termin', 'cena', 'klient'];
+
+/** Klient chce fakturę albo protokół: wtedy potrzebne są e-mail i dane klienta. */
+const needsDocuments = (s: Pick<FormState, 'invoice' | 'protocol'>) => s.invoice !== 'brak' || s.protocol;
 
 /**
  * Błędy, które blokują zapis: puste pola obowiązkowe (adres, co robimy, data, widełki, telefon) i błędnie wpisane
@@ -258,8 +260,10 @@ function validate(step: StepId, s: FormState): Errors {
     else if (s.phone1.replace(/\D/g, '').length < 9) e.phone1 = 'Numer ma za mało cyfr';
   }
   if (step === 'klient') {
+    // E-mail, imię albo nazwa firmy są potrzebne tylko do faktury albo protokołu; bez nich pola są nieobowiązkowe.
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
-    else if (s.invoice !== 'brak' && !s.email.trim()) e.email = 'Do faktury potrzebny jest e-mail';
+    else if (needsDocuments(s) && !s.email.trim()) e.email = s.invoice !== 'brak' ? 'Do faktury potrzebny jest e-mail' : 'Do protokołu potrzebny jest e-mail';
+    if (s.invoice === 'brak' && s.protocol && !s.clientName.trim()) e.clientName = 'Do protokołu podaj imię i nazwisko albo nazwę firmy';
     if (s.invoice === 'vat') {
       if (!s.invoiceName.trim()) e.invoiceName = 'Podaj nazwę firmy';
       if (!s.nip.trim()) e.nip = 'Podaj NIP';
@@ -644,7 +648,6 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               const old = fromOrder(o);
               set({
                 ...client,
-                invoice: o.invoice,
                 building: old.building,
                 street: old.street,
                 houseNo: old.houseNo,
@@ -663,7 +666,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
     case 'klient':
       return (
         <div className="form">
-          <Field label="Imię i nazwisko albo nazwa firmy" error={errors.clientName}>
+          <Field label={needsDocuments(s) ? 'Imię i nazwisko albo nazwa firmy' : 'Imię i nazwisko albo nazwa firmy (nieobowiązkowe)'} error={errors.clientName}>
             <input value={s.clientName} onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
           </Field>
           <div className="form-row">
@@ -674,7 +677,10 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <input value={s.phone2Label} onChange={(e) => set({ phone2Label: e.target.value })} autoComplete="off" />
             </Field>
           </div>
-          <Field label={s.invoice === 'brak' ? 'E-mail' : 'E-mail (do faktury)'} error={errors.email}>
+          <Field
+            label={s.invoice !== 'brak' ? 'E-mail (do faktury)' : s.protocol ? 'E-mail (do protokołu)' : 'E-mail (nieobowiązkowy)'}
+            error={errors.email}
+          >
             <input type="email" inputMode="email" autoCapitalize="none" value={s.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" />
           </Field>
           {s.invoice === 'vat' && (

@@ -513,7 +513,7 @@ export function VisitPage() {
           <VisitBadge visit={visit} />
           {order.pink && <PinkBadge />}
         </div>
-        <h2>{order.clientName}</h2>
+        <h2>{order.clientName || order.phones[0]?.number || "Klient"}</h2>
         <p>
           {orderAddress(order)}
           {accessDetails(order) ? ` · ${accessDetails(order)}` : ''}

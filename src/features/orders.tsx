@@ -542,7 +542,7 @@ export function OrderDetailPage() {
           {order.pink && <PinkBadge />}
           {order.closed && <Badge tone="ok">Zakończone</Badge>}
         </div>
-        <h2>{order.clientName}</h2>
+        <h2>{order.clientName || order.phones[0]?.number || "Klient"}</h2>
         <p>{orderAddress(order)}</p>
       </div>
 
