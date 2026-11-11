@@ -35,6 +35,7 @@ const PATHS = {
   nav: 'm4 11 16-7-7 16-2-7-7-2Z',
   receipt: 'M6 3.500h12v17l-3-2-3 2-3-2-3 2v-17ZM9 8h6M9 11.500h6M9 15h4',
   building: 'M5 20.500V4h9v16.500M14 9h5v11.500M3 20.500h18M8 7.500h3M8 11h3M8 14.500h3',
+  bell: 'M6 16.500V11a6 6 0 0 1 12 0v5.500l1.500 1.500h-15L6 16.500ZM10 20.500a2 2 0 0 0 4 0',
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -2,7 +2,7 @@
 // wysyła dziennik zmian na serwer i pobiera rekordy zmienione przez inne urządzenia.
 // Na serwer trafiają wyłącznie wartości zaszyfrowane kluczem danych firmy (crypto.ts).
 import { logChange, pendingChanges } from '../changes';
-import { db, RECORD_TABLES, SCHEMA_VERSION, writeTransaction, type RecordTableName } from '../db';
+import { db, SCHEMA_VERSION, SYNC_TABLES, writeTransaction, type RecordTableName } from '../db';
 import { attachments } from '../repo';
 import {
   getDataKey,
@@ -60,7 +60,7 @@ const PULL_PAGE = 500;
 const NUMBER_BLOCK = 20;
 const NUMBER_LOW_WATER = 5;
 
-const recordTables = () => RECORD_TABLES.map((t) => db.table(t));
+const recordTables = () => SYNC_TABLES.map((t) => db.table(t));
 
 async function requireKey(): Promise<CryptoKey> {
   const key = await getDataKey();
@@ -80,7 +80,7 @@ export async function enableSync(server: SyncServer, account: Account): Promise<
     await db.changes.where('pushed').equals(0).modify({ pushed: 1 });
     // Bezpośrednio, bez dziennika: ścieżka i tak trafi na serwer po ponownym wysłaniu pliku.
     await db.attachments.filter((a) => Boolean(a.blob && a.remotePath)).modify({ remotePath: null });
-    for (const name of RECORD_TABLES) {
+    for (const name of SYNC_TABLES) {
       for (const row of await db.table(name).toArray()) await logChange(name, row.id, 'put', row);
     }
     for (const key of SYNCED_META_KEYS) {
@@ -218,7 +218,7 @@ async function uploadPhotos(server: SyncServer, state: SyncState, key: CryptoKey
   return waiting.length > 0;
 }
 
-const KNOWN_TABLES = new Set<string>([...RECORD_TABLES, 'meta']);
+const KNOWN_TABLES = new Set<string>([...SYNC_TABLES, 'meta']);
 
 /** Zwraca liczbę rekordów, których nie dało się odszyfrować. */
 async function pullAll(server: SyncServer, state: SyncState, key: CryptoKey): Promise<number> {

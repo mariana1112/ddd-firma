@@ -752,7 +752,8 @@ export function OrderNewPage() {
       );
       saveDraft(null);
       toast(`Zapisano zlecenie ${orderCode(order)}`);
-      navigate(`/zlecenia/${order.id}`, { replace: true });
+      // Karta nowego zlecenia od razu proponuje dodanie terminu do Kalendarza Google.
+      navigate(`/zlecenia/${order.id}?nowe=1`, { replace: true });
     });
 
   if (!settings) return <Loading />;

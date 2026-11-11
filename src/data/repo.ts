@@ -17,6 +17,7 @@ import type {
   Order,
   Visit,
   Trip,
+  Message,
 } from './types';
 
 export { newId };
@@ -116,6 +117,7 @@ export const stockMovements = new Repository<StockMovement>(db.stockMovements);
 export const payments = new Repository<Payment>(db.payments);
 export const expenses = new Repository<Expense>(db.expenses);
 export const attachments = new Repository<Attachment>(db.attachments);
+export const messages = new Repository<Message>(db.messages);
 export const orders = new Repository<Order>(db.orders);
 export const visits = new Repository<Visit>(db.visits);
 export const trips = new Repository<Trip>(db.trips);

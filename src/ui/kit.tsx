@@ -20,8 +20,12 @@ export function BackButton({ fallback }: { fallback: string }) {
 /** Pasek nad tytułem strony, np. „Panel admina · Pomorskie”, gdy ekran pokazuje region wybrany w panelu. */
 export const ScopeBannerContext = createContext<ReactNode>(null);
 
+/** Element w nagłówku każdego ekranu (dzwoneczek powiadomień), podawany przez aplikację. */
+export const HeaderExtraContext = createContext<ReactNode>(null);
+
 export function Page(props: { title: string; back?: string; actions?: ReactNode; children: ReactNode }) {
   const banner = useContext(ScopeBannerContext);
+  const extra = useContext(HeaderExtraContext);
   useEffect(() => {
     window.scrollTo(0, 0);
     document.title = `${props.title} · Pogromcy Insektów`;
@@ -32,7 +36,10 @@ export function Page(props: { title: string; back?: string; actions?: ReactNode;
       <header className="page-head">
         {props.back && <BackButton fallback={props.back} />}
         <h1>{props.title}</h1>
-        <div className="page-actions">{props.actions}</div>
+        <div className="page-actions">
+          {props.actions}
+          {extra}
+        </div>
       </header>
       <main className="page-body">{props.children}</main>
     </div>

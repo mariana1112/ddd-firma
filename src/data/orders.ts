@@ -280,3 +280,27 @@ export async function lastOdometer(ownerId: string | null, vehicle = ''): Promis
 export { tripKm };
 
 export { newId };
+
+/** Technik prosi o usunięcie zlecenia: admin zatwierdza albo odrzuca w powiadomieniach. */
+export async function requestOrderDeletion(id: string, reason: string): Promise<void> {
+  const profile = await getProfile();
+  await orders.update(id, {
+    deleteRequest: { byId: profile.userId, byName: profile.name, at: new Date().toISOString(), reason: reason.trim(), status: 'czeka' },
+  });
+}
+
+/** Wycofanie własnej prośby o usunięcie. */
+export async function cancelOrderDeletionRequest(id: string): Promise<void> {
+  await orders.update(id, { deleteRequest: null });
+}
+
+/** Decyzja admina: zatwierdzenie usuwa zlecenie do kosza, odrzucenie zostawia je z informacją dla technika. */
+export async function decideOrderDeletion(id: string, approve: boolean): Promise<void> {
+  const order = await orders.get(id);
+  if (!order?.deleteRequest) return;
+  const profile = await getProfile();
+  await orders.update(id, {
+    deleteRequest: { ...order.deleteRequest, status: approve ? 'zatwierdzone' : 'odrzucone', decidedBy: profile.name || 'Admin', decidedAt: new Date().toISOString() },
+  });
+  if (approve) await deleteOrder(id);
+}

@@ -244,6 +244,8 @@ export interface Order extends BaseRecord {
   archivedNote?: string;
   /** Zlecenie z usuniętego regionu: w archiwum, poza raportami i rankingiem. */
   regionDeleted?: boolean;
+  /** Prośba technika o usunięcie zlecenia; usuwa i zatwierdza tylko admin. */
+  deleteRequest?: DeleteRequest | null;
   /** Księgowość: faktura wystawiona i jej numer. */
   invoiceDone?: boolean;
   invoiceNumber?: string;
@@ -253,6 +255,25 @@ export interface Order extends BaseRecord {
   accountingNote?: string;
   /** Kiedy księgowa zamknęła zlecenie (wszystko zrobione); brak: do zrobienia. */
   accountingClosedAt?: string | null;
+}
+
+/** Prośba o usunięcie zlecenia: kto, kiedy, dlaczego i co zdecydował admin. */
+export interface DeleteRequest {
+  byId: string | null;
+  byName: string;
+  at: string;
+  reason: string;
+  status: 'czeka' | 'zatwierdzone' | 'odrzucone';
+  decidedBy?: string;
+  decidedAt?: string;
+}
+
+/** Wiadomość czatu: kanał „ksiegowosc”, „firma” albo „region:<id>”. */
+export interface Message extends BaseRecord {
+  channel: string;
+  authorId: string | null;
+  authorName: string;
+  text: string;
 }
 
 export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';
@@ -376,6 +397,7 @@ export type SyncTable =
   | 'orders'
   | 'visits'
   | 'trips'
+  | 'messages'
   | 'meta';
 
 /**

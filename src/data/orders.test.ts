@@ -531,3 +531,38 @@ describe('usunięcie regionu', () => {
     expect(report.turnover).toBe(0);
   });
 });
+
+describe('prośba o usunięcie i powiadomienia', () => {
+  it('technik prosi, admin widzi powiadomienie i zatwierdza; autor dostaje decyzję', async () => {
+    const { requestOrderDeletion, decideOrderDeletion } = await import('./orders');
+    const { buildNotifications } = await import('./notifications');
+    await saveProfile({ name: 'Maciek', userId: 'tech-1' });
+    const { order } = await createOrder(draft(), { start: '2026-11-10T10:00', durationMin: 60 }, null);
+    await requestOrderDeletion(order.id, 'Duplikat');
+    const base = { visits: [], messages: [], channels: [], read: {}, today: '2026-11-11', deletedOrders: [] };
+    const forAdmin = buildNotifications({ ...base, orders: [(await orders.get(order.id))!], me: 'admin-1', owner: true });
+    expect(forAdmin.map((n) => n.kind)).toEqual(['usuniecie']);
+    expect(forAdmin[0].text).toContain('Duplikat');
+
+    await saveProfile({ name: 'Szef', userId: 'admin-1' });
+    await decideOrderDeletion(order.id, true);
+    const deleted = await db.orders.get(order.id);
+    expect(deleted?.deletedAt).toBeTruthy();
+    expect(deleted?.deleteRequest?.status).toBe('zatwierdzone');
+    const forTech = buildNotifications({ ...base, orders: [], deletedOrders: [deleted!], me: 'tech-1', owner: false });
+    expect(forTech[0]).toMatchObject({ kind: 'decyzja', to: '/kosz' });
+  });
+
+  it('czat: nieprzeczytane wiadomości od innych osób', async () => {
+    const { buildNotifications } = await import('./notifications');
+    const msg = (id: string, authorId: string, createdAt: string) => ({ id, channel: 'firma', authorId, authorName: authorId, text: 'Hej', createdAt, updatedAt: createdAt, deletedAt: null });
+    const list = buildNotifications({
+      orders: [], deletedOrders: [], visits: [], today: '2026-11-11', owner: false, me: 'ja',
+      messages: [msg('1', 'ola', '2026-11-11T08:00:00Z'), msg('2', 'ja', '2026-11-11T09:00:00Z'), msg('3', 'ola', '2026-11-11T10:00:00Z')],
+      channels: [{ id: 'firma', label: 'Cała firma' }],
+      read: { firma: '2026-11-11T09:30:00Z' },
+    });
+    expect(list).toHaveLength(1);
+    expect(list[0].title).toBe('Cała firma: nowa wiadomość');
+  });
+});

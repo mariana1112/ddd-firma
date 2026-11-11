@@ -16,10 +16,11 @@ import { BackupPage, MorePage, SettingsPage, TrashPage } from './features/settin
 import { TripsPage } from './features/trips';
 import { CardPage } from './features/card';
 import { AccountingOrderPage, AccountingPage, CorrectionsPage } from './features/accounting';
+import { ChatPage, NotificationBell, NotificationsPage } from './features/communication';
 import { VisitPage } from './features/visit';
 import { FeedbackProvider } from './ui/feedback';
 import { Icon, type IconName } from './ui/icons';
-import { Loading } from './ui/kit';
+import { HeaderExtraContext, Loading } from './ui/kit';
 
 // Kalendarz jest największą zależnością ekranów, więc nie spowalnia startu aplikacji.
 const CalendarPage = lazy(() => import('./features/calendar'));
@@ -29,7 +30,7 @@ const TABS: Array<{ to: string; label: string; icon: IconName; end?: boolean; al
   { to: '/kalendarz', label: 'Kalendarz', icon: 'calendar' },
   { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard', also: ['/zabieg'] },
   { to: '/raporty', label: 'Raporty', icon: 'chart' },
-  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto'] },
+  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto', '/czat', '/powiadomienia'] },
 ];
 
 /** Księgowa nie dodaje kosztów ani przejazdów: zamiast Pulpitu i Kalendarza ma swój panel. */
@@ -115,6 +116,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/powiadomienia" element={<NotificationsPage />} />
+      <Route path="/czat" element={<ChatPage />} />
       <Route path="/ksiegowosc" element={<AccountingPage />} />
       <Route path="/ksiegowosc/poprawki" element={<CorrectionsPage />} />
       <Route path="/ksiegowosc/:id" element={<AccountingOrderPage />} />
@@ -183,9 +186,11 @@ function Shell() {
       <Navigation />
       <div className="content">
         <UpdatePrompt />
-        <Suspense fallback={<Loading />}>
-          <AppRoutes />
-        </Suspense>
+        <HeaderExtraContext.Provider value={state ? <NotificationBell /> : null}>
+          <Suspense fallback={<Loading />}>
+            <AppRoutes />
+          </Suspense>
+        </HeaderExtraContext.Provider>
       </div>
     </div>
   );

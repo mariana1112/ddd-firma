@@ -797,7 +797,7 @@ describe('migracja bazy', () => {
 
   it('wersja bazy zgadza się z SCHEMA_VERSION', () => {
     expect(db.verno).toBe(SCHEMA_VERSION);
-    expect(SCHEMA_VERSION).toBe(5);
+    expect(SCHEMA_VERSION).toBe(6);
   });
 
   it('dane z bazy w wersji 1 przechodzą na najnowszą wersję bez zmiany znaczników', async () => {

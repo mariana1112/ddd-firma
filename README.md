@@ -29,6 +29,10 @@ zaszyfrowane.
 - **Kilometrówka**: jeden licznik dla jazd służbowych i prywatnych; puste „Licznik przed” bierze stan po poprzedniej jeździe. Prywatne są tylko do wglądu, osobno od ewidencji VAT.
 - **Odświeżanie**: zapis idzie na serwer po sekundzie, a inne urządzenia pobierają zmiany co 20 sekund i przy przechodzeniu między ekranami.
 - **Ustawienia osobiste**: zalecenia, rodzaje zabiegu, miejsca i wszystkie treści SMS każda osoba ustawia sobie sama w Ustawieniach (zapis na tym telefonie). Premię, VAT, imię szefa i dane firmy zmienia admin. Pytań pomocniczych do odzyskiwania hasła nie ma: wystarcza link z e-maila (migracja `20261119000000_bez_pytan_pomocniczych.sql`).
+- **Usuwanie zleceń**: technik nie usuwa zlecenia; może je odwołać do archiwum albo „Poprosić admina o usunięcie” z powodem. Admin zatwierdza albo odrzuca w powiadomieniach lub na karcie zlecenia, a technik dostaje decyzję. Serwer przyjmuje usunięcie zleceń i zabiegów tylko od admina.
+- **Dzwoneczek** w nagłówku: prośby o usunięcie (admin), decyzje admina, nowe wiadomości na czacie i nowe zlecenia na dziś/jutro od innych, z pełną treścią na liście powiadomień.
+- **Czat** (Więcej → Czat albo z dzwoneczka): kanały Księgowość, Cała firma i region (admin i księgowa widzą wszystkie regiony). Wiadomości są szyfrowane jak zlecenia. Migracja serwera: 20261120000000_czat_i_usuwanie.sql.
+- **Kalendarz Google po zapisaniu zlecenia**: karta nowego zlecenia od razu proponuje „Dodaj do kalendarza”.
 - **Nowe zlecenie na dziś**: zlecenie na dziś albo jutro dodane przez kogoś innego (np. szefa) pokazuje się na górze Pulpitu, aż technik kliknie „Widzę, OK”. Pulpit nie pokazuje już wykonanych zabiegów.
 - **Kalendarz Google** (zabieg i karta zlecenia): wpis w formacie firmy, np. „II pluskwy 600 Netto full, +48 573 324 034”, z adresem, dniem i godziną, danymi do faktury i opisem.
 - **Płatność przy zabiegu jest wymagana**: przyciski formy płatności są szare, wybrany świeci na zielono. „Zakończ

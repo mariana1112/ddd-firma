@@ -16,9 +16,10 @@ import type {
   Order,
   Visit,
   Trip,
+  Message,
 } from './types';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 class AppDatabase extends Dexie {
   clients!: Table<Client, string>;
@@ -36,6 +37,7 @@ class AppDatabase extends Dexie {
   visits!: Table<Visit, string>;
   trips!: Table<Trip, string>;
   changes!: Table<ChangeRow, number>;
+  messages!: Table<Message, string>;
 
   constructor() {
     super('ddd-firma');
@@ -82,6 +84,10 @@ class AppDatabase extends Dexie {
       visits: 'id, orderId, start, status, doneOn, updatedAt',
       trips: 'id, date, updatedAt',
     });
+    // Czat: wiadomości synchronizowane jak inne rekordy (bez kosza i kopii zapasowej).
+    this.version(6).stores({
+      messages: 'id, channel, createdAt, updatedAt',
+    });
   }
 }
 
@@ -111,7 +117,13 @@ export const RECORD_TABLES = [
   'trips',
 ] as const;
 
-export type RecordTableName = (typeof RECORD_TABLES)[number];
+/** Tabele synchronizowane, ale bez kosza i kopii zapasowej: czat. */
+export const COMM_TABLES = ['messages'] as const;
+
+/** Wszystkie tabele wymieniane z serwerem. */
+export const SYNC_TABLES = [...RECORD_TABLES, ...COMM_TABLES] as const;
+
+export type RecordTableName = (typeof SYNC_TABLES)[number];
 
 export function recordTable(name: RecordTableName): Table<BaseRecord, string> {
   return db.table(name);

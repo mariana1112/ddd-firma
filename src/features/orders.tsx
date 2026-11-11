@@ -8,9 +8,10 @@ import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitSt
 import { documentTags, METHOD_LABEL, orderMethods, tagDone } from '../data/methods';
 import { accountingNote } from '../data/accounting';
 import { googleCalendarUrl } from '../data/calendar';
-import { archiveOrder, deleteOrder, orderVisits, restoreOrder, scheduleNextVisit } from '../data/orders';
+import { archiveOrder, cancelOrderDeletionRequest, decideOrderDeletion, deleteOrder, orderVisits, requestOrderDeletion, restoreOrder, scheduleNextVisit } from '../data/orders';
+import { getSyncState } from '../data/settings';
 import { orders, visits } from '../data/repo';
-import { getAppSettings } from '../data/settings';
+import { getAppSettings, getProfile } from '../data/settings';
 import { accessDetails, BUILDINGS, INVOICES, orderAddress, pestName, priceRange } from '../data/texts';
 import type { Order, PayMethod, Visit } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
@@ -392,6 +393,9 @@ export function ScheduleNext(props: {
 export function OrderDetailPage() {
   const { id = '' } = useParams();
   const [scheduling, setScheduling] = useState(false);
+  const [askingDelete, setAskingDelete] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const [deleteReason, setDeleteReason] = useState('');
   const navigate = useNavigate();
   const { confirm, run, toast } = useFeedback();
   const data = useLiveQuery(async () => {
@@ -406,7 +410,8 @@ export function OrderDetailPage() {
         o.id !== id &&
         (o.phones.some((p) => phones.has(p.number.replace(/\D/g, ''))) || normalizeForSearch(orderAddress(o)) === address),
     );
-    return { order, visits: list, others, settings: await getAppSettings() };
+    const state = await getSyncState();
+    return { order, visits: list, others, settings: await getAppSettings(), role: state?.role ?? null, me: (await getProfile()).userId };
   }, [id]);
 
   if (data === undefined) return <Loading />;
@@ -437,6 +442,24 @@ export function OrderDetailPage() {
   };
 
   const archived = isArchived(order, data.visits);
+  // Usuwa tylko admin (i aplikacja bez konta firmy); technik prosi o usunięcie, admin zatwierdza.
+  const canDelete = !data.role || data.role === 'owner';
+  const pendingDelete = order.deleteRequest?.status === 'czeka' ? order.deleteRequest : null;
+  const askDeletion = () => {
+    setDeleteReason('');
+    setAskingDelete(true);
+  };
+  const decide = async (approve: boolean) => {
+    if (approve) {
+      const ok = await confirm({ title: `Usunąć zlecenie ${orderCode(order)}?`, message: 'Zlecenie z zabiegami i zdjęciami trafi do kosza. Technik dostanie informację.', confirmLabel: 'Usuń', danger: true });
+      if (!ok) return;
+    }
+    await run(async () => {
+      await decideOrderDeletion(id, approve);
+      if (approve) navigate('/zlecenia', { replace: true });
+      toast(approve ? 'Zlecenie usunięte (w koszu)' : 'Prośba o usunięcie odrzucona');
+    });
+  };
   const toArchive = async () => {
     const ok = await confirm({
       title: `Odwołać zlecenie ${orderCode(order)}?`,
@@ -472,6 +495,22 @@ export function OrderDetailPage() {
       </div>
 
       <ContactBar order={order} visit={nextPlanned ?? current} />
+      {params.has('nowe') && nextPlanned && (
+        <div className="notice notice-info calendar-offer">
+          <Icon name="calendar" />
+          <span>
+            <strong>Zlecenie zapisane.</strong> Dodać termin {formatTerm(nextPlanned.start!)} do Kalendarza Google?
+          </span>
+          <span className="notice-actions">
+            <a className="btn btn-sm btn-primary" href={googleCalendarUrl(order, nextPlanned)!} target="_blank" rel="noreferrer" onClick={() => setParams({}, { replace: true })}>
+              Dodaj do kalendarza
+            </a>
+            <button type="button" className="btn btn-sm" onClick={() => setParams({}, { replace: true })}>
+              Nie teraz
+            </button>
+          </span>
+        </div>
+      )}
 
       {order.pink && order.pinkNote && (
         <div className="notice notice-pink">
@@ -590,21 +629,78 @@ export function OrderDetailPage() {
         </Group>
       )}
 
+      {pendingDelete && (
+        <div className="notice notice-warn">
+          <Icon name="alert" />
+          <span>
+            <strong>Prośba o usunięcie</strong> od {pendingDelete.byName || 'technika'}: {pendingDelete.reason || 'bez powodu'}.{' '}
+            {canDelete ? 'Zdecyduj:' : 'Czeka na decyzję admina.'}
+          </span>
+          {canDelete ? (
+            <span className="notice-actions">
+              <button type="button" className="btn btn-sm btn-danger" onClick={() => void decide(true)}>
+                Zatwierdź usunięcie
+              </button>
+              <button type="button" className="btn btn-sm" onClick={() => void decide(false)}>
+                Odrzuć
+              </button>
+            </span>
+          ) : (
+            pendingDelete.byId === data.me && (
+              <button type="button" className="btn btn-sm" onClick={() => void run(async () => { await cancelOrderDeletionRequest(id); toast('Wycofano prośbę'); })}>
+                Wycofaj prośbę
+              </button>
+            )
+          )}
+        </div>
+      )}
+      {order.deleteRequest?.status === 'odrzucone' && order.deleteRequest.byId === data.me && (
+        <p className="notice notice-info">Admin odrzucił prośbę o usunięcie tego zlecenia.</p>
+      )}
+
       {archived ? (
         <>
-          <p className="notice notice-info">Zlecenie jest w archiwum (odwołane).</p>
+          <p className="notice notice-info">Zlecenie jest w archiwum{order.archivedNote ? ` (${order.archivedNote})` : ' (odwołane)'}.</p>
           <button type="button" className="btn btn-block" onClick={() => void run(async () => { await restoreOrder(id); toast('Przywrócono z archiwum'); })}>
             Przywróć z archiwum
           </button>
-          <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void remove()}>
-            <Icon name="trash" /> Usuń zlecenie (kosz)
-          </button>
+          {canDelete && (
+            <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void remove()}>
+              <Icon name="trash" /> Usuń zlecenie (kosz)
+            </button>
+          )}
         </>
       ) : (
         <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void toArchive()}>
           <Icon name="close" /> Odwołaj zlecenie (do archiwum)
         </button>
       )}
+      {!canDelete && !pendingDelete && (
+        <button type="button" className="btn btn-danger-quiet btn-block" onClick={askDeletion}>
+          <Icon name="trash" /> Poproś admina o usunięcie
+        </button>
+      )}
+      <Sheet open={askingDelete} title={`Prośba o usunięcie ${orderCode(order)}`} onClose={() => setAskingDelete(false)}>
+        <form
+          className="form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run(async () => {
+              await requestOrderDeletion(id, deleteReason);
+              setAskingDelete(false);
+              toast('Prośba wysłana do admina');
+            });
+          }}
+        >
+          <p className="sheet-text">Zlecenie usuwa admin. Napisz, dlaczego ma zniknąć (np. pomyłka, duplikat). Zamiast usuwać możesz też odwołać zlecenie do archiwum.</p>
+          <Field label="Powód">
+            <textarea rows={3} value={deleteReason} placeholder="Np. zlecenie dodane dwa razy" onChange={(e) => setDeleteReason(e.target.value)} />
+          </Field>
+          <button type="submit" className="btn btn-primary btn-block" disabled={!deleteReason.trim()}>
+            Wyślij prośbę
+          </button>
+        </form>
+      </Sheet>
     </Page>
   );
 }

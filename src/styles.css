@@ -2611,3 +2611,130 @@ a.btn.disabled {
 .accounting-summary li.todo {
   color: var(--warn);
 }
+
+/* Dzwoneczek w nagłówku */
+.bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: var(--text);
+}
+
+.bell-count {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* Powiadomienia */
+.notification {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notification:last-child {
+  border-bottom: 0;
+}
+
+.notification-new {
+  background: var(--primary-soft);
+}
+
+.notification-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Czat */
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 40vh;
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 82%;
+  padding: 8px 12px;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--surface);
+  align-self: flex-start;
+}
+
+.chat-mine {
+  align-self: flex-end;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--primary-soft);
+}
+
+.chat-author {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.chat-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-time {
+  font-size: 0.72rem;
+  color: var(--muted);
+  align-self: flex-end;
+}
+
+.chat-form {
+  position: sticky;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 8px 0;
+  background: var(--bg);
+}
+
+.chat-form textarea {
+  flex: 1;
+}
