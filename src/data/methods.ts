@@ -1,4 +1,4 @@
-import type { Order, PestCategory, TreatmentMethod } from './types';
+import type { Order, PestCategory, TreatmentMethod, Visit } from './types';
 
 /**
  * Co robimy w zleceniu: wybierane zawsze przy tworzeniu zlecenia. Od metody zależą zalecenia dla klienta,
@@ -96,9 +96,14 @@ export function recommendationsFor(methods: TreatmentMethod[], pest: PestCategor
   return { list, required };
 }
 
-/** Czy dokument z oznaczenia jest już zrobiony przez księgową. */
-export function tagDone(order: Pick<Order, 'invoiceDone' | 'protocolDone'>, tag: string): boolean {
-  return tag === 'prot' ? Boolean(order.protocolDone) : Boolean(order.invoiceDone);
+/**
+ * Czy dokument z oznaczenia jest już zrobiony przez księgową. Faktura liczy się według zabiegów: na liście „każdy zabieg
+ * osobno” ten jeden zabieg, w widoku zleceń wszystkie wykonane.
+ */
+export function tagDone(order: Pick<Order, 'invoiceDone' | 'protocolDone'>, tag: string, visits: Visit[]): boolean {
+  if (tag === 'prot') return Boolean(order.protocolDone);
+  const done = visits.filter((v) => v.status === 'wykonany');
+  return done.length > 0 && done.every((v) => (v.invoicedAt === undefined ? Boolean(order.invoiceDone) : Boolean(v.invoicedAt)));
 }
 
 /** Krótkie oznaczenia dokumentów na liście i w szukaniu: „fv23” (faktura VAT), „fv” (imienna), „prot”. */

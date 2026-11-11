@@ -249,9 +249,9 @@ export function VisitListRow({ order, visit, today }: { order: Order; visit: Vis
             {urgent && urgent !== 'w_trakcie' && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
             {visit.payMethod && <PayBadge method={visit.payMethod} />}
             {documentTags(order).map((tag) => (
-              <Badge key={tag} tone={tagDone(order, tag) ? 'ok' : 'info'}>
+              <Badge key={tag} tone={tagDone(order, tag, [visit]) ? 'ok' : 'info'}>
                 {tag}
-                {tagDone(order, tag) ? ' ✓' : ''}
+                {tagDone(order, tag, [visit]) ? ' ✓' : ''}
               </Badge>
             ))}
           </span>
@@ -313,9 +313,9 @@ export function OrderRow({ order, visits: list, today }: { order: Order; visits:
                 <PayBadge key={m} method={m} />
               ))}
               {documentTags(order).map((tag) => (
-                <Badge key={tag} tone={tagDone(order, tag) ? 'ok' : 'info'}>
+                <Badge key={tag} tone={tagDone(order, tag, list) ? 'ok' : 'info'}>
                   {tag}
-                  {tagDone(order, tag) ? ' ✓' : ''}
+                  {tagDone(order, tag, list) ? ' ✓' : ''}
                 </Badge>
               ))}
             </span>
@@ -553,8 +553,15 @@ export function OrderDetailPage() {
         <Info label="Faktura">{INVOICES[order.invoice]}</Info>
         {order.invoice === 'vat' && order.invoiceName && <Info label="Firma do faktury">{order.invoiceName}</Info>}
         <Info label="Protokół">{order.protocol ? 'Tak, klient chce protokół' : 'Nie'}</Info>
-        {accountingNote(order) && <Info label="Księgowość">{accountingNote(order)}</Info>}
-        {order.invoiceNumber && <Info label="Numer faktury">{order.invoiceNumber}</Info>}
+        {accountingNote(order, data.visits) && <Info label="Księgowość">{accountingNote(order, data.visits)}</Info>}
+        {data.visits.some((v) => v.invoiceNumber) && (
+          <Info label="Numery faktur">
+            {data.visits
+              .filter((v) => v.invoiceNumber)
+              .map((v) => `${roman(v.seq)}: ${v.invoiceNumber}`)
+              .join('\n')}
+          </Info>
+        )}
         {order.accountingNote && <Info label="Uwagi księgowej">{order.accountingNote}</Info>}
         {order.nip && <Info label="NIP">{order.nip}</Info>}
         {order.invoiceAddress && <Info label="Adres do FV">{order.invoiceAddress}</Info>}

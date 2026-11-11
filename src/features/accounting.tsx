@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { accountingState, accountingTasks, doneVisits, invoiceAmount, readyToClose, TASK_LABEL, taskDone } from '../data/accounting';
-import { orderCode, visitCode } from '../data/codes';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { accountingState, accountingTasks, doneVisits, invoiceAmount, pendingInvoices, readyToClose, TASK_LABEL, taskDone, visitInvoiced } from '../data/accounting';
+import { orderCode, roman, visitCode } from '../data/codes';
 import { deleteExpense } from '../data/domain';
 import { orderMatches } from '../data/order-search';
 import { costName, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
@@ -14,8 +14,7 @@ import { formatDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Page, Row, Search } from '../ui/kit';
-import { PayBadge } from './common';
+import { Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Page, Row, Search, Sheet } from '../ui/kit';
 
 type Tab = 'czeka' | 'zamkniete';
 
@@ -35,7 +34,7 @@ export function AccountingPage() {
     const byOrder = new Map<string, Visit[]>();
     for (const v of data.visits) byOrder.set(v.orderId, [...(byOrder.get(v.orderId) ?? []), v]);
     return data.orders
-      .map((order) => ({ order, list: byOrder.get(order.id) ?? [], state: accountingState(order) }))
+      .map((order) => ({ order, list: byOrder.get(order.id) ?? [], state: accountingState(order, byOrder.get(order.id) ?? []) }))
       .filter((r) => r.state !== 'brak' && orderMatches(r.order, query) && (!region || r.order.branchId === region));
   }, [data, query, region]);
 
@@ -94,9 +93,10 @@ export function AccountingPage() {
                   {done.length ? `Wykonane zabiegi: ${done.length}, razem ${formatPln(invoiceAmount(list))}` : 'Zabieg jeszcze niewykonany'}
                   <span className="row-tags">
                     {accountingTasks(order).map((t) => (
-                      <Badge key={t} tone={taskDone(order, t) ? 'ok' : 'warn'}>
+                      <Badge key={t} tone={taskDone(order, t, list) ? 'ok' : 'warn'}>
                         {t === 'faktura' ? INVOICES[order.invoice] : TASK_LABEL[t]}
-                        {taskDone(order, t) ? ' ✓' : ''}
+                        {t === 'faktura' && done.length > 1 ? ` ${done.length - pendingInvoices(order, list).length}/${done.length}` : ''}
+                        {taskDone(order, t, list) ? ' ✓' : ''}
                       </Badge>
                     ))}
                   </span>
@@ -132,10 +132,12 @@ function SavedText(props: { label: string; value: string; placeholder?: string; 
   );
 }
 
-/** Zlecenie oczami księgowej: dane do faktury, wykonane zabiegi, dokumenty i zamknięcie. */
+/** Zlecenie oczami księgowej: dane do faktury, faktura osobno dla każdego zabiegu, protokół, zapis z podsumowaniem. */
 export function AccountingOrderPage() {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const { run, toast } = useFeedback();
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const data = useLiveQuery(async () => {
     const order = await orders.get(id);
     if (!order || order.deletedAt) return null;
@@ -146,27 +148,54 @@ export function AccountingOrderPage() {
   if (data === null) return <NotFound back="/ksiegowosc" />;
   const { order, list } = data;
   const done = doneVisits(list);
-  const update = (patch: Partial<Order>, message?: string) =>
+  const wantsInvoice = order.invoice !== 'brak';
+  const pending = pendingInvoices(order, list);
+  const ready = readyToClose(order, list);
+  const update = (patch: Partial<Order>) => run(() => orders.update(order.id, patch));
+  const updateVisit = (visitId: string, patch: Partial<Visit>) => run(() => visits.update(visitId, patch));
+
+  /** Zapis: zamknięcie (gdy wszystko zrobione) albo powrót z niedokończonym zleceniem; zawsze wraca do listy. */
+  const finish = (close: boolean) =>
     run(async () => {
-      await orders.update(order.id, patch);
-      if (message) toast(message);
+      if (close) await orders.update(order.id, { accountingClosedAt: new Date().toISOString() });
+      setSummaryOpen(false);
+      toast(close ? `${orderCode(order)}: zamknięte, wszystko zrobione` : `${orderCode(order)}: zapisane, zostaje w „Do zrobienia”`);
+      navigate('/ksiegowosc', { replace: true });
     });
+
+  // Podsumowanie przed wyjściem: co zrobione, co jeszcze czeka.
+  const summaryLines: Array<[string, boolean]> = [
+    ...(wantsInvoice
+      ? done.length
+        ? done.map((v): [string, boolean] => [
+            `Faktura za zabieg ${roman(v.seq)} (${v.amount ? formatPln(v.amount) : 'bez kwoty'})${v.invoiceNumber ? `, nr ${v.invoiceNumber}` : ''}`,
+            visitInvoiced(order, v),
+          ])
+        : [['Faktura: zabieg jeszcze niewykonany', false] as [string, boolean]]
+      : []),
+    ...(order.protocol ? [['Protokół', Boolean(order.protocolDone)] as [string, boolean]] : []),
+  ];
 
   return (
     <Page title={orderCode(order)} back="/ksiegowosc">
-      {order.accountingClosedAt ? (
+      {order.accountingClosedAt && accountingState(order, list) === 'zamkniete' ? (
         <div className="notice notice-info">
           <Icon name="check" />
           <span>Zamknięte przez księgową {formatDate(order.accountingClosedAt)}.</span>
         </div>
+      ) : order.accountingClosedAt ? (
+        <div className="notice notice-warn">
+          <Icon name="alert" />
+          <span>Zlecenie było zamknięte, ale doszedł zabieg bez faktury. Zaznacz go poniżej.</span>
+        </div>
       ) : null}
-
       {order.invoice === 'vat' && !order.nip.trim() && (
         <div className="notice notice-warn">
           <Icon name="alert" />
           <span>Faktura VAT bez NIP. Uzupełnij NIP w pełnym zleceniu (Edytuj) albo zapytaj technika.</span>
         </div>
       )}
+
       <Group title="Klient i dane do faktury">
         <Info label="Klient">{order.clientName || '—'}</Info>
         <Info label="Faktura">{INVOICES[order.invoice]}</Info>
@@ -181,35 +210,38 @@ export function AccountingOrderPage() {
         ))}
       </Group>
 
-      <Group title={`Wykonane zabiegi (${done.length})`}>
+      <Group title={wantsInvoice ? `Faktury za zabiegi (${done.length - pending.length} z ${done.length})` : `Wykonane zabiegi (${done.length})`} plain>
         {done.length === 0 && <Empty title="Zabieg jeszcze niewykonany" />}
         {done.map((v) => (
-          <Row
-            key={v.id}
-            to={`/zabieg/${v.id}`}
-            title={`${visitCode(order, v.seq)} · ${formatDate(v.doneOn)}`}
-            sub={[workSummary(v), v.technicianName && `technik: ${v.technicianName}`].filter(Boolean).join(' · ')}
-            trailing={
-              <span className="row-end">
-                <strong className="num">{v.amount ? formatPln(v.amount) : '—'}</strong>
-                {v.payMethod && <PayBadge method={v.payMethod} />}
-              </span>
-            }
-          />
+          <div key={v.id} className={`card form accounting-visit${wantsInvoice && visitInvoiced(order, v) ? ' accounting-visit-done' : ''}`}>
+            <Link to={`/zabieg/${v.id}`} className="accounting-visit-head">
+              <strong>
+                {visitCode(order, v.seq)} · {formatDate(v.doneOn)}
+              </strong>
+              <span className="num">{v.amount ? formatPln(v.amount) : '—'}</span>
+            </Link>
+            <span className="row-sub">
+              {[v.payMethod && PAY_NAMES[v.payMethod], workSummary(v), v.technicianName && `technik: ${v.technicianName}`].filter(Boolean).join(' · ')}
+            </span>
+            {wantsInvoice && (
+              <>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={visitInvoiced(order, v)}
+                    onChange={(e) => void updateVisit(v.id, { invoicedAt: e.target.checked ? new Date().toISOString() : null })}
+                  />
+                  Faktura za zabieg {roman(v.seq)} wystawiona
+                </label>
+                <SavedText label="Numer faktury" value={v.invoiceNumber ?? ''} placeholder="Np. FV 12/11/2026" onSave={(invoiceNumber) => updateVisit(v.id, { invoiceNumber })} />
+              </>
+            )}
+          </div>
         ))}
         {done.length > 1 && <Info label="Razem">{formatPln(invoiceAmount(list))}</Info>}
       </Group>
 
-      {accountingTasks(order).includes('faktura') && (
-        <Group title={INVOICES[order.invoice]} plain>
-          <label className="check">
-            <input type="checkbox" checked={Boolean(order.invoiceDone)} onChange={(e) => void update({ invoiceDone: e.target.checked })} />
-            Faktura wystawiona
-          </label>
-          <SavedText label="Numer faktury" value={order.invoiceNumber ?? ''} placeholder="Np. FV 12/11/2026" onSave={(invoiceNumber) => update({ invoiceNumber })} />
-        </Group>
-      )}
-      {accountingTasks(order).includes('protokol') && (
+      {order.protocol && (
         <Group title="Protokół" plain>
           <label className="check">
             <input type="checkbox" checked={Boolean(order.protocolDone)} onChange={(e) => void update({ protocolDone: e.target.checked })} />
@@ -219,26 +251,44 @@ export function AccountingOrderPage() {
       )}
       <SavedText label="Uwagi księgowej" value={order.accountingNote ?? ''} multiline onSave={(accountingNote) => update({ accountingNote })} />
 
-      {order.accountingClosedAt ? (
-        <button type="button" className="btn btn-block" onClick={() => void update({ accountingClosedAt: null }, 'Zlecenie wróciło do „Do zrobienia”')}>
+      {order.accountingClosedAt && accountingState(order, list) === 'zamkniete' ? (
+        <button type="button" className="btn btn-block" onClick={() => void update({ accountingClosedAt: null })}>
           Otwórz ponownie
         </button>
       ) : (
-        <>
-          <button
-            type="button"
-            className="btn btn-primary btn-block"
-            disabled={!readyToClose(order)}
-            onClick={() => void update({ accountingClosedAt: new Date().toISOString() }, 'Zlecenie zamknięte')}
-          >
-            <Icon name="check" /> Zamknij: wszystko zrobione
-          </button>
-          {!readyToClose(order) && <p className="field-hint">Zaznacz najpierw wszystkie dokumenty powyżej.</p>}
-        </>
+        <button type="button" className="btn btn-primary btn-block" onClick={() => setSummaryOpen(true)}>
+          <Icon name="check" /> Zapisz
+        </button>
       )}
       <Link className="btn btn-block" to={`/zlecenia/${order.id}`}>
         Pełne zlecenie
       </Link>
+
+      <Sheet open={summaryOpen} title={`Podsumowanie · ${orderCode(order)}`} onClose={() => setSummaryOpen(false)}>
+        <div className="form">
+          <p className="sheet-text">
+            {order.clientName}
+            {order.invoice === 'vat' && order.invoiceName ? ` · ${order.invoiceName}` : ''}
+          </p>
+          <ul className="accounting-summary">
+            {summaryLines.map(([text, ok]) => (
+              <li key={text} className={ok ? 'done' : 'todo'}>
+                <Icon name={ok ? 'check' : 'alert'} size={16} /> {text}: {ok ? 'zrobione' : 'jeszcze nie'}
+              </li>
+            ))}
+          </ul>
+          {ready ? (
+            <button type="button" className="btn btn-primary btn-block" onClick={() => void finish(true)}>
+              <Icon name="check" /> Zamknij zlecenie i wróć do listy
+            </button>
+          ) : (
+            <p className="field-hint">Nie wszystko jest zrobione, więc zlecenie zostanie w „Do zrobienia”.</p>
+          )}
+          <button type="button" className={ready ? 'btn btn-block' : 'btn btn-primary btn-block'} onClick={() => void finish(false)}>
+            {ready ? 'Zapisz bez zamykania' : 'Zapisz i wróć do listy'}
+          </button>
+        </div>
+      </Sheet>
     </Page>
   );
 }

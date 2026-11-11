@@ -2574,3 +2574,40 @@ a.btn.disabled {
   gap: 2px;
   padding: 12px 16px 6px;
 }
+
+/* Księgowość: zabieg do faktury i podsumowanie przed wyjściem */
+.accounting-visit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.accounting-visit-done {
+  border-color: var(--ok, #2f7d4f);
+  box-shadow: inset 4px 0 0 var(--ok, #2f7d4f);
+}
+
+.accounting-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.accounting-summary li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accounting-summary li.done {
+  color: var(--ok, #2f7d4f);
+}
+
+.accounting-summary li.todo {
+  color: var(--warn);
+}

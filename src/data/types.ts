@@ -310,6 +310,9 @@ export interface Visit extends BaseRecord {
   remindedAt?: string | null;
   /** Co trzeba uszczelnić (np. kratki wentylacyjne/piony, listwy przypodłogowe); pusty: nie trzeba. */
   sealing?: string[];
+  /** Księgowość: kiedy wystawiono fakturę za ten zabieg (null: jeszcze nie) i jej numer. */
+  invoicedAt?: string | null;
+  invoiceNumber?: string;
 }
 
 export type ScopeKind = 'calosc' | 'pokoj' | 'inne';
