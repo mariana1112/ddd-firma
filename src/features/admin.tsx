@@ -10,7 +10,7 @@ import { companyText, regionRanking, regionData, type RegionRef } from '../data/
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
-import { COMPANY_NAME, getDataKey, getRegions, getSyncState, matchRegionsToServer, saveRegions, setSyncState } from '../data/settings';
+import { COMPANY_NAME, getAppSettings, getDataKey, getRegions, getSyncState, matchRegionsToServer, saveRegions, setSyncState } from '../data/settings';
 import { enterRegion } from './regions';
 import type { SyncState } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
@@ -621,7 +621,7 @@ const regionLabel = (r: RegionRef) => (r.prefix ? `${r.name} (${r.prefix})` : r.
 
 const periodName = (p: Period) => {
   const d = (date: string) => `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)}`;
-  return `${d(p.from)} – ${d(p.to)}`;
+  return p.from === p.to ? d(p.from) : `${d(p.from)} – ${d(p.to)}`;
 };
 
 /** Ustawienia jednego regionu: prefiks, wejście na tym telefonie, usunięcie. */
@@ -674,6 +674,7 @@ export function AdminPage() {
   const region = params.get('region') ?? 'all';
   const [kind, setKind] = useState<PeriodKind>('tydzien');
   const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
+  const [pdfBusy, setPdfBusy] = useState(false);
   const { confirm, deliverFile, run, toast } = useFeedback();
   const regionsApi = useRegions(gate.state);
   // Dane całej firmy, bez filtra regionu z ekranów technika.
@@ -698,6 +699,19 @@ export function AdminPage() {
   // Wejście do regionu dodaje krok w historii, więc „wstecz” wraca do listy regionów.
   const openRegion = (id: string) => navigate(`/admin?region=${id}`);
   const scoped = (path: string) => `/admin/${path}${selected ? `?region=${selected.id}` : ''}`;
+  // Raport okresu (dzień, tydzień, miesiąc) jako PDF: dla regionu albo całej firmy, ten sam wzór co w Raportach.
+  const reportPdf = () =>
+    run(async () => {
+      setPdfBusy(true);
+      try {
+        const [{ reportDocument }, { renderPdf }, settings] = await Promise.all([import('../pdf/documents'), import('../pdf/render'), getAppSettings()]);
+        const names = { technician: selected ? `region ${selected.name}` : 'cała firma', bossGenitive: settings.bossName };
+        const slug = selected ? (selected.prefix || selected.name).toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'firma';
+        deliverFile(await renderPdf(reportDocument(report, names)), `raport-${slug}-${period.kind}-${period.from}.pdf`);
+      } finally {
+        setPdfBusy(false);
+      }
+    });
   const changeKind = (k: PeriodKind) => {
     setKind(k);
     setPeriod(periodOf(k, todayWarsaw()));
@@ -708,6 +722,7 @@ export function AdminPage() {
       <div className="chips" role="group" aria-label="Okres">
         {(
           [
+            ['dzien', 'Dzień'],
             ['tydzien', 'Tydzień'],
             ['miesiac', 'Miesiąc'],
           ] as Array<[PeriodKind, string]>
@@ -734,6 +749,9 @@ export function AdminPage() {
         <Stat label="Km służbowo" value={`${report.km.sluzbowy} km`} />
         <Stat label="Km prywatnie" value={`${report.km.prywatny} km`} />
       </div>
+      <button type="button" className="btn btn-block" disabled={pdfBusy} onClick={() => void reportPdf()}>
+        <Icon name="file" /> {pdfBusy ? 'Przygotowuję PDF…' : `Raport PDF: ${kind === 'dzien' ? 'dzień' : kind === 'tydzien' ? 'tydzień' : 'miesiąc'}`}
+      </button>
     </>
   );
 
