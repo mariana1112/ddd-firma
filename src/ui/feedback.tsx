@@ -81,6 +81,14 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     else downloadFile(blob, filename);
   }, []);
 
+  /** Nieznany błąd: bez internetu prosto o połączeniu, w innym razie z krótką przyczyną, żeby dało się powiedzieć, co się stało. */
+  const unknownErrorText = (error: unknown): string => {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    if (/fetch|network|load failed/i.test(message) || navigator.onLine === false) return 'Brak połączenia z serwerem. Sprawdź internet i spróbuj ponownie.';
+    const reason = message.trim().slice(0, 140);
+    return reason ? `Operacja się nie powiodła (${reason}). Spróbuj ponownie.` : 'Operacja się nie powiodła. Spróbuj ponownie.';
+  };
+
   const run = useCallback<FeedbackApi['run']>(
     async (action) => {
       try {
@@ -92,7 +100,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           error instanceof BackupError ||
           error instanceof SyncError ||
           error instanceof CryptoError;
-        toast(known ? (error as Error).message : 'Operacja się nie powiodła. Spróbuj ponownie.', { tone: 'error' });
+        toast(known ? (error as Error).message : unknownErrorText(error), { tone: 'error' });
         return undefined;
       }
     },

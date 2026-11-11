@@ -1,4 +1,5 @@
 import { db } from './db';
+import { DomainError } from './domain';
 import { getDataKey } from './settings';
 import { decryptFields, encryptFields } from './sync/crypto';
 
@@ -33,7 +34,7 @@ export async function getAdminSecrets(): Promise<AdminSecrets> {
 /** Zapisuje albo (pusty tekst) usuwa jedno hasło. */
 export async function saveAdminSecret(kind: keyof AdminSecrets, value: string): Promise<void> {
   const key = await getDataKey();
-  if (!key) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
+  if (!key) throw new DomainError('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
   const next: AdminSecrets = { ...(await getAdminSecrets()), [kind]: value || undefined };
   const fields = Object.fromEntries(Object.entries(next).filter(([, v]) => v));
   if (Object.keys(fields).length === 0) {

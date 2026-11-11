@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { DomainError } from '../data/domain';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createSnapshot } from '../data/backup';
 import { pendingCount } from '../data/changes';
@@ -256,7 +257,7 @@ function RegisterForm(props: { onSignedIn: (user: { userId: string; email: strin
           try {
             const { key, orgId, user } = await api.registerWithCode({ name, email, password, code });
             const m = (await api.myMemberships()).find((x) => x.orgId === orgId);
-            if (!m) throw new Error('Nie udało się dołączyć do firmy. Wpisz kod ponownie.');
+            if (!m) throw new DomainError('Nie udało się dołączyć do firmy. Wpisz kod ponownie.');
             await startEncryptedSync(key, membershipAccount(m, { ...user, name: name.trim() }));
             toast('Konto założone. Witaj!');
           } catch (error) {
@@ -634,7 +635,7 @@ function ChooseOrg(props: { userId: string; email: string; name: string; initial
       const api = await supabaseApi();
       const { key, orgId } = await api.redeemSignupCode(code, name);
       const m = (await api.myMemberships()).find((x) => x.orgId === orgId);
-      if (!m) throw new Error('Nie udało się dołączyć do firmy. Poproś admina o nowy kod.');
+      if (!m) throw new DomainError('Nie udało się dołączyć do firmy. Poproś admina o nowy kod.');
       await startEncryptedSync(key, membershipAccount(m, user));
       toast('Gotowe. Telefon połączony z firmą.');
     });
@@ -866,7 +867,7 @@ function Relogin({ state }: { state: SyncState }) {
           const user = await api.signIn(state.email, password);
           if (user.userId !== state.userId) {
             await api.signOut();
-            throw new Error('To inne konto niż konto tego urządzenia.');
+            throw new DomainError('To inne konto niż konto tego urządzenia.');
           }
           setPassword('');
           const latest = await getSyncState();

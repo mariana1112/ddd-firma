@@ -53,7 +53,7 @@ const MESSAGES: Record<string, string> = {
   KEY_EXISTS: 'Firma ma już hasło szyfrowania. Odśwież ekran i wpisz to hasło.',
   BAD_INVITE: 'Kod weryfikacyjny jest nieprawidłowy, wykorzystany albo wygasł. Poproś admina o nowy kod.',
   WEAK_PASSWORD: 'Hasło musi mieć co najmniej 12 znaków.',
-  BAD_BRANCH: 'Nie ma takiego oddziału.',
+  BAD_BRANCH: 'Tego regionu nie ma na serwerze (mógł zostać usunięty). Odśwież panel admina i wybierz region z listy.',
   FORBIDDEN: 'To konto nie ma uprawnień w tej firmie (np. zostało zawieszone przez admina).',
   ORG_EXISTS: 'To konto ma już firmę.',
   NOT_AUTHENTICATED: 'Sesja wygasła. Zaloguj się ponownie.',
@@ -74,7 +74,7 @@ export function describeError(error: unknown): string {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message ?? error);
   for (const [code, text] of Object.entries(MESSAGES)) if (message.includes(code)) return text;
   if (/invalid login credentials/i.test(message)) return 'Nieprawidłowy e-mail lub hasło.';
-  if (/permission denied for table/i.test(message)) return MESSAGES.SESSION_LOST;
+  if (/permission denied for (table|function)/i.test(message)) return MESSAGES.SESSION_LOST;
   if (/could not find the function|PGRST202/i.test(message)) return 'Serwer nie ma jeszcze tej funkcji: trzeba wykonać migrację odzyskiwania konta admina.';
   if (/email not confirmed/i.test(message)) return 'Najpierw potwierdź adres linkiem z wiadomości e-mail, potem zaloguj się tutaj.';
   if (/already registered|already exists/i.test(message)) return 'Konto z tym adresem już istnieje. Zaloguj się.';
@@ -468,6 +468,8 @@ export async function issueSignupCode(opts: {
   deviceKey: CryptoKey;
   forUser?: string;
 }): Promise<string> {
+  // Bez sesji zapytanie poszłoby jako anonim i serwer odpowiedziałby niezrozumiałym błędem uprawnień.
+  await requireSession();
   const code = newSignupCode();
   const accountKey = await rewrapDataKey(opts.companyPassword, opts.orgWrapped, codeSecretPassphrase(code.id, code.secret));
   const proofHash = await sha256Hex(await inviteProof(opts.deviceKey, code.id));

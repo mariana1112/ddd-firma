@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DomainError } from '../data/domain';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getDataKey, getRegions, getSyncState, setSyncState } from '../data/settings';
 import { syncInBackground } from '../data/sync/runner';
@@ -41,7 +42,7 @@ export function RegionSwitcher({ state }: { state: SyncState }) {
   const join = () =>
     run(async () => {
       const key = await getDataKey();
-      if (!key) throw new Error('Brak klucza firmy na tym urządzeniu.');
+      if (!key) throw new DomainError('Brak klucza firmy na tym urządzeniu.');
       setBusy(true);
       try {
         const ok = await (await supabaseApi()).joinAnotherRegion(code, key);

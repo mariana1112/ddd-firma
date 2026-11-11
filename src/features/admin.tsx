@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { DomainError } from '../data/domain';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { clearRecoveryLink, takeLinkInfo, takeRecoveryLink, tokenUser } from '../lib/auth-link';
@@ -108,10 +109,10 @@ function useRegions(state: SyncState | null | undefined) {
 
   /** Tworzy region: nazwa i prefiks w panelu, region na serwerze. Kod dla ludzi generuje sekcja „Kody”. */
   const createRegion = async (name: string, prefix: string): Promise<{ id: string; name: string }> => {
-    if (!state?.orgId) throw new Error('Brak konta firmy.');
+    if (!state?.orgId) throw new DomainError('Brak konta firmy.');
     const all = await getRegions();
     const taken = Object.entries(all).find(([, r]) => prefix && r.prefix === prefix);
-    if (taken) throw new Error(`Prefiks ${prefix} ma już region ${taken[1].name}.`);
+    if (taken) throw new DomainError(`Prefiks ${prefix} ma już region ${taken[1].name}.`);
     const id = await (await supabaseApi()).createBranch(state.orgId, name);
     await saveRegions({ ...(await getRegions()), [id]: { name, prefix } });
     await load();
@@ -398,7 +399,7 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
         const api = await supabaseApi();
         const orgWrapped = (await api.myMemberships()).find((m) => m.orgId === props.state.orgId)?.dataKey;
         const deviceKey = await getDataKey();
-        if (!orgWrapped || !deviceKey) throw new Error('Brak klucza firmy na tym urządzeniu. Odblokuj synchronizację w Koncie.');
+        if (!orgWrapped || !deviceKey) throw new DomainError('Ten telefon nie ma klucza firmy. Wejdź w Więcej → Konto admina i wpisz hasło szyfrowania, potem wygeneruj kod.');
         const admin = target === ADMIN_TARGET;
         const accountant = target === ACCOUNTANT_TARGET;
         const password = saved || companyPassword;
@@ -417,7 +418,7 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
             // Zapamiętane hasło jest stare (np. po zmianie hasła szyfrowania na innym urządzeniu).
             await saveAdminSecret('company', '');
             setSaved(null);
-            throw new Error('Zapamiętane hasło szyfrowania jest nieaktualne. Wpisz je raz ponownie.');
+            throw new DomainError('Zapamiętane hasło szyfrowania jest nieaktualne (zmienione na innym telefonie). Wpisz aktualne hasło szyfrowania w polu powyżej i wygeneruj kod jeszcze raz.');
           }
           throw error;
         }
@@ -594,7 +595,7 @@ function SavedPasswordsSection(props: { state: SyncState }) {
         value={secrets?.panel}
         verify={async (value) => {
           const user = await (await supabaseApi()).signIn(props.state.email, value);
-          if (user.userId !== props.state.userId) throw new Error('Nieprawidłowe konto.');
+          if (user.userId !== props.state.userId) throw new DomainError('Nieprawidłowe konto.');
         }}
         onSave={save('panel')}
       />
@@ -603,9 +604,9 @@ function SavedPasswordsSection(props: { state: SyncState }) {
         value={secrets?.company}
         verify={async (value) => {
           const wrapped = (await (await supabaseApi()).myMemberships()).find((m) => m.orgId === props.state.orgId)?.dataKey;
-          if (!wrapped) throw new Error('Firma nie ma hasła szyfrowania.');
+          if (!wrapped) throw new DomainError('Firma nie ma hasła szyfrowania.');
           await unwrapDataKey(value, wrapped).catch(() => {
-            throw new Error('To nie jest hasło szyfrowania firmy.');
+            throw new DomainError('To nie jest hasło szyfrowania firmy.');
           });
         }}
         onSave={save('company')}
