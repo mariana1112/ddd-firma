@@ -66,6 +66,7 @@ const MESSAGES: Record<string, string> = {
   RECOVERY_PENDING: 'Najpierw odpowiedz na pytania pomocnicze (konto czeka na potwierdzenie po resecie hasła).',
   BAD_ANSWERS: 'Każda odpowiedź musi mieć co najmniej 2 znaki.',
   BAD_ROLE: 'Nieznana rola konta.',
+  BAD_NAME: 'Imię i nazwisko musi mieć od 2 do 60 znaków.',
 };
 
 /** Komunikat po polsku dla błędu sieci, serwera lub logowania. */
@@ -75,7 +76,7 @@ export function describeError(error: unknown): string {
   for (const [code, text] of Object.entries(MESSAGES)) if (message.includes(code)) return text;
   if (/invalid login credentials/i.test(message)) return 'Nieprawidłowy e-mail lub hasło.';
   if (/permission denied for (table|function)/i.test(message)) return MESSAGES.SESSION_LOST;
-  if (/could not find the function|PGRST202/i.test(message)) return 'Serwer nie ma jeszcze tej funkcji: trzeba wykonać migrację odzyskiwania konta admina.';
+  if (/could not find the function|PGRST202/i.test(message)) return 'Serwer nie ma jeszcze tej funkcji: trzeba wykonać najnowszą migrację bazy (Supabase).';
   if (/email not confirmed/i.test(message)) return 'Najpierw potwierdź adres linkiem z wiadomości e-mail, potem zaloguj się tutaj.';
   if (/already registered|already exists/i.test(message)) return 'Konto z tym adresem już istnieje. Zaloguj się.';
   if (/duplicate key/i.test(message)) return 'Taka nazwa już istnieje.';
@@ -539,6 +540,13 @@ export async function claimAccount(email: string, newPassword: string): Promise<
 }
 
 /** Admin nadaje innemu kontu uprawnienia admina albo je odbiera (siebie nie zmieni). */
+/** Admin zmienia imię i nazwisko konta (nazwę widoczną w aplikacji). */
+export async function setMemberName(orgId: string, userId: string, name: string): Promise<void> {
+  await requireSession();
+  const { error } = await supabase().rpc('set_member_name', { p_org: orgId, p_user: userId, p_name: name.trim() });
+  if (error) fail(error);
+}
+
 export async function setMemberRole(orgId: string, userId: string, role: 'owner' | 'technik'): Promise<void> {
   const { error } = await supabase().rpc('set_member_role', { p_org: orgId, p_user: userId, p_role: role });
   if (error) fail(error);

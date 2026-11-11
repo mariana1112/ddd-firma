@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { renamePersonInRecords } from '../data/people';
 import { DomainError } from '../data/domain';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -10,7 +11,7 @@ import { companyText, regionRanking, regionData, type RegionRef } from '../data/
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
-import { COMPANY_NAME, getAppSettings, getDataKey, getRegions, getSyncState, matchRegionsToServer, saveRegions, setSyncState } from '../data/settings';
+import { COMPANY_NAME, getAppSettings, getDataKey, getRegions, getSyncState, matchRegionsToServer, saveRegions, setSyncState, saveProfile } from '../data/settings';
 import { enterRegion } from './regions';
 import type { SyncState } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
@@ -208,6 +209,9 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
   const { confirm, run, toast } = useFeedback();
   const [members, setMembers] = useState<MemberRow[] | null>(null);
   const [access, setAccess] = useState<Array<{ userId: string; branchId: string }>>([]);
+  // Zmiana imienia i nazwiska konta: osoba, której dotyczy, i wpisywana nazwa.
+  const [renaming, setRenaming] = useState<MemberRow | null>(null);
+  const [newName, setNewName] = useState('');
 
   const load = async () => {
     const api = await supabaseApi();
@@ -259,6 +263,24 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
     await act(async () => (await supabaseApi()).suspendMember(props.state.orgId, m.userId, on), on ? 'Konto zawieszone' : 'Konto przywrócone');
   };
 
+  const rename = () =>
+    run(async () => {
+      if (!renaming) return;
+      const name = newName.trim().replace(/\s+/g, ' ');
+      const oldName = renaming.displayName;
+      await (await supabaseApi()).setMemberName(props.state.orgId, renaming.userId, name);
+      // Stare zabiegi, zlecenia, przejazdy i czat tej osoby też dostają nowe imię (raporty i historia).
+      const changed = await renamePersonInRecords(renaming.userId, oldName, name);
+      if (renaming.userId === props.state.userId) {
+        const latest = await getSyncState();
+        if (latest) await setSyncState({ ...latest, displayName: name });
+        await saveProfile({ name, userId: props.state.userId });
+      }
+      setRenaming(null);
+      await load();
+      toast(changed ? `Zmieniono imię na ${name} (poprawione wpisy: ${changed})` : `Zmieniono imię na ${name}`);
+    });
+
   const inRegion = (m: MemberRow) =>
     !props.regionId || m.branchId === props.regionId || access.some((a) => a.userId === m.userId && a.branchId === props.regionId);
   const toggleAdmin = async (m: MemberRow) => {
@@ -299,6 +321,20 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
                 {!m.approved ? <Badge tone="warn">Czeka na zgodę</Badge> : m.suspended ? <Badge tone="danger">Zawieszone</Badge> : <Badge tone="ok">Aktywne</Badge>}
               </span>
             </div>
+            {self && (
+              <div className="member-actions">
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setNewName(m.displayName);
+                    setRenaming(m);
+                  }}
+                >
+                  Zmień imię
+                </button>
+              </div>
+            )}
             {!self && (
               <div className="member-actions">
                 {!m.approved && (
@@ -310,6 +346,18 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
                   <Link className="btn btn-sm" to={`/admin/technik/${m.userId}?imie=${encodeURIComponent(label(m))}`}>
                     Podgląd
                   </Link>
+                )}
+                {m.approved && (
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      setNewName(m.displayName);
+                      setRenaming(m);
+                    }}
+                  >
+                    Zmień imię
+                  </button>
                 )}
                 {m.approved && !m.suspended && (
                   <button type="button" className="btn btn-sm" onClick={() => void toggleAdmin(m)}>
@@ -329,6 +377,23 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
           </div>
         );
       })}
+      <Sheet open={Boolean(renaming)} title={`Imię i nazwisko: ${renaming ? label(renaming) : ''}`} onClose={() => setRenaming(null)}>
+        <form
+          className="form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (newName.trim().length >= 2) void rename();
+          }}
+        >
+          <p className="sheet-text">Nowa nazwa pokaże się w raportach, na liście kont, w czacie i przy zabiegach tej osoby. E-mail i hasło się nie zmieniają.</p>
+          <Field label="Imię i nazwisko" error={newName.trim() && newName.trim().length < 2 ? 'Co najmniej 2 znaki' : undefined}>
+            <input value={newName} autoComplete="off" maxLength={60} onChange={(e) => setNewName(e.target.value)} />
+          </Field>
+          <button type="submit" className="btn btn-primary btn-block" disabled={newName.trim().length < 2 || newName.trim() === renaming?.displayName}>
+            Zapisz imię
+          </button>
+        </form>
+      </Sheet>
     </Group>
   );
 }
