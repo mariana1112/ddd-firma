@@ -2,7 +2,7 @@
 // sieci, po lokalnym zapisie i co minutę. iOS nie pozwala aplikacjom internetowym działać w tle,
 // więc wszystko dzieje się wtedy, gdy aplikacja jest otwarta.
 import { onLocalChange } from '../changes';
-import { getSyncState, setSyncState } from '../settings';
+import { getSyncState, matchRegionsToServer, setSyncState } from '../settings';
 import { isSyncConfigured } from './config';
 import type { SyncServer } from './engine';
 
@@ -44,8 +44,13 @@ async function refreshRole(): Promise<void> {
   try {
     const state = await getSyncState();
     if (!state) return;
-    const membership = (await (await import('./supabase')).myMemberships()).find((m) => m.orgId === state.orgId);
+    const api = await import('./supabase');
+    const membership = (await api.myMemberships()).find((m) => m.orgId === state.orgId);
     if (membership && membership.role !== state.role) await setSyncState({ ...state, role: membership.role });
+    // Admin widzi wszystkie regiony z serwera: lista nazw w ustawieniach firmy idzie za nią (usunięte znikają u wszystkich).
+    if ((membership?.role ?? state.role) === 'owner') {
+      await matchRegionsToServer(await api.listBranches(state.orgId));
+    }
   } catch {
     // Bez internetu rola zostaje do następnego sprawdzenia.
   }

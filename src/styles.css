@@ -2738,3 +2738,8 @@ a.btn.disabled {
 .chat-form textarea {
   flex: 1;
 }
+
+.folder-delete {
+  align-self: flex-start;
+  margin: -4px 0 6px 4px;
+}

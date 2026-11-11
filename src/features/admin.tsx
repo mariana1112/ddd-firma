@@ -9,7 +9,7 @@ import { companyText, regionRanking, regionData, type RegionRef } from '../data/
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
-import { COMPANY_NAME, getDataKey, getRegions, getSyncState, saveRegions, setSyncState, type RegionInfo } from '../data/settings';
+import { COMPANY_NAME, getDataKey, getRegions, getSyncState, matchRegionsToServer, saveRegions, setSyncState } from '../data/settings';
 import { enterRegion } from './regions';
 import type { SyncState } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
@@ -262,14 +262,10 @@ function useRegions(state: SyncState | null | undefined) {
       toast(`Region ${name} usunięty. W archiwum: ${moved.orders} zleceń (folder „Usunięty region: ${name}”), koszty i przejazdy w koszu.`);
     });
 
-  // Nazwy regionów z serwera trafiają też do ustawień firmy, żeby urządzenia znały je bez internetu.
+  // Lista regionów w ustawieniach firmy (znana urządzeniom bez internetu) jest dokładnie taka jak na serwerze:
+  // nowe nazwy dochodzą, a usunięte regiony znikają z niej całkowicie (czat, filtry, powitanie).
   useEffect(() => {
-    if (!server || !saved) return;
-    const missing = server.filter((b) => saved[b.id]?.name !== b.name);
-    if (missing.length === 0) return;
-    const next: Record<string, RegionInfo> = { ...saved };
-    for (const b of missing) next[b.id] = { name: b.name, prefix: saved[b.id]?.prefix ?? '' };
-    void saveRegions(next);
+    if (server && saved) void matchRegionsToServer(server);
   }, [server, saved]);
 
   return { regions, members, loaded: saved !== undefined, online: server !== null, savePrefix, createRegion, deleteRegion };

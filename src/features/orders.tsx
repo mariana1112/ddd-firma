@@ -41,6 +41,15 @@ const readMode = (): ListMode => {
 /** Domyślna kolejność: do zrobienia od najbliższego terminu, zakończone od ostatniego. */
 const defaultSort = (status: StatusFilter): OrderSort => (status === 'aktywne' ? 'najwczesniej' : 'najpozniej');
 
+/** „1 zlecenie”, „3 zlecenia”, „5 zleceń”. */
+const ordersCount = (n: number) => {
+  const tens = n % 100;
+  const ones = n % 10;
+  if (n === 1) return '1 zlecenie';
+  if (ones >= 2 && ones <= 4 && (tens < 12 || tens > 14)) return `${n} zlecenia`;
+  return `${n} zleceń`;
+};
+
 export function OrdersPage() {
   const data = useLiveQuery(async () => ({ orders: await orders.all(), visits: await visits.all() }));
   // Wyszukiwanie z Pulpitu przychodzi w adresie (?q=…), np. numer osoby, która dzwoni.
@@ -49,6 +58,23 @@ export function OrdersPage() {
   const [status, setStatus] = useState<StatusFilter>('wszystkie');
   const [mode, setModeState] = useState<ListMode>(readMode);
   const [moreFilters, setMoreFilters] = useState(false);
+  const { confirm, run, toast } = useFeedback();
+  const role = useLiveQuery(async () => (await getSyncState())?.role ?? null);
+  // Bez konta firmy (jedno urządzenie) albo admin: może usuwać zlecenia.
+  const isOwner = role === null || role === 'owner';
+  const removeFolder = async (folder: string, ids: string[]) => {
+    const ok = await confirm({
+      title: `Usunąć folder „${folder}”?`,
+      message: `Do kosza trafi: ${ordersCount(ids.length)} z zabiegami i zdjęciami. Usunięty region zniknie z aplikacji całkowicie.`,
+      confirmLabel: 'Usuń folder',
+      danger: true,
+    });
+    if (!ok) return;
+    await run(async () => {
+      for (const id of ids) await deleteOrder(id);
+      toast(`Usunięto: ${ordersCount(ids.length)} (w koszu)`);
+    });
+  };
   const setMode = (next: ListMode) => {
     setModeState(next);
     try {
@@ -197,6 +223,7 @@ export function OrdersPage() {
             // Archiwum w folderach: „Usunięty region: …” i zwykłe odwołane zlecenia.
             [...new Set(rows.map((r) => r.order.archivedNote ?? 'Odwołane'))].map((folder) => {
               const inFolder = rows.filter((r) => (r.order.archivedNote ?? 'Odwołane') === folder);
+              const orderIds = [...new Set(inFolder.map((r) => r.order.id))];
               return (
                 <section key={folder} className="group day-group">
                   <h2 className="day-head">
@@ -205,6 +232,11 @@ export function OrdersPage() {
                     </span>
                     <span className="day-head-count">{inFolder.length}</span>
                   </h2>
+                  {isOwner && folder.startsWith('Usunięty region') && (
+                    <button type="button" className="link link-danger folder-delete" onClick={() => void removeFolder(folder, orderIds)}>
+                      Usuń cały folder ({ordersCount(orderIds.length)})
+                    </button>
+                  )}
                   <div className="group-body">{inFolder.map(renderRow)}</div>
                 </section>
               );

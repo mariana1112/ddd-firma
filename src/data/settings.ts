@@ -328,6 +328,21 @@ export async function saveRegions(regions: Record<string, RegionInfo>): Promise<
   await setMeta('regions', regions);
 }
 
+/**
+ * Ustawia listę regionów firmy dokładnie na tę z serwera (zachowując prefiksy): nowe nazwy dochodzą, a usunięte
+ * regiony znikają całkowicie (czat, filtry, powitanie). Zwraca true, gdy coś się zmieniło.
+ */
+export async function matchRegionsToServer(server: Array<{ id: string; name: string }>): Promise<boolean> {
+  const saved = await getRegions();
+  const onServer = new Set(server.map((b) => b.id));
+  const changed = server.some((b) => saved[b.id]?.name !== b.name) || Object.keys(saved).some((id) => !onServer.has(id));
+  if (!changed) return false;
+  const next: Record<string, RegionInfo> = {};
+  for (const b of server) next[b.id] = { name: b.name, prefix: saved[b.id]?.prefix ?? '' };
+  await saveRegions(next);
+  return true;
+}
+
 export async function saveRegion(region: RegionSettings): Promise<void> {
   await db.meta.put({ key: 'region', value: region, updatedAt: new Date().toISOString() });
 }
