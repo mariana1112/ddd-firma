@@ -43,3 +43,35 @@ export function haptic(kind: HapticKind = 'success'): void {
     // Haptyka to tylko dodatek: bez niej wszystko działa tak samo.
   }
 }
+
+/** Co jest „dotknięciem opcji”: przyciski, linki (np. wiersz zlecenia), opcje wyboru, przełączniki. */
+const TAPPABLE = 'button, a[href], [role="option"], [role="tab"], .chip, .choice-item, summary, label.check, input[type="checkbox"]:not([switch]), input[type="radio"]';
+
+let tapsInstalled = false;
+
+/**
+ * Lekka haptyka przy każdym dotknięciu przycisku, opcji albo wiersza (np. zlecenia) i przy wyborze z listy.
+ * Jeden nasłuch na cały dokument, więc działa też na ekranach dodanych później. Tylko prawdziwe dotknięcia
+ * (isTrusted): kliknięcie niewidocznego przełącznika iPhone'a nie wywołuje kolejnej haptyki.
+ */
+export function installTapHaptics(): void {
+  if (tapsInstalled || typeof document === 'undefined') return;
+  tapsInstalled = true;
+  document.addEventListener(
+    'click',
+    (e) => {
+      if (!e.isTrusted || !(e.target instanceof Element)) return;
+      const target = e.target.closest(TAPPABLE);
+      if (!target || target.matches(':disabled, [aria-disabled="true"]')) return;
+      haptic('light');
+    },
+    { capture: true, passive: true },
+  );
+  document.addEventListener(
+    'change',
+    (e) => {
+      if (e.isTrusted && e.target instanceof HTMLSelectElement) haptic('light');
+    },
+    { capture: true, passive: true },
+  );
+}

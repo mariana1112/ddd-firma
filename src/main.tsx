@@ -4,6 +4,7 @@ import { App } from './App';
 import { initViewScope } from './data/scope';
 import { captureAuthLink } from './lib/auth-link';
 import { startSyncRunner } from './data/sync/runner';
+import { installTapHaptics } from './lib/haptics';
 import './styles.css';
 
 // Link z e-maila (reset hasła, zmiana adresu) przechwytujemy przed routerem.
@@ -24,3 +25,6 @@ void initViewScope()
 void navigator.storage?.persist?.();
 
 startSyncRunner();
+
+// Lekka haptyka przy dotknięciu przycisków, opcji i wierszy (np. zlecenia).
+installTapHaptics();
