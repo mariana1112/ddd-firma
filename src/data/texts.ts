@@ -1,5 +1,5 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
-import { hasFogging, methodOf, ULV_NOTICE } from './methods';
+import { methodOf } from './methods';
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
 import { roman, visitCode } from './codes';
 import { normalizeInterview } from './interview';
@@ -99,8 +99,7 @@ export function reminderSms(order: Order, visit: Visit, settings: AppSettings): 
     adres: orderAddress(order),
     numer: visitCode(order, visit.seq),
   });
-  // Klient musi się przygotować do zamgławiania: wyjść z lokalu i potem posprzątać.
-  return hasFogging(order.methods ?? []) ? `${text}\n${ULV_NOTICE}` : text;
+  return text;
 }
 
 /**
