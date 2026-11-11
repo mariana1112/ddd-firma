@@ -10,7 +10,7 @@ import { getProfile, getRegions, getSyncState } from '../data/settings';
 import { formatDate, todayWarsaw } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Chips, Empty, Group, Loading, Page } from '../ui/kit';
+import { Badge, Chips, Empty, Group, Loading, Page, lockScroll, unlockScroll } from '../ui/kit';
 
 const SEEN_KEY = 'ddd:powiadomienia-widziane';
 
@@ -64,12 +64,30 @@ function useNotifications(): { list: AppNotification[]; unseen: AppNotification[
       owner: data.state?.role === 'owner',
       read,
       today: todayWarsaw(),
-    });
+    }).filter((x) => x.kind !== 'czat');
     const seen = new Set(readSeen());
     // Prośby o usunięcie i czat liczą się, dopóki admin nie zdecyduje albo kanał nie zostanie przeczytany.
     const unseen = list.filter((n) => n.kind === 'usuniecie' || n.kind === 'czat' || !seen.has(n.id));
     return { list, unseen, refresh: () => setTick((t) => t + 1) };
   }, [data, tick]);
+}
+
+/** Ikona czatu w nagłówku każdego ekranu (obok dzwoneczka): liczba nieprzeczytanych wiadomości. */
+export function ChatButton() {
+  const data = useLiveQuery(async () => ({
+    state: await getSyncState(),
+    me: (await getProfile()).userId,
+    regions: await getRegions(),
+    messages: await messages.allRegions(),
+  }));
+  const read = readMap();
+  const count = data ? chatChannels(data.state, data.regions).reduce((n, c) => n + unread(data.messages, c.id, data.me, read).length, 0) : 0;
+  return (
+    <Link to="/czat" className="bell" aria-label={count ? `Czat: ${count} nieprzeczytanych` : 'Czat'}>
+      <Icon name="message" size={22} />
+      {count > 0 && <span className="bell-count">{count > 9 ? '9+' : count}</span>}
+    </Link>
+  );
 }
 
 /** Dzwoneczek w nagłówku każdego ekranu: liczba nowych powiadomień. */
@@ -118,9 +136,6 @@ export function NotificationsPage() {
 
   return (
     <Page title="Powiadomienia" back="/">
-      <Link to="/czat" className="btn btn-block">
-        <Icon name="message" /> Czat
-      </Link>
       <Group>
         {n.list.length === 0 && <Empty icon="bell" title="Brak powiadomień" />}
         {n.list.map((item) => (
@@ -155,7 +170,26 @@ export function ChatPage() {
   const [params, setParams] = useSearchParams();
   const { run } = useFeedback();
   const [text, setText] = useState('');
+  // Dotknięcie pola wiadomości powiększa je na cały ekran: wygodne pisanie i poprawianie dłuższego tekstu.
+  const [big, setBig] = useState(false);
+  const field = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!big) return;
+    lockScroll();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setBig(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      unlockScroll();
+    };
+  }, [big]);
+  const shrink = () => {
+    setBig(false);
+    field.current?.blur();
+  };
   const data = useLiveQuery(async () => ({
     state: await getSyncState(),
     me: (await getProfile()).userId,
@@ -198,17 +232,34 @@ export function ChatPage() {
         <div ref={end} />
       </div>
       <form
-        className="chat-form"
+        className={big ? 'chat-form chat-form-big' : 'chat-form'}
         onSubmit={(e) => {
           e.preventDefault();
           if (!text.trim()) return;
           void run(async () => {
             await sendMessage(channel, text);
             setText('');
+            shrink();
           });
         }}
       >
-        <textarea rows={2} value={text} placeholder="Napisz wiadomość" aria-label="Wiadomość" onChange={(e) => setText(e.target.value)} />
+        {big && (
+          <div className="chat-big-head">
+            <button type="button" className="btn btn-sm" onClick={shrink}>
+              <Icon name="back" /> Zmniejsz
+            </button>
+            <span className="chat-big-channel">{channels.find((c) => c.id === channel)?.label}</span>
+          </div>
+        )}
+        <textarea
+          ref={field}
+          rows={big ? 8 : 2}
+          value={text}
+          placeholder="Napisz wiadomość"
+          aria-label="Wiadomość"
+          onFocus={() => setBig(true)}
+          onChange={(e) => setText(e.target.value)}
+        />
         <button type="submit" className="btn btn-primary" disabled={!text.trim()}>
           <Icon name="message" /> Wyślij
         </button>

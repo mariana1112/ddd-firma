@@ -50,13 +50,25 @@ const ordersCount = (n: number) => {
   return `${n} zleceń`;
 };
 
-export function OrdersPage() {
-  const data = useLiveQuery(async () => ({ orders: await orders.all(), visits: await visits.all() }));
+/**
+ * Lista zleceń. Z `archive` to Archiwum (w „Więcej”): tylko odwołane zlecenia i foldery usuniętych regionów,
+ * jedno zlecenie w wierszu; admin widzi w nim wszystkie regiony.
+ */
+export function OrdersPage({ archive = false }: { archive?: boolean }) {
+  const data = useLiveQuery(async () => {
+    const role = (await getSyncState())?.role;
+    const everywhere = archive && role === 'owner';
+    return {
+      orders: everywhere ? await orders.allRegions() : await orders.all(),
+      visits: everywhere ? await visits.allRegions() : await visits.all(),
+    };
+  }, [archive]);
   // Wyszukiwanie z Pulpitu przychodzi w adresie (?q=…), np. numer osoby, która dzwoni.
   const [params] = useSearchParams();
   const [query, setQuery] = useState(() => params.get('q') ?? '');
-  const [status, setStatus] = useState<StatusFilter>('wszystkie');
-  const [mode, setModeState] = useState<ListMode>(readMode);
+  const [status, setStatus] = useState<StatusFilter>(archive ? 'archiwum' : 'wszystkie');
+  const [savedMode, setModeState] = useState<ListMode>(readMode);
+  const mode: ListMode = archive ? 'zlecenia' : savedMode;
   const [moreFilters, setMoreFilters] = useState(false);
   const { confirm, run, toast } = useFeedback();
   const role = useLiveQuery(async () => (await getSyncState())?.role ?? null);
@@ -114,7 +126,7 @@ export function OrdersPage() {
             if (!orderMatches(order, query)) return false;
             if (invoicesOnly && order.invoice === 'brak') return false;
             if (pay !== 'wszystkie' && visit.payMethod !== pay) return false;
-            if (searching) return true;
+            if (searching && !archive) return true;
             return visitInFilter(order, visit, status, today);
           })
           .map((visit) => ({ order, visits: [visit] })),
@@ -130,7 +142,7 @@ export function OrdersPage() {
         const active = list.some((v) => v.status === 'zaplanowany' || v.status === 'w_trakcie');
         const archived = isArchived(order, list);
         // Szukanie obejmuje wszystkie zlecenia, także zakończone i z archiwum: klient może pytać o dawny zabieg.
-        if (searching) return true;
+        if (searching && !archive) return true;
         if (status === 'archiwum') return archived;
         if (archived) return false;
         if (status === 'pilne') return urgentReason(order, list, today) !== null;
@@ -139,7 +151,7 @@ export function OrdersPage() {
         return true;
       });
     return sortOrderRows(filtered, sort);
-  }, [data, query, status, pay, invoicesOnly, sort, searching, today, mode]);
+  }, [data, query, status, pay, invoicesOnly, sort, searching, today, mode, archive]);
   const renderRow = (row: { order: Order; visits: Visit[] }) =>
     mode === 'zabiegi' ? (
       <VisitListRow key={row.visits[0].id} order={row.order} visit={row.visits[0]} today={today} />
@@ -148,17 +160,23 @@ export function OrdersPage() {
     );
 
   return (
-    <Page title="Zlecenia" actions={<AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
+    <Page title={archive ? 'Archiwum' : 'Zlecenia'} back={archive ? '/wiecej' : undefined} actions={archive ? undefined : <AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
       {!data ? (
         <Loading />
+      ) : archive && rows.length === 0 && !searching ? (
+        <Empty icon="clipboard" title="Archiwum jest puste">
+          Tu trafiają odwołane zlecenia i zlecenia usuniętych regionów.
+        </Empty>
       ) : data.orders.length === 0 ? (
         <Empty icon="clipboard" title="Nie ma jeszcze zleceń">
           <Link className="btn btn-primary" to="/zlecenia/nowe">Nowe zlecenie</Link>
         </Empty>
       ) : (
         <>
-          <Search value={query} onChange={setQuery} placeholder="Szukaj: telefon, nazwisko, adres, kod, fv23, fv, prot" />
-          {searching && <p className="field-hint">Szukam we wszystkich zleceniach, także zakończonych. Znalezione: {rows.length}.</p>}
+          <Search value={query} onChange={setQuery} placeholder={archive ? 'Szukaj w archiwum: telefon, nazwisko, adres, kod' : 'Szukaj: telefon, nazwisko, adres, kod, fv23, fv, prot'} />
+          {searching && <p className="field-hint">{archive ? 'Szukam w archiwum' : 'Szukam we wszystkich zleceniach, także zakończonych i w archiwum'}. Znalezione: {rows.length}.</p>}
+          {!archive && (
+          <>
           <Chips
             value={status}
             onChange={changeStatus}
@@ -167,7 +185,6 @@ export function OrdersPage() {
               { value: 'aktywne', label: 'Do zrobienia' },
               { value: 'wykonane', label: 'Zakończone' },
               { value: 'pilne', label: 'Pilne', count: urgentCount },
-              { value: 'archiwum', label: 'Archiwum' },
             ]}
           />
           <button type="button" className="link" onClick={() => setMoreFilters(!moreFilters)}>
@@ -215,11 +232,13 @@ export function OrdersPage() {
           </div>
           </>
           )}
+          </>
+          )}
           {rows.length === 0 ? (
             <Group>
               <Empty title="Brak zleceń w tym widoku" />
             </Group>
-          ) : status === 'archiwum' && !searching ? (
+          ) : archive ? (
             // Archiwum w folderach: „Usunięty region: …” i zwykłe odwołane zlecenia.
             [...new Set(rows.map((r) => r.order.archivedNote ?? 'Odwołane'))].map((folder) => {
               const inFolder = rows.filter((r) => (r.order.archivedNote ?? 'Odwołane') === folder);

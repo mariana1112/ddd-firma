@@ -16,7 +16,7 @@ import { BackupPage, MorePage, SettingsPage, TrashPage } from './features/settin
 import { TripsPage } from './features/trips';
 import { CardPage } from './features/card';
 import { AccountingOrderPage, AccountingPage, CorrectionsPage } from './features/accounting';
-import { ChatPage, NotificationBell, NotificationsPage } from './features/communication';
+import { ChatButton, ChatPage, NotificationBell, NotificationsPage } from './features/communication';
 import { VisitPage } from './features/visit';
 import { FeedbackProvider } from './ui/feedback';
 import { Icon, type IconName } from './ui/icons';
@@ -30,7 +30,7 @@ const TABS: Array<{ to: string; label: string; icon: IconName; end?: boolean; al
   { to: '/kalendarz', label: 'Kalendarz', icon: 'calendar' },
   { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard', also: ['/zabieg'] },
   { to: '/raporty', label: 'Raporty', icon: 'chart' },
-  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto', '/czat', '/powiadomienia'] },
+  { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto', '/czat', '/powiadomienia', '/archiwum'] },
 ];
 
 /** Księgowa nie dodaje kosztów ani przejazdów: zamiast Pulpitu i Kalendarza ma swój panel. */
@@ -123,6 +123,7 @@ function AppRoutes() {
       <Route path="/ksiegowosc/:id" element={<AccountingOrderPage />} />
       <Route path="/kalendarz" element={<CalendarPage />} />
       <Route path="/zlecenia" element={<OrdersPage />} />
+      <Route path="/archiwum" element={<OrdersPage archive />} />
       <Route path="/zlecenia/nowe" element={<OrderNewPage />} />
       <Route path="/zlecenia/:id" element={<OrderDetailPage />} />
       <Route path="/zlecenia/:id/edycja" element={<OrderEditPage />} />
@@ -186,7 +187,16 @@ function Shell() {
       <Navigation />
       <div className="content">
         <UpdatePrompt />
-        <HeaderExtraContext.Provider value={state ? <NotificationBell /> : null}>
+        <HeaderExtraContext.Provider
+          value={
+            state ? (
+              <>
+                <ChatButton />
+                <NotificationBell />
+              </>
+            ) : null
+          }
+        >
           <Suspense fallback={<Loading />}>
             <AppRoutes />
           </Suspense>

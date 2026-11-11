@@ -205,7 +205,7 @@ export function Field(props: { label: string; error?: string; hint?: ReactNode; 
 let openSheets = 0;
 let lockedScroll = 0;
 
-function lockScroll() {
+export function lockScroll() {
   if (openSheets++ > 0) return;
   lockedScroll = window.scrollY;
   const body = document.body.style;
@@ -216,7 +216,7 @@ function lockScroll() {
   body.overflow = 'hidden';
 }
 
-function unlockScroll() {
+export function unlockScroll() {
   if (openSheets === 0 || --openSheets > 0) return;
   const body = document.body.style;
   body.position = '';

@@ -2743,3 +2743,39 @@ a.btn.disabled {
   align-self: flex-start;
   margin: -4px 0 6px 4px;
 }
+
+/* Pole wiadomości czatu powiększone na cały ekran */
+.chat-form-big {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg);
+}
+
+.chat-form-big textarea {
+  flex: 1;
+  min-height: 0;
+  font-size: 1.1rem;
+  line-height: 1.5;
+  resize: none;
+}
+
+.chat-form-big .btn-primary {
+  min-height: 52px;
+}
+
+.chat-big-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-big-channel {
+  font-weight: 700;
+  color: var(--muted);
+}
