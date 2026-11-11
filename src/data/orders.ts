@@ -1,5 +1,6 @@
 // Zlecenia i zabiegi Pogromców Insektów. Operacje wielotabelowe działają w transakcjach.
 import { METHOD_LABEL } from './methods';
+import { startToSave } from './texts';
 import { todayWarsaw } from '../lib/dates';
 import type { VisitTerms } from './visit-terms';
 import { newId } from '../lib/ids';
@@ -152,10 +153,11 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
       );
     }
 
+    const finishedAt = new Date().toISOString();
     await visits.update(id, {
       status: 'wykonany',
-      startedAt: visit.startedAt ?? new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
+      startedAt: startToSave(visit.startedAt, finishedAt),
+      finishedAt,
       doneOn: visit.doneOn ?? todayWarsaw(),
       payMethod: input.payMethod,
       amount: input.amount,

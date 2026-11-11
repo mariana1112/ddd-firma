@@ -178,6 +178,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
           {!archive && (
           <>
           <Chips
+            wrap
             value={status}
             onChange={changeStatus}
             options={[

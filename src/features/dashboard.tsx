@@ -20,8 +20,6 @@ import { PinkBadge, VisitBadge } from './common';
 import { TomorrowReminders } from './reminders';
 
 const BACKUP_REMINDER_DAYS = 7;
-// Przy synchronizacji dane są też na serwerze, więc własna kopia jest rzadziej potrzebna.
-const SYNCED_BACKUP_REMINDER_DAYS = 30;
 
 /** Szybkie szukanie zlecenia, np. gdy dzwoni klient: numer telefonu, nazwisko, adres albo kod. */
 function QuickSearch() {
@@ -158,8 +156,8 @@ export function DashboardPage() {
   const todoCount = todo.length + (drafts.newOrder ? 1 : 0) + draftEdits.length;
 
   const hasData = data.orders.length > 0;
-  const remindAfter = data.synced ? SYNCED_BACKUP_REMINDER_DAYS : BACKUP_REMINDER_DAYS;
-  const backupDue = hasData && (!data.lastBackup || data.lastBackup.slice(0, 10) < addDays(today, -remindAfter));
+  // Z kontem firmy dane są w zaszyfrowanej kopii na serwerze, więc Pulpit nie straszy kopią zapasową.
+  const backupDue = hasData && !data.synced && (!data.lastBackup || data.lastBackup.slice(0, 10) < addDays(today, -BACKUP_REMINDER_DAYS));
 
   return (
     <Page title={data.profile.name ? `Cześć, ${data.profile.name}` : 'Pulpit'}>

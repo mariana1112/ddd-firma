@@ -2781,3 +2781,16 @@ a.btn.disabled {
   align-self: flex-start;
   margin: -4px 0 6px 4px;
 }
+
+/* Filtry w równej siatce: na telefonie 2 × 2, na szerokim ekranie w jednym rzędzie */
+.chips-even {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  overflow: visible;
+  margin-inline: 0;
+  padding-inline: 0;
+}
+
+.chips-even .chip {
+  justify-content: center;
+}

@@ -177,14 +177,9 @@ export const DEFAULT_APP: AppSettings = {
   vatRate: 23,
   treatments: ['Oprysk ciśnieniowy', 'Żel', 'Zamgławianie', 'Opylanie', 'Pułapki lepowe', 'Stacje deratyzacyjne'],
   places: ['listwy', 'kratka wentylacyjna', 'łóżka', 'materace', 'kuchnia', 'łazienka', 'szafki', 'za lodówką', 'piwnica', 'pralka'],
+  // Tylko zalecenia spoza firmowych tekstów metod (opuszczenie lokalu, wietrzenie, podłogi, pranie są przy metodach).
   recommendations: [
-    'Nie myć podłóg ani listew przez 14 dni.',
-    'Wywietrzyć mieszkanie przez 2 godziny po powrocie.',
-    'Nie przebywać w mieszkaniu przez 4 godziny od zabiegu.',
-    'Zwierzęta i dzieci poza mieszkaniem w trakcie zabiegu i 4 godziny po nim.',
     'Akwarium przykryć i wyłączyć napowietrzanie na czas zabiegu.',
-    'Pościel wyprać w 60°C i wysuszyć w suszarce.',
-    'Nie odkurzać miejsc, w których jest żel.',
     'Chować żywność w szczelnych pojemnikach i nie zostawiać resztek.',
     'Uszczelnić szczeliny i otwory przy rurach.',
     'Zgłosić obecność owadów przed kolejnym zabiegiem.',
@@ -236,8 +231,22 @@ export const PERSONAL_KEYS = [
 export type PersonalSettings = Pick<AppSettings, (typeof PERSONAL_KEYS)[number]>;
 
 /** Ustawienia firmy z nałożonymi ustawieniami osobistymi tej osoby. */
+/**
+ * Zalecenia z pierwszych wersji, które powtarzały firmowe teksty metod albo im przeczyły (np. 14 dni bez mycia
+ * podłóg wobec tygodnia, 4 godziny wobec 4-5 godz.). Znikają też z zapisanych list.
+ */
+export const OBSOLETE_RECOMMENDATIONS = [
+  'Nie myć podłóg ani listew przez 14 dni.',
+  'Wywietrzyć mieszkanie przez 2 godziny po powrocie.',
+  'Nie przebywać w mieszkaniu przez 4 godziny od zabiegu.',
+  'Zwierzęta i dzieci poza mieszkaniem w trakcie zabiegu i 4 godziny po nim.',
+  'Pościel wyprać w 60°C i wysuszyć w suszarce.',
+  'Nie odkurzać miejsc, w których jest żel.',
+];
+
 export async function getAppSettings(): Promise<AppSettings> {
-  return { ...DEFAULT_APP, ...(await getMeta<Partial<AppSettings>>('app')), ...(await getMeta<Partial<PersonalSettings>>('myApp')) };
+  const merged = { ...DEFAULT_APP, ...(await getMeta<Partial<AppSettings>>('app')), ...(await getMeta<Partial<PersonalSettings>>('myApp')) };
+  return { ...merged, recommendations: merged.recommendations.filter((r) => !OBSOLETE_RECOMMENDATIONS.includes(r)) };
 }
 
 /** Wspólne ustawienia firmy (zmienia admin); osobiste pola zapisują się osobno. */

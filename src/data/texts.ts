@@ -88,6 +88,40 @@ export function workSummary(visit: Pick<Visit, 'treatments' | 'places'>): string
   return `${visit.treatments[0]}${places}${visit.treatments.length > 1 ? `, ${visit.treatments.slice(1).join(', ')}` : ''}`;
 }
 
+const warsawClock = new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' });
+const warsawDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' });
+
+/** Dzień (RRRR-MM-DD) chwili zapisu w czasie polskim. */
+export const dayInWarsaw = (iso: string) => warsawDay.format(new Date(iso));
+
+/** Godzina chwili zapisu w czasie polskim, „14:05”. */
+export const clockInWarsaw = (iso: string) => warsawClock.format(new Date(iso));
+
+/**
+ * Godziny pracy przy zabiegu: „10:05–11:20”, a gdy zabieg przeszedł przez północ, z datami obu dni
+ * („10.11.2026 22:41 – 11.11.2026 11:52”), żeby koniec nie wyglądał na wcześniejszy niż początek.
+ */
+export function workHours(visit: Pick<Visit, 'startedAt' | 'finishedAt'>): { text: string; multiDay: boolean } {
+  const { startedAt, finishedAt } = visit;
+  if (startedAt && finishedAt && dayInWarsaw(startedAt) !== dayInWarsaw(finishedAt)) {
+    return {
+      text: `${formatDate(dayInWarsaw(startedAt))} ${clockInWarsaw(startedAt)} – ${formatDate(dayInWarsaw(finishedAt))} ${clockInWarsaw(finishedAt)}`,
+      multiDay: true,
+    };
+  }
+  return { text: [startedAt, finishedAt].filter((t): t is string => Boolean(t)).map(clockInWarsaw).join('–'), multiDay: false };
+}
+
+/** Najdłuższy wiarygodny zabieg. Dłużej znaczy, że „Rozpocznij” kliknięto dużo wcześniej (zapomniany zabieg). */
+export const MAX_VISIT_HOURS = 8;
+
+/** Początek zabiegu do zapisu przy zakończeniu: zapomniane „Rozpocznij” sprzed ponad 8 godzin nie fałszuje godzin. */
+export function startToSave(startedAt: string | null, finishedAt: string): string {
+  if (!startedAt) return finishedAt;
+  const hours = (new Date(finishedAt).getTime() - new Date(startedAt).getTime()) / 3_600_000;
+  return hours > MAX_VISIT_HOURS || hours < 0 ? finishedAt : startedAt;
+}
+
 export function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
 }
@@ -184,7 +218,7 @@ export function centralExport(order: Order, visit: Visit, all: Visit[]): string 
   const access = accessDetails(order);
   const lines = [
     `Zlecenie ${visitCode(order, visit.seq)}, zabieg ${roman(visit.seq)} z ${total}`,
-    `Data: ${formatDate(visit.doneOn ?? visit.start)}${visit.startedAt ? `, ${new Date(visit.startedAt).toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' })}` : ''}${visit.finishedAt ? `–${new Date(visit.finishedAt).toLocaleTimeString('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' })}` : ''}`,
+    `Data: ${workHours(visit).multiDay ? workHours(visit).text : [formatDate(visit.doneOn ?? visit.start), workHours(visit).text].filter(Boolean).join(', ')}`,
     visit.technicianName && `Technik: ${visit.technicianName}`,
     `Adres: ${orderAddress(order)}${order.postalCode ? ` (${order.postalCode})` : ''}, ${BUILDINGS[order.building].toLowerCase()}${access ? `, ${access}` : ''}`,
     `Klient: ${order.clientName}${order.phones[0] ? `, tel. ${order.phones[0].number}` : ''}${order.email ? `, ${order.email}` : ''}`,

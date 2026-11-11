@@ -5,6 +5,7 @@ import { chatChannels, chatPeople, insertMention, markRead, mentionQuery, mentio
 import { db } from '../data/db';
 import { buildNotifications, type AppNotification } from '../data/notifications';
 import { decideOrderDeletion } from '../data/orders';
+import { clockInWarsaw, dayInWarsaw } from '../data/texts';
 import { messages, orders, visits } from '../data/repo';
 import { getProfile, getRegions, getSyncState } from '../data/settings';
 import { formatDate, todayWarsaw } from '../lib/dates';
@@ -15,8 +16,7 @@ import { Badge, Chips, Empty, Group, Loading, Page } from '../ui/kit';
 const SEEN_KEY = 'ddd:powiadomienia-widziane';
 
 /** „11.11.2026 14:05” z chwili zapisu (czas polski). */
-const when = (iso: string) =>
-  `${formatDate(iso)} ${new Date(iso).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' })}`;
+const when = (iso: string) => `${formatDate(dayInWarsaw(iso))} ${clockInWarsaw(iso)}`;
 
 function readSeen(): string[] {
   try {

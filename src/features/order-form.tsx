@@ -194,9 +194,10 @@ function toDraft(s: FormState): OrderDraft {
   };
 }
 
-type StepId = 'adres' | 'problem' | 'termin' | 'cena' | 'klient' | 'podsumowanie';
+type StepId = 'telefon' | 'adres' | 'problem' | 'termin' | 'cena' | 'klient' | 'podsumowanie';
 
 const STEP_TITLES: Record<StepId, string> = {
+  telefon: 'Telefon klienta',
   adres: 'Adres',
   problem: 'Co robimy i szkodnik',
   termin: 'Termin',
@@ -218,7 +219,8 @@ function missing(step: StepId, s: FormState): Array<[keyof FormState, string]> {
   return m;
 }
 
-const ALL_STEPS: StepId[] = ['adres', 'problem', 'termin', 'cena', 'klient'];
+// Telefon na początku: stały klient od razu podpowiada swoje dane i adres.
+const ALL_STEPS: StepId[] = ['telefon', 'adres', 'problem', 'termin', 'cena', 'klient'];
 
 /**
  * Błędy, które blokują zapis: puste pola obowiązkowe (adres, co robimy, data, widełki, telefon) i błędnie wpisane
@@ -251,9 +253,11 @@ function validate(step: StepId, s: FormState): Errors {
     const [min, max] = [parseMoney(s.priceMin), parseMoney(s.priceMax)];
     if (min !== null && max !== null && max < min) e.priceMax = 'Górna granica jest niższa niż dolna';
   }
-  if (step === 'klient') {
+  if (step === 'telefon') {
     if (!s.phone1.trim()) e.phone1 = 'Podaj numer telefonu';
     else if (s.phone1.replace(/\D/g, '').length < 9) e.phone1 = 'Numer ma za mało cyfr';
+  }
+  if (step === 'klient') {
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
     else if (s.invoice !== 'brak' && !s.email.trim()) e.email = 'Do faktury potrzebny jest e-mail';
     if (s.invoice === 'vat') {
@@ -420,7 +424,8 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
   );
 }
 
-function ReturningClient(props: { phone: string; onFill: (order: Order) => void; currentId?: string }) {
+function ReturningClient(props: { phone: string; onFill: (order: Order) => void; currentId?: string; withAddress?: boolean }) {
+  const [filled, setFilled] = useState(false);
   const digits = props.phone.replace(/\D/g, '');
   const found = useLiveQuery(async () => {
     if (digits.length < 9) return [];
@@ -434,9 +439,20 @@ function ReturningClient(props: { phone: string; onFill: (order: Order) => void;
       <span>
         Ten numer był już w zleceniu <strong>{orderCode(last)}</strong> ({last.clientName}, {orderAddress(last)}).
         <span className="notice-actions">
-          <button type="button" className="link" onClick={() => props.onFill(last)}>
-            Uzupełnij dane klienta
-          </button>
+          {filled ? (
+            <strong>Uzupełniono. Sprawdź dane w kolejnych krokach.</strong>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                props.onFill(last);
+                setFilled(true);
+              }}
+            >
+              {props.withAddress ? 'Uzupełnij dane i adres' : 'Uzupełnij dane klienta'}
+            </button>
+          )}
         </span>
       </span>
     </div>
@@ -609,19 +625,44 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           )}
         </div>
       );
-    case 'klient':
+    case 'telefon':
       return (
         <div className="form">
-          <Field label="Telefon" error={errors.phone1}>
+          <Field label="Telefon" error={errors.phone1} hint="Stały klient: aplikacja podpowie jego dane i adres.">
             <input type="tel" inputMode="tel" value={s.phone1} placeholder="500 600 700" onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })} autoComplete="off" />
           </Field>
           <ReturningClient
             phone={s.phone1}
             currentId={props.editId}
-            onFill={(o) =>
-              set({ clientName: o.clientName, email: o.email, nip: o.nip, invoiceName: o.invoiceName ?? '', invoiceAddress: o.invoiceAddress, pink: o.pink || s.pink, pinkNote: o.pinkNote || s.pinkNote })
-            }
+            withAddress={!props.editId}
+            onFill={(o) => {
+              const client = { clientName: o.clientName, email: o.email, nip: o.nip, invoiceName: o.invoiceName ?? '', invoiceAddress: o.invoiceAddress, pink: o.pink || s.pink, pinkNote: o.pinkNote || s.pinkNote };
+              if (props.editId) {
+                set(client);
+                return;
+              }
+              const old = fromOrder(o);
+              set({
+                ...client,
+                invoice: o.invoice,
+                building: old.building,
+                street: old.street,
+                houseNo: old.houseNo,
+                flatNo: old.flatNo,
+                floor: old.floor,
+                staircase: old.staircase,
+                postalCode: old.postalCode,
+                city: old.city,
+                access: old.access,
+                mapsLink: old.mapsLink,
+              });
+            }}
           />
+        </div>
+      );
+    case 'klient':
+      return (
+        <div className="form">
           <Field label="Imię i nazwisko albo nazwa firmy" error={errors.clientName}>
             <input value={s.clientName} onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
           </Field>
@@ -687,7 +728,7 @@ export function OrderNewPage() {
   });
   const [stepIndex, setStepIndex] = useState(0);
   const [errors, setErrors] = useState<Errors>({});
-  const steps: StepId[] = ['adres', 'problem', 'termin', 'cena', 'klient', 'podsumowanie'];
+  const steps: StepId[] = [...ALL_STEPS, 'podsumowanie'];
   const step = steps[stepIndex];
   const hasDraft = useMemo(() => JSON.stringify(state) !== JSON.stringify(EMPTY), [state]);
 
@@ -841,7 +882,7 @@ export function OrderEditPage() {
       }
       return next;
     });
-  const sections: StepId[] = ['adres', 'problem', 'cena', 'klient'];
+  const sections: StepId[] = ['telefon', 'adres', 'problem', 'cena', 'klient'];
 
   const save = async () => {
     const found = Object.assign({}, ...sections.map((step) => validate(step, state))) as Errors;

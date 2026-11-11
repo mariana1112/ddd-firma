@@ -24,30 +24,10 @@ import { unwrapDataKey } from '../data/sync/crypto';
 
 const supabaseApi = () => import('../data/sync/supabase');
 
-// ---------- Blokada panelu ----------
-
-/** Panel odblokowany na 15 minut od ostatniego użycia; po zamknięciu aplikacji znowu prosi o hasło. */
-const UNLOCK_MS = 15 * 60 * 1000;
-let unlockedUntil = 0;
-
-function isUnlocked(): boolean {
-  return Date.now() < unlockedUntil;
-}
-
-function touchUnlock(): void {
-  if (isUnlocked()) unlockedUntil = Date.now() + UNLOCK_MS;
-}
-
 export const RECOVERY_QUESTIONS = ['Ulubiona gra', 'Nazwisko panieńskie matki', 'Imię pierwszego psa'] as const;
 
 /** Adres, na który aplikacja wraca z linków w e-mailach. */
 const appUrl = () => `${window.location.origin}${window.location.pathname}`;
-
-/** Login admina tego urządzenia: e-mail zapisany przy połączeniu albo aktualny z sesji (po zmianie adresu). */
-async function accountEmails(state: SyncState): Promise<string[]> {
-  const current = await (await supabaseApi()).currentUser().catch(() => null);
-  return [state.email, current?.userId === state.userId ? current.email : ''].filter(Boolean).map((e) => e.toLowerCase());
-}
 
 
 /** Po ustawieniu nowego hasła pobieramy dane od nowa, żeby panel miał aktualne zlecenia wszystkich regionów. */
@@ -57,120 +37,13 @@ async function refetchAfterRecovery(): Promise<void> {
   void syncInBackground().catch(() => undefined);
 }
 
-/** Logowanie do panelu: login (e-mail konta admina) i hasło, sprawdzane na serwerze. */
-function AdminLogin(props: { state: SyncState; onUnlocked: () => void }) {
-  const { run, toast } = useFeedback();
-  const [email, setEmail] = useState(props.state.email ?? '');
-  const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(false);
-  useEffect(() => {
-    void getAdminSecrets().then((saved) => {
-      if (saved.panel) {
-        setPassword(saved.panel);
-        setRemember(true);
-      }
-    });
-  }, []);
-  const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<'login' | 'reset'>('login');
-
-  const checkEmail = async () => {
-    // Inny e-mail podmieniłby konto zalogowane na urządzeniu, więc sprawdzamy go przed wysłaniem czegokolwiek.
-    if (!(await accountEmails(props.state)).includes(email.trim().toLowerCase())) {
-      toast('To nie jest login admina tego urządzenia.', { tone: 'error' });
-      return false;
-    }
-    return true;
-  };
-
-  const submit = () =>
-    run(async () => {
-      if (!(await checkEmail())) return;
-      setBusy(true);
-      try {
-        const api = await supabaseApi();
-        const user = await api.signIn(email.trim(), password);
-        if (user.userId !== props.state.userId) throw new Error('Nieprawidłowe konto.');
-        await saveAdminSecret('panel', remember ? password : '').catch(() => undefined);
-        setPassword('');
-        unlockedUntil = Date.now() + UNLOCK_MS;
-        props.onUnlocked();
-      } finally {
-        setBusy(false);
-      }
-    });
-
-  const sendReset = () =>
-    run(async () => {
-      if (!(await checkEmail())) return;
-      setBusy(true);
-      try {
-        await (await supabaseApi()).requestPasswordReset(email.trim(), appUrl());
-        toast(`Wysłano link na ${email.trim()}. Otwórz go na tym urządzeniu.`);
-        setMode('login');
-      } finally {
-        setBusy(false);
-      }
-    });
-
-  if (mode === 'reset') {
-    return (
-      <form
-        className="form card"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (email.trim()) void sendReset();
-        }}
-      >
-        <p className="field-hint">
-          Wyślemy link do ustawienia nowego hasła na e-mail admina. Otwórz go na tym urządzeniu.
-        </p>
-        <Field label="Login (e-mail)">
-          <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </Field>
-        <button type="submit" className="btn btn-primary btn-block" disabled={busy || !email.trim()}>
-          {busy ? 'Wysyłam…' : 'Wyślij link'}
-        </button>
-        <button type="button" className="link" onClick={() => setMode('login')}>
-          Wróć do logowania
-        </button>
-      </form>
-    );
-  }
-
-  return (
-    <form
-      className="form card"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (email.trim() && password) void submit();
-      }}
-    >
-      <p className="field-hint">Panel admina jest chroniony. Podaj login (e-mail konta admina) i hasło. Wymaga internetu.</p>
-      <Field label="Login (e-mail)">
-        <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
-      </Field>
-      <Field label="Hasło">
-        <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      </Field>
-      <label className="check">
-        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Zapamiętaj hasło na tym telefonie
-      </label>
-      <button type="submit" className="btn btn-primary btn-block" disabled={busy || !email.trim() || !password}>
-        {busy ? 'Sprawdzam…' : 'Wejdź do panelu'}
-      </button>
-      <button type="button" className="link" onClick={() => setMode('reset')}>
-        Nie pamiętam hasła
-      </button>
-    </form>
-  );
-}
-
-/** Wspólna bramka: tylko konto admina (szef) z synchronizacją, po podaniu loginu i hasła. */
-function useAdminGate(): { state: SyncState | null | undefined; unlocked: boolean; unlock: () => void } {
+/**
+ * Wspólna bramka: konto admina (szef) zalogowane na tym telefonie wchodzi do panelu od razu, bez ponownego hasła.
+ * Konto i tak jest potwierdzone logowaniem, a serwer sprawdza rolę przy każdej operacji.
+ */
+function useAdminGate(): { state: SyncState | null | undefined; unlocked: boolean } {
   const state = useLiveQuery(async () => (await getSyncState()) ?? null);
-  const [, setTick] = useState(0);
-  return { state, unlocked: isUnlocked(), unlock: () => setTick((t) => t + 1) };
+  return { state, unlocked: state?.role === 'owner' };
 }
 
 function NotAdmin() {
@@ -591,7 +464,7 @@ function CodesSection(props: { state: SyncState; regions: RegionRef[]; fixedRegi
         {saved === null && (
           <Field
             label="Hasło szyfrowania firmy (tylko pierwszy raz)"
-            hint="Telefon zapamięta je i więcej nie zapyta. Nie trafia na serwer. To nie jest hasło do panelu."
+            hint="Telefon zapamięta je i więcej nie zapyta. Nie trafia na serwer. To nie jest hasło do logowania."
           >
             {/* Pole tekstowe z kropkami: iPhone nie wpisuje tu wtedy sam hasła do panelu. */}
             <input
@@ -701,7 +574,7 @@ function SavedPasswordsSection(props: { state: SyncState }) {
         do panelu i zobaczy hasła.
       </p>
       <SecretRow
-        label="Hasło do panelu"
+        label="Hasło do konta (logowanie)"
         value={secrets?.panel}
         verify={async (value) => {
           const user = await (await supabaseApi()).signIn(props.state.email, value);
@@ -794,17 +667,9 @@ export function AdminPage() {
     trips: await trips.allRegions(),
   }));
 
-  useEffect(() => touchUnlock());
 
   if (gate.state === undefined) return <Loading />;
   if (!gate.state || gate.state.role !== 'owner') return <NotAdmin />;
-  if (!gate.unlocked) {
-    return (
-      <Page title="Panel admina" back="/wiecej">
-        <AdminLogin state={gate.state} onUnlocked={gate.unlock} />
-      </Page>
-    );
-  }
   if (!data || !regionsApi.loaded) return <Loading />;
 
   const state = gate.state;
@@ -998,7 +863,6 @@ export function AdminTechnicianPage() {
     return { list, byId };
   }, [id]);
 
-  useEffect(() => touchUnlock());
 
   if (gate.state === undefined || !data) return <Loading />;
   if (!gate.state || gate.state.role !== 'owner') return <NotAdmin />;
@@ -1066,7 +930,6 @@ export function AdminScoped({ children }: { children: ReactNode }) {
   const [token] = useState(() => ++scopeToken);
   setViewScope(region);
   useEffect(() => {
-    touchUnlock();
     return () => {
       if (scopeToken === token) setViewScope(null);
     };
@@ -1102,7 +965,6 @@ export function AdminSecurityPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    touchUnlock();
   }, []);
 
   if (gate.state === undefined) return <Loading />;
@@ -1238,7 +1100,6 @@ export function AdminRecoveryPage() {
               await (await supabaseApi()).setNewPassword(next);
               clearRecoveryLink();
               await refetchAfterRecovery();
-              unlockedUntil = Date.now() + UNLOCK_MS;
               toast('Ustawiono nowe hasło.');
               // Admin wraca do panelu; inne konta do aplikacji (urządzenie bez konta firmy pokaże logowanie do firmy).
               const device = await getSyncState();

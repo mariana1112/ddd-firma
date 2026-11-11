@@ -1,18 +1,16 @@
 import { roman } from '../data/codes';
 import { normalizeInterview } from '../data/interview';
-import { INVOICES, PAY_NAMES, priceRange, workSummary } from '../data/texts';
+import { INVOICES, PAY_NAMES, priceRange, workHours, workSummary } from '../data/texts';
 import { scopeText, visitPrice } from '../data/visit-terms';
 import type { Order, Visit } from '../data/types';
 import { formatDate, formatTerm } from '../lib/dates';
 import { moneyToInput } from '../lib/money';
 import { Group, Info } from '../ui/kit';
 
-const clock = new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit' });
-
-/** „08.11.2026, 10:05–11:20, Maurycy” */
+/** „08.11.2026, 10:05–11:20, Maurycy”; zabieg przez północ z datami obu dni. */
 function whenDone(visit: Visit): string {
-  const hours = [visit.startedAt, visit.finishedAt].filter((t): t is string => Boolean(t)).map((t) => clock.format(new Date(t)));
-  return [formatDate(visit.doneOn ?? visit.start), hours.join('–'), visit.technicianName].filter(Boolean).join(', ');
+  const hours = workHours(visit);
+  return [hours.multiDay ? '' : formatDate(visit.doneOn ?? visit.start), hours.text, visit.technicianName].filter(Boolean).join(', ');
 }
 
 /** Stan kolejnego zabiegu: wykonany, umówiony albo do umówienia. */

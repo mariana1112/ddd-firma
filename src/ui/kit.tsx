@@ -285,9 +285,11 @@ export function Chips<T extends string>(props: {
   value: T;
   onChange: (value: T) => void;
   options: Array<{ value: T; label: string; count?: number }>;
+  /** Wszystkie opcje widoczne naraz w równej siatce (na telefonie 2 × 2), bez ukrytego przewijania w bok. */
+  wrap?: boolean;
 }) {
   return (
-    <div className="chips" role="group">
+    <div className={props.wrap ? 'chips chips-even' : 'chips'} role="group">
       {props.options.map((o) => (
         <button
           key={o.value}
