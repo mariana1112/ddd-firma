@@ -1,4 +1,5 @@
 import { orderCode, roman } from '../data/codes';
+import { withCountryCode } from '../lib/validators';
 import type { NextVisitState } from '../data/order-list';
 // Elementy wspólne ekranów zleceń: etykiety, akcje kontaktu z klientem i udostępnianie tekstu.
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
@@ -338,5 +339,22 @@ export function AddressBlock({ order }: { order: Order }) {
       </button>
       <NavigateSheet order={order} open={navOpen} onClose={() => setNavOpen(false)} />
     </>
+  );
+}
+
+/** Nagłówek zlecenia i zabiegu: numer telefonu z +48 (dotknięcie dzwoni), imię lub firma mniejszym pod spodem. */
+export function ClientHeading({ order }: { order: Order }) {
+  const phone = order.phones.find((p) => p.number.trim());
+  return (
+    <div className="client-heading">
+      {phone ? (
+        <a className="client-phone" href={telUrl(phone.number)}>
+          <Icon name="phone" size={20} /> {withCountryCode(phone.number)}
+        </a>
+      ) : (
+        <h2>{order.clientName || 'Klient'}</h2>
+      )}
+      {phone && order.clientName.trim() && <span className="client-name">{order.clientName.trim()}</span>}
+    </div>
   );
 }

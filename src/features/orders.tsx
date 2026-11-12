@@ -22,7 +22,7 @@ import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Pa
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
-import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen, AddressBlock, copyText } from './common';
+import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
 
 type StatusFilter = ListFilter;
 type PayFilter = 'wszystkie' | PayMethod;
@@ -544,11 +544,36 @@ export function OrderDetailPage() {
           {order.pink && <PinkBadge />}
           {order.closed && <Badge tone="ok">Zakończone</Badge>}
         </div>
-        <h2>{order.clientName || order.phones[0]?.number || "Klient"}</h2>
+        <ClientHeading order={order} />
         <AddressBlock order={order} />
       </div>
 
       <ContactBar order={order} visit={nextPlanned ?? current} />
+      <div className="doc-actions">
+        <button
+          type="button"
+          className="btn"
+          onClick={() =>
+            void run(async () => {
+              const [{ orderDocument }, { renderPdf }] = await Promise.all([import('../pdf/documents'), import('../pdf/render')]);
+              deliverFile(await renderPdf(orderDocument(order, data.visits, { vatRate: settings.vatRate })), `zlecenie-${orderCode(order).replace(/[^\w-]+/g, '-')}.pdf`);
+            })
+          }
+        >
+          <Icon name="file" /> PDF zlecenia
+        </button>
+        <button
+          type="button"
+          className="btn"
+          onClick={() =>
+            void copyText(orderText(order, data.visits, settings.vatRate)).then((ok) =>
+              toast(ok ? 'Skopiowano dane zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
+            )
+          }
+        >
+          <Icon name="copy" /> Kopiuj dane
+        </button>
+      </div>
       {params.has('nowe') && nextPlanned && (
         <div className="notice notice-info calendar-offer">
           <Icon name="calendar" />
@@ -607,18 +632,6 @@ export function OrderDetailPage() {
       <button type="button" className="btn btn-block" onClick={() => setScheduling(true)}>
         <Icon name="calendar" /> Umów kolejny zabieg
       </button>
-      <button
-        type="button"
-        className="btn btn-block"
-        onClick={() =>
-          void run(async () => {
-            const [{ orderDocument }, { renderPdf }] = await Promise.all([import('../pdf/documents'), import('../pdf/render')]);
-            deliverFile(await renderPdf(orderDocument(order, data.visits, { vatRate: settings.vatRate })), `zlecenie-${orderCode(order).replace(/[^\w-]+/g, '-')}.pdf`);
-          })
-        }
-      >
-        <Icon name="file" /> Podsumowanie zlecenia (PDF)
-      </button>
       <Sheet open={scheduling} title={`Umów kolejny zabieg · ${visitCode(order, nextSeq)}`} onClose={() => setScheduling(false)}>
         {scheduling && (
           <ScheduleNext
@@ -646,17 +659,17 @@ export function OrderDetailPage() {
       <Group
         title="Problem"
         action={
-          <button
-            type="button"
-            className="link"
-            onClick={() =>
-              void copyText(orderText(order, data.visits, settings.vatRate)).then((ok) =>
-                toast(ok ? 'Skopiowano opis zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
-              )
-            }
-          >
-            <Icon name="copy" /> Kopiuj opis
-          </button>
+          order.description.trim() ? (
+            <button
+              type="button"
+              className="link"
+              onClick={() =>
+                void copyText(order.description.trim()).then((ok) => toast(ok ? 'Skopiowano opis' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))
+              }
+            >
+              <Icon name="copy" /> Kopiuj opis
+            </button>
+          ) : undefined
         }
       >
         {orderMethods(order).length > 0 && <Info label="Co robimy">{orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')}</Info>}

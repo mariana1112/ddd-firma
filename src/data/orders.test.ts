@@ -222,7 +222,7 @@ describe('teksty', () => {
     expect(text).toContain('blok, klatka B, piętro 3');
     expect(text).toContain('Co zastałem: Duża kolonia za lodówką');
     expect(text).toContain('Problemy: Sąsiad też ma karaluchy');
-    expect(text).toContain('- Opis sytuacji: Karaluchy w kuchni od miesiąca');
+    expect(text).toContain('- Opis: Karaluchy w kuchni od miesiąca');
     expect(text).toContain('- Ugryzienia: nie');
     expect(text).toContain('- Widziane owady: tak, ile: ok. 20');
     expect(text).not.toContain('Środki na własną rękę');
@@ -501,7 +501,7 @@ describe('wywiad', () => {
   it('obecny wywiad zostaje bez zmian', () => {
     const now = { situation: 'Pluskwy w sypialni', bites: 'tak', seen: 'nie', seenCount: '', selfTreatment: 'tak', other: '' } as const;
     expect(normalizeInterview(now)).toEqual(now);
-    expect(interviewLines(now)).toEqual(['Opis sytuacji: Pluskwy w sypialni', 'Ugryzienia: tak', 'Widziane owady: nie', 'Środki na własną rękę: tak']);
+    expect(interviewLines(now)).toEqual(['Opis: Pluskwy w sypialni', 'Ugryzienia: tak', 'Widziane owady: nie', 'Środki na własną rękę: tak']);
   });
 });
 

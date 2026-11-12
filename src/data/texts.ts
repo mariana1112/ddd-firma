@@ -219,7 +219,7 @@ export function finishSms(visit: Visit, next: Visit | null, settings: AppSetting
 export function interviewLines(raw: Visit['interview']): string[] {
   const i = normalizeInterview(raw);
   const lines: string[] = [];
-  if (i.situation) lines.push(`Opis sytuacji: ${i.situation.replace(/\n+/g, '; ')}`);
+  if (i.situation) lines.push(`Opis: ${i.situation.replace(/\n+/g, '; ')}`);
   if (i.bites) lines.push(`Ugryzienia: ${i.bites}`);
   if (i.seen) lines.push(`Widziane owady: ${i.seen}${i.seen === 'tak' && i.seenCount ? `, ile: ${i.seenCount}` : ''}`);
   if (i.selfTreatment) lines.push(`Środki na własną rękę: ${i.selfTreatment}`);

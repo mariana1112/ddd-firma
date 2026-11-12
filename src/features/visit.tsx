@@ -25,7 +25,7 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect } from '../ui/kit';
-import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, copyText } from './common';
+import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
 import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
 import { Photos } from './photos';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
@@ -511,7 +511,7 @@ export function VisitPage() {
           <VisitBadge visit={visit} />
           {order.pink && <PinkBadge />}
         </div>
-        <h2>{order.clientName || order.phones[0]?.number || "Klient"}</h2>
+        <ClientHeading order={order} />
         <AddressBlock order={order} />
         <p>
           {pestName(order)} · {visitWhen(visit)}
@@ -602,11 +602,11 @@ export function VisitPage() {
             className="link"
             onClick={() =>
               void copyText(orderText(order, list, settings.vatRate)).then((ok) =>
-                toast(ok ? 'Skopiowano opis zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
+                toast(ok ? 'Skopiowano dane zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
               )
             }
           >
-            <Icon name="copy" /> Kopiuj opis
+            <Icon name="copy" /> Kopiuj dane
           </button>
         }
           >
@@ -728,12 +728,23 @@ export function VisitPage() {
 
           <Group title="Wywiad" plain>
             <AutoText
-              label="Opis sytuacji"
+              label="Opis"
               placeholder="Co się dzieje, gdzie, od kiedy"
               rows={4}
               value={interview.situation}
               onSave={(v) => saveInterview('situation', v)}
             />
+            {interview.situation.trim() && (
+              <button
+                type="button"
+                className="link copy-link"
+                onClick={() =>
+                  void copyText(interview.situation.trim()).then((ok) => toast(ok ? 'Skopiowano opis' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))
+                }
+              >
+                <Icon name="copy" /> Kopiuj opis
+              </button>
+            )}
             <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />
             <YesNoField label="Czy widziano owady?" value={interview.seen} onChange={(v) => saveInterview('seen', v)} />
             {interview.seen === 'tak' && (

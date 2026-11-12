@@ -5,7 +5,8 @@ import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interface
 import { FIRST_PAGE_ROWS, NEXT_PAGE_ROWS, paginate, romanMonth, type DriverSummary, type MileageEntry } from '../data/mileage';
 import { formatPln, PAY_METHODS, periodTitle, type Report } from '../data/reports';
 import { COMPANY_NAME } from '../data/settings';
-import { BUILDINGS, INVOICES, orderAddress, PAY_NAMES, pestName, priceRange, workSummary } from '../data/texts';
+import { BUILDINGS, INVOICES, interviewLines, orderAddress, PAY_NAMES, pestName, priceRange, workSummary } from '../data/texts';
+import { scopeText, visitPrice } from '../data/visit-terms';
 import type { Order, TripKind, Visit } from '../data/types';
 import { formatDate, formatTerm } from '../lib/dates';
 
@@ -575,7 +576,6 @@ export function orderDocument(order: Order, visits: Visit[], opts: { vatRate: nu
   const sorted = [...visits].sort((a, b) => a.seq - b.seq);
   const paid = sorted.filter((v) => v.status === 'wykonany' && v.amount !== null).reduce((sum, v) => sum + (v.amount ?? 0), 0);
   const when = (v: Visit) => (v.status === 'wykonany' ? formatDate(v.doneOn ?? v.start) : v.start ? formatTerm(v.start) : 'nieumówiony');
-  const done = sorted.filter((v) => v.status === 'wykonany');
 
   return {
     ...base(`Zlecenie ${code}`),
@@ -590,6 +590,9 @@ export function orderDocument(order: Order, visits: Visit[], opts: { vatRate: nu
         ['Faktura', INVOICES[order.invoice]],
         ['Dane do faktury', order.invoice === 'vat' ? [order.invoiceName ?? '', order.nip && `NIP ${order.nip}`].filter(Boolean).join(', ') : ''],
         ['Protokół', order.protocol ? 'Tak' : 'Nie'],
+        ['Adres do faktury', order.invoice !== 'brak' ? order.invoiceAddress : ''],
+        ['Przyjął zlecenie', order.ownerName],
+        ['Kod pink', order.pink ? order.pinkNote || 'tak' : ''],
       ]),
       { text: 'Adres', style: 'section' },
       info([
@@ -627,16 +630,34 @@ export function orderDocument(order: Order, visits: Visit[], opts: { vatRate: nu
           ],
         },
       },
-      ...done.flatMap((v): Content[] => {
-        const recs = [...v.recommendations, ...(v.sealing?.length ? [`Do uszczelnienia: ${v.sealing.join(', ')}`] : [])];
-        const notes = [v.findings && `Zastano: ${v.findings}`, v.problems && `Problemy: ${v.problems}`].filter(Boolean) as string[];
-        if (!recs.length && !notes.length) return [];
-        return [
-          { text: `Zalecenia po zabiegu ${roman(v.seq)} (${formatDate(v.doneOn ?? v.start)})`, style: 'section' },
-          ...(notes.length ? [{ text: notes.join('\n'), margin: [0, 0, 0, 4] } as Content] : []),
-          ...(recs.length ? [{ ul: recs } as Content] : []),
-        ];
-      }),
+      // Szczegóły każdego zabiegu (bez odwołanych): termin, kto umówił, zakres i cena, opis i wywiad, wykonane prace,
+      // uszczelnienia, zalecenia i płatność.
+      ...sorted
+        .filter((v) => v.status !== 'odwolany')
+        .flatMap((v): Content[] => {
+          const vp = priceRange({ ...visitPrice(v, order), invoice: order.invoice }, opts.vatRate);
+          const rows: Array<[string, string]> = [
+            ['Stan', VISIT_STATUS[v.status]],
+            ['Termin', when(v)],
+            ['Czas trwania', v.durationMin ? `${v.durationMin} min` : ''],
+            ['Umówione przez', v.bookedByName ?? ''],
+            ['Technik', v.status === 'zaplanowany' ? '' : v.technicianName],
+            ['Co pryskamy', scopeText(v.scope)],
+            ['Cena', vp ? [vp.net, vp.gross].filter(Boolean).join(' / ') : ''],
+            ['Wykonano', workSummary(v)],
+            ['Do uszczelnienia', (v.sealing ?? []).join(', ')],
+            ['Zastano', v.findings],
+            ['Problemy', v.problems],
+            ['Płatność', v.status === 'wykonany' && v.amount !== null ? `${formatPln(v.amount)}${v.payMethod ? `, ${PAY_NAMES[v.payMethod]}` : ''}` : ''],
+          ];
+          const interview = interviewLines(v.interview);
+          return [
+            { text: `Zabieg ${roman(v.seq)} · ${visitCode(order, v.seq)}`, style: 'section' },
+            info(rows),
+            ...(interview.length ? [{ text: 'Wywiad', bold: true, margin: [0, 6, 0, 2] } as Content, { ul: interview } as Content] : []),
+            ...(v.recommendations.length ? [{ text: 'Zalecenia', bold: true, margin: [0, 6, 0, 2] } as Content, { ul: v.recommendations } as Content] : []),
+          ];
+        }),
     ],
   } as TDocumentDefinitions;
 }
