@@ -3,7 +3,7 @@ import { METHOD_LABEL, orderMethods } from '../data/methods';
 // Dokumenty PDF jako czyste funkcje: dane wchodzą, definicja pdfmake wychodzi.
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { FIRST_PAGE_ROWS, NEXT_PAGE_ROWS, paginate, romanMonth, type DriverSummary, type MileageEntry } from '../data/mileage';
-import { formatPln, PAY_METHODS, periodTitle, type Report } from '../data/reports';
+import { byTechnician, formatPln, PAY_METHODS, periodTitle, type Report } from '../data/reports';
 import { COMPANY_NAME } from '../data/settings';
 import { BUILDINGS, INVOICES, interviewLines, orderAddress, PAY_NAMES, pestName, priceRange, workSummary } from '../data/texts';
 import { scopeText, visitPrice } from '../data/visit-terms';
@@ -62,7 +62,7 @@ function base(title: string, orientation: 'portrait' | 'landscape' = 'portrait')
 const right = (text: string, extra: object = {}): TableCell => ({ text, alignment: 'right', noWrap: true, ...extra });
 
 /** Raport rozliczeniowy: obrót, formy płatności, koszty, premia, gotówka dla szefa i szczegóły. */
-export function reportDocument(report: Report, names: { technician: string; bossGenitive: string }, opts: { km?: boolean } = {}): TDocumentDefinitions {
+export function reportDocument(report: Report, names: { technician: string; bossGenitive: string }, opts: { km?: boolean; split?: boolean } = {}): TDocumentDefinitions {
   const summary: Array<[string, number, boolean?]> = [
     ['Obrót', report.turnover, true],
     ...PAY_METHODS.map((m): [string, number] => [PAY_NAMES[m], report.byMethod[m]]),
@@ -145,6 +145,22 @@ export function reportDocument(report: Report, names: { technician: string; boss
       },
       { text: 'Wpłaty według dni', style: 'section' },
       days,
+      // Raport regionu: kto ile zrobił (inicjały technika).
+      ...(opts.split
+        ? [
+            { text: 'Podział na techników', style: 'section' } as Content,
+            {
+              layout: tableLayout,
+              table: {
+                widths: [50, '*', 60, 80],
+                body: [
+                  [{ text: 'Technik', style: 'th' }, { text: 'Imię i nazwisko', style: 'th' }, { text: 'Zabiegi', style: 'th', alignment: 'right' }, { text: 'Obrót', style: 'th', alignment: 'right' }],
+                  ...byTechnician(report).map((s) => [{ text: s.label, bold: true }, s.name, right(String(s.visits)), right(formatPln(s.turnover))]),
+                ],
+              },
+            } as Content,
+          ]
+        : []),
       { text: 'Zabiegi', style: 'section' },
       visits,
       { text: 'Koszty', style: 'section' },

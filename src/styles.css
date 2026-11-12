@@ -3102,3 +3102,18 @@ body {
   align-items: center;
   gap: 4px;
 }
+
+/* Inicjały technika w raporcie regionu */
+.initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 800;
+}

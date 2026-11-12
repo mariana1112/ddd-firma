@@ -3,10 +3,10 @@ import { useReportKm } from '../lib/report-prefs';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useContext, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { buildReport, costName, formatPln, PAY_METHODS, periodOf, periodTitle, reportText, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
+import { buildReport, costName, formatPln, PAY_METHODS, periodOf, periodTitle, reportText, shiftPeriod, type Period, type PeriodKind, byTechnician, initials, technicianLines } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getAppSettings, getProfile, getSyncState, ownedBy } from '../data/settings';
-import { orderAddress, PAY_NAMES, pestName } from '../data/texts';
+import { orderAddress, PAY_NAMES, pestName, firstName } from '../data/texts';
 import { formatDate, todayWarsaw } from '../lib/dates';
 import { reportDocument } from '../pdf/documents';
 import { renderPdf } from '../pdf/render';
@@ -25,18 +25,22 @@ export function ReportsPage() {
   const otherId = params.get('technik');
   // Admin widzi domyślnie zabiegi wszystkich techników (w panelu: wybranego regionu albo firmy); technik tylko swoje.
   const inPanel = useContext(ScopeBannerContext) !== null;
-  const [onlyMine, setOnlyMine] = useState(false);
+  // Null: domyślnie admin i księgowa widzą wszystkich, technik swoje (może przełączyć na cały region).
+  const [onlyMine, setOnlyMine] = useState<boolean | null>(null);
   const data = useLiveQuery(async () => {
     const profile = await getProfile();
     const state = await getSyncState();
     // Admin i księgowa widzą domyślnie wszystkich techników.
     const owner = state?.role === 'owner' || state?.role === 'ksiegowosc';
-    const everyone = !otherId && owner && (inPanel || !onlyMine);
+    const mine = onlyMine ?? !owner;
+    // Technik też może zrobić raport całego regionu (z podziałem na techników po inicjałach).
+    const everyone = !otherId && Boolean(state) && (inPanel || !mine);
     const who = otherId ?? profile.userId;
     const self = !otherId || otherId === profile.userId;
     const own = <T extends { ownerId?: string | null }>(list: T[]) => (everyone ? list : list.filter((x) => ownedBy(x.ownerId, who, self)));
     return {
       owner,
+      synced: Boolean(state),
       everyone,
       regionName: state?.branchName ?? '',
       profile: otherId ? { name: params.get('imie') ?? 'technik', userId: otherId } : profile,
@@ -61,26 +65,47 @@ export function ReportsPage() {
   const report = buildReport(period, data);
   const allName = inPanel ? 'wszyscy technicy' : data.regionName ? `wszyscy technicy, region ${data.regionName}` : 'wszyscy technicy';
   const names = { technician: data.everyone ? allName : data.profile.name || 'technik', bossGenitive: data.settings.bossName };
-  const text = reportText(report, names);
+  const shares = data.everyone ? byTechnician(report) : [];
+  const text = shares.length ? `${reportText(report, names)}\n\nPodział na techników:\n${technicianLines(shares).join('\n')}` : reportText(report, names);
   const isCurrent = period.from === periodOf(period.kind, todayWarsaw()).from;
 
   const pdf = async () => {
     setBusy(true);
-    await run(async () => deliverFile(await renderPdf(reportDocument(report, names, { km: withKm })), `raport-${period.kind}-${period.from}.pdf`));
+    await run(async () => deliverFile(await renderPdf(reportDocument(report, names, { km: withKm, split: data.everyone })), `raport-${period.kind}-${period.from}.pdf`));
     setBusy(false);
   };
 
   return (
     <Page title={otherId ? `Raport: ${data.profile.name}` : 'Raporty'} back={otherId ? '/oddzialy' : undefined}>
-      {data.owner && !otherId && !inPanel && (
+      {data.synced && !otherId && !inPanel && (
         <Chips
-          value={onlyMine ? 'moje' : 'wszyscy'}
+          value={data.everyone ? 'wszyscy' : 'moje'}
           onChange={(v: string) => setOnlyMine(v === 'moje')}
-          options={[
-            { value: 'wszyscy', label: 'Wszyscy technicy' },
-            { value: 'moje', label: 'Tylko moje' },
-          ]}
+          options={
+            data.owner
+              ? [
+                  { value: 'wszyscy', label: 'Wszyscy technicy' },
+                  { value: 'moje', label: 'Tylko moje' },
+                ]
+              : [
+                  { value: 'moje', label: 'Mój raport' },
+                  { value: 'wszyscy', label: 'Cały region' },
+                ]
+          }
         />
+      )}
+      {data.everyone && shares.length > 0 && (
+        <Group title="Podział na techników">
+          {shares.map((s) => (
+            <Row
+              key={s.key}
+              lead={<span className="initials">{s.initials}</span>}
+              title={s.label}
+              sub={technicianLines([s])[0].slice(s.label.length + 3)}
+              trailing={<strong className="num">{formatPln(s.turnover)}</strong>}
+            />
+          ))}
+        </Group>
       )}
       <Chips
         value={period.kind}
@@ -144,7 +169,8 @@ export function ReportsPage() {
             key={visit.id}
             to={`/zabieg/${visit.id}`}
             title={order ? `${visitCode(order, visit.seq)} ${order.clientName}` : 'Zabieg'}
-            meta={data.everyone ? visit.technicianName || undefined : undefined}
+            lead={data.everyone ? <span className="initials" title={visit.technicianName}>{initials(visit.technicianName)}</span> : undefined}
+            meta={data.everyone ? firstName(visit.technicianName) || undefined : undefined}
             sub={order ? `${formatDate(visit.doneOn)} · ${orderAddress(order)} · ${pestName(order)}` : formatDate(visit.doneOn)}
             trailing={
               <span className="row-end">

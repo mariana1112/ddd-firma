@@ -318,3 +318,47 @@ export function reportText(r: Report, names: { technician: string; bossGenitive:
         : monthlyText(r, names.bossGenitive);
   return lines.join('\n');
 }
+
+/** Inicjały technika: „Maciej Kowalski” → „MK”, samo imię „Maurycy” → „MA”. */
+export function initials(name: string | null | undefined): string {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+export interface TechnicianShare {
+  key: string;
+  initials: string;
+  name: string;
+  /** Imię do raportu („Maciej”); przy dwóch osobach o tym samym imieniu z literą nazwiska („Maciej K.”). */
+  label: string;
+  visits: number;
+  turnover: number;
+}
+
+/** Podział raportu na techników (kto wykonał zabiegi): inicjały, liczba zabiegów i obrót, od największego obrotu. */
+export function byTechnician(report: Pick<Report, 'visits'>): TechnicianShare[] {
+  const map = new Map<string, TechnicianShare>();
+  for (const { visit } of report.visits) {
+    const key = visit.technicianId ?? `name:${visit.technicianName}`;
+    const row = map.get(key) ?? { key, initials: initials(visit.technicianName), name: visit.technicianName || 'technik', label: '', visits: 0, turnover: 0 };
+    row.visits += 1;
+    row.turnover += visit.amount ?? 0;
+    map.set(key, row);
+  }
+  const rows = [...map.values()];
+  const first = (n: string) => n.trim().split(/\s+/)[0] ?? n;
+  for (const row of rows) {
+    const words = row.name.trim().split(/\s+/);
+    const twin = rows.some((o) => o !== row && first(o.name).toLowerCase() === first(row.name).toLowerCase());
+    row.label = twin && words.length > 1 ? `${words[0]} ${words[words.length - 1][0]}.` : first(row.name);
+  }
+  return rows.sort((a, b) => b.turnover - a.turnover || a.label.localeCompare(b.label, 'pl'));
+}
+
+/** Podział na techników do tekstu raportu: „Maciej – 3 zabiegi, 1 200 zł”. */
+export function technicianLines(shares: TechnicianShare[]): string[] {
+  const word = (n: number) => (n === 1 ? 'zabieg' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'zabiegi' : 'zabiegów');
+  return shares.map((s) => `${s.label} – ${s.visits} ${word(s.visits)}, ${formatPln(s.turnover)}`);
+}

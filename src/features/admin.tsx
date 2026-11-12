@@ -833,6 +833,12 @@ export function AdminPage() {
       <Row to={scoped('raporty')} icon="chart" title="Raporty" sub="Dzień, tydzień, miesiąc, PDF" />
       <Row to={scoped('kilometry')} icon="car" title="Kilometrówka" sub="Przejazdy i wydruk ewidencji" />
       <Row to={scoped('koszty')} icon="receipt" title="Koszty" sub={selected ? 'Koszty techników z regionu' : 'Koszty wszystkich techników'} />
+      <Row
+        to={`/admin/stare-zlecenie${selected ? `?region=${selected.id}` : ''}`}
+        icon="plus"
+        title="Dodaj stare zlecenie"
+        sub="Do raportów: telefon, dzień, kwota, płatność"
+      />
     </Group>
   );
 

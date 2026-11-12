@@ -20,6 +20,7 @@ import { AccountingOrderPage, AccountingPage, CorrectionsPage, PaymentsPage } fr
 import { ChatButton, ChatPage, NotificationBell, NotificationsPage } from './features/communication';
 import { VisitPage } from './features/visit';
 import { RegionPage } from './features/regions';
+import { PastOrderPage } from './features/past-order';
 import { FeedbackProvider } from './ui/feedback';
 import { PullToRefresh } from './ui/pull-refresh';
 import { Icon, type IconName } from './ui/icons';
@@ -146,6 +147,7 @@ function AppRoutes() {
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/admin/bezpieczenstwo" element={<AdminSecurityPage />} />
       <Route path="/admin/technik/:id" element={<AdminTechnicianPage />} />
+      <Route path="/admin/stare-zlecenie" element={<PastOrderPage />} />
       <Route path="/admin/odzyskiwanie" element={<AdminRecoveryPage />} />
       <Route path="/admin/zlecenia" element={<AdminScoped><OrdersPage /></AdminScoped>} />
       <Route path="/admin/kalendarz" element={<AdminScoped><CalendarPage /></AdminScoped>} />

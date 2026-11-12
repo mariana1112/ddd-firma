@@ -10,7 +10,7 @@ import { normalizePlate, tripKm } from './mileage';
 import { attachments, expenses, orders, visits, trips, type NewRecord } from './repo';
 import { getAppSettings, getProfile, getRegion, nextOrderNumber, ownedBy } from './settings';
 import { EMPTY_INTERVIEW } from './interview';
-import type { Order, PayMethod, Visit } from './types';
+import type { Order, PayMethod, Visit, PestCategory } from './types';
 
 export { orders, visits, trips };
 export { EMPTY_INTERVIEW, normalizeInterview } from './interview';
@@ -359,4 +359,93 @@ export async function decideOrderDeletion(id: string, approve: boolean): Promise
     deleteRequest: { ...order.deleteRequest, status: approve ? 'zatwierdzone' : 'odrzucone', decidedBy: profile.name || 'Admin', decidedAt: new Date().toISOString() },
   });
   if (approve) await deleteOrder(id);
+}
+
+// ---------- Stare zlecenia do raportów (panel admina) ----------
+
+export interface PastVisitInput {
+  phone: string;
+  /** Dzień wykonania (raport tego dnia). */
+  doneOn: string;
+  /** Kwota pobrana w groszach. */
+  amount: number;
+  payMethod: PayMethod;
+  /** Który to zabieg w zleceniu: 1, 2, 3… */
+  seq: number;
+  technician: { id: string | null; name: string };
+  /** Numer istniejącego zlecenia w regionie, do którego dopisać zabieg; pusty: nowe zlecenie. */
+  orderNumber?: number | null;
+  /** Adres i szkodnik są opcjonalne: liczą się do raportu tylko kwota, płatność i dzień. */
+  street?: string;
+  houseNo?: string;
+  city?: string;
+  pest?: PestCategory;
+}
+
+/**
+ * Dopisuje wykonany zabieg ze starego zlecenia, żeby trafił do raportów: tylko telefon, dzień, kwota, forma płatności,
+ * który to zabieg i kto go wykonał (bez widełek). Z numerem istniejącego zlecenia zabieg dopisuje się do niego,
+ * a bez numeru powstaje nowe, od razu zakończone zlecenie z kolejnym numerem regionu.
+ */
+export async function addPastVisit(input: PastVisitInput): Promise<{ order: Order; visit: Visit; created: boolean }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.doneOn)) throw new DomainError('Podaj dzień wykonania.');
+  if (!(input.amount >= 0)) throw new DomainError('Podaj kwotę.');
+  const profile = await getProfile();
+  const { prefix } = await getRegion();
+  return writeTransaction([db.orders, db.visits, db.meta], async () => {
+    let order = input.orderNumber ? (await orders.all()).find((x) => x.number === input.orderNumber && !x.deletedAt) : undefined;
+    const created = !order;
+    if (!order) {
+      order = await orders.create({
+        number: input.orderNumber || (await nextOrderNumber()),
+        prefix,
+        ownerId: profile.userId,
+        ownerName: profile.name,
+        building: 'dom',
+        street: input.street?.trim() ?? '',
+        houseNo: input.houseNo?.trim() ?? '',
+        flatNo: '',
+        floor: '',
+        staircase: '',
+        postalCode: '',
+        city: input.city?.trim() ?? '',
+        access: '',
+        pest: input.pest ?? 'inne',
+        pestOther: input.pest ? '' : 'stare zlecenie',
+        description: 'Dopisane później do raportów (panel admina).',
+        areaM2: null,
+        priceMin: null,
+        priceMax: null,
+        invoice: 'brak',
+        clientName: '',
+        email: '',
+        nip: '',
+        invoiceAddress: '',
+        phones: input.phone.trim() ? [{ number: input.phone.trim(), label: '' }] : [],
+        pink: false,
+        pinkNote: '',
+        closed: true,
+      });
+    }
+    const existing = (await orderVisits(order.id)).find((v) => v.seq === input.seq && v.status !== 'odwolany');
+    const fields = {
+      status: 'wykonany' as const,
+      start: existing?.start ?? `${input.doneOn}T10:00`,
+      doneOn: input.doneOn,
+      startedAt: existing?.startedAt ?? null,
+      finishedAt: existing?.finishedAt ?? `${input.doneOn}T12:00:00.000Z`,
+      amount: input.amount,
+      payMethod: input.payMethod,
+      technicianId: input.technician.id,
+      technicianName: input.technician.name,
+    };
+    let visit: Visit;
+    if (existing) {
+      await visits.update(existing.id, fields);
+      visit = { ...existing, ...fields };
+    } else {
+      visit = await visits.create({ ...newVisit(order.id, input.seq, { start: fields.start, durationMin: 60 }, input.technician), ...fields });
+    }
+    return { order, visit, created };
+  });
 }
