@@ -18,6 +18,7 @@ import { SyncNotice } from './account';
 import { RegionLine } from './regions';
 import { PinkBadge, VisitBadge } from './common';
 import { TomorrowReminders } from './reminders';
+import { DayCard } from './day-card';
 
 const BACKUP_REMINDER_DAYS = 7;
 
@@ -256,6 +257,7 @@ export function DashboardPage() {
         </Group>
       )}
 
+      <DayCard />
       <TomorrowReminders />
 
       <Group title={`Dzisiaj${todayList.length ? ` (${todayList.length})` : ''}`}>

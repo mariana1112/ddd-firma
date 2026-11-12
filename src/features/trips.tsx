@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { fillGap, odometerGaps } from '../data/day-trip';
 import { normalizeCity } from '../data/cities';
 import { useEffect, useState } from 'react';
 import { restoreRecord } from '../data/domain';
@@ -12,7 +13,7 @@ import { mileageDocument } from '../pdf/documents';
 import { renderPdf } from '../pdf/render';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Empty, Field, Group, Loading, Page, Sheet, Stat } from '../ui/kit';
+import { Empty, Field, Group, Loading, Page, Sheet, Stat, Row } from '../ui/kit';
 
 export const KIND_NAMES: Record<TripKind, string> = { sluzbowy: 'Służbowy', prywatny: 'Prywatny' };
 
@@ -23,6 +24,7 @@ export function kmSummary(list: Trip[], from: string, to: string): Record<TripKi
     // Do VAT każdy przejazd jest służbowy; prywatne liczone dodatkowo, do wglądu.
     out.sluzbowy += tripKm(t);
     if (t.kind === 'prywatny') out.prywatny += tripKm(t);
+    else out.prywatny += Math.min(tripKm(t), t.privateKm ?? 0);
   }
   return out;
 }
@@ -347,6 +349,41 @@ export function TripsPage() {
         <Stat label={`Służbowo (VAT) w ${year}`} value={`${yearSummary.sluzbowy} km`} />
         <Stat label="w tym prywatne" value={`${yearSummary.prywatny} km`} />
       </div>
+      {/* Ciągłość licznika: luki między przejazdami w tym miesiącu (rano licznik wyższy niż wieczorem). */}
+      {(() => {
+        const gaps = odometerGaps(list).filter((g) => g.date >= from && g.date <= to);
+        return (
+          <Group title="Ciągłość licznika">
+            {gaps.length === 0 ? (
+              <p className="field-hint group-pad">Bez luk: każdy przejazd zaczyna się tam, gdzie skończył się poprzedni.</p>
+            ) : (
+              gaps.map((g) => (
+                <Row
+                  key={g.vehicle + g.from}
+                  icon="alert"
+                  title={`${formatDate(g.date)}: brakuje ${g.km} km`}
+                  sub={`${g.vehicle} · licznik ${g.from.toLocaleString('pl-PL')} → ${g.to.toLocaleString('pl-PL')}`}
+                  trailing={
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() =>
+                        void run(async () => {
+                          const place = list.find((t) => t.odometerEnd === g.from)?.to ?? '';
+                          await fillGap(g, place, profile.userId, vehicle.driver || myName);
+                          toast(`Dopisano ${g.km} km`);
+                        })
+                      }
+                    >
+                      Dopisz
+                    </button>
+                  }
+                />
+              ))
+            )}
+          </Group>
+        );
+      })()}
       <div className="btn-stack">
         <button type="button" className="btn" disabled={busy} onClick={() => void print('sluzbowy')}>
           <Icon name="file" /> Ewidencja przebiegu dla celów VAT

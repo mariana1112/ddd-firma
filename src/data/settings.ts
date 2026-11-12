@@ -38,6 +38,7 @@ export function isDeviceMetaKey(key: string): boolean {
     key === 'vehicle' ||
     key === 'adminSecrets' ||
     key === 'myApp' ||
+    key === 'dayStart' ||
     key.startsWith('geo:') ||
     key.startsWith('numbers:') ||
     key.startsWith('counter:offline:')

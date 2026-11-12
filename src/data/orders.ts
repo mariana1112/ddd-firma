@@ -285,7 +285,10 @@ export async function deleteOrder(id: string): Promise<void> {
  */
 export async function lastOdometer(ownerId: string | null, vehicle = ''): Promise<number | null> {
   const plate = normalizePlate(vehicle);
-  const all = (await trips.all()).filter((t) => (plate ? normalizePlate(t.vehicle) === plate : ownedBy(t.ownerId, ownerId, true)));
+  const list = await trips.all();
+  let all = list.filter((t) => (plate ? normalizePlate(t.vehicle) === plate : ownedBy(t.ownerId, ownerId, true)));
+  // Przejazdy zapisane przed ustawieniem auta nie mają numeru: wtedy liczy się własny ostatni przejazd bez auta.
+  if (all.length === 0 && plate) all = list.filter((t) => !normalizePlate(t.vehicle) && ownedBy(t.ownerId, ownerId, true));
   if (all.length === 0) return null;
   return all.reduce((max, t) => Math.max(max, t.odometerEnd), 0);
 }

@@ -2995,3 +2995,54 @@ body {
   gap: 8px;
   font-size: 1.1rem;
 }
+
+/* Kilometrówka „Dzień w trasie” na Pulpicie */
+.day-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.day-card-stale {
+  border-color: var(--warn, #c98a16);
+}
+
+.day-card-done {
+  flex-direction: row;
+  align-items: center;
+}
+
+.day-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-card-plate {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.day-card-odo {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.day-card-odo strong {
+  font-size: 1.6rem;
+}
+
+.day-card-route {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}

@@ -146,6 +146,7 @@ export function driverSummary(trips: Trip[], driverName: (t: Trip) => string): D
     // Do VAT wszystko jako służbowe; prywatne osobno, do wglądu.
     row.sluzbowy += tripKm(t);
     if (t.kind === 'prywatny') row.prywatny += tripKm(t);
+    else row.prywatny += Math.min(tripKm(t), t.privateKm ?? 0);
     const plate = normalizePlate(t.vehicle);
     if (plate && !row.vehicles.includes(plate)) row.vehicles.push(plate);
     out.set(key, row);

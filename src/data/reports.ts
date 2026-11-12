@@ -130,6 +130,7 @@ export function buildReport(
     const distance = Math.max(0, t.odometerEnd - t.odometerStart);
     km.sluzbowy += distance;
     if (t.kind === 'prywatny') km.prywatny += distance;
+    else km.prywatny += Math.min(distance, t.privateKm ?? 0);
   }
 
   return {

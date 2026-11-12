@@ -384,6 +384,8 @@ export interface Trip extends BaseRecord {
   driver?: string;
   odometerStart: number;
   odometerEnd: number;
+  /** „Dzień w trasie”: ile z kilometrów dnia to prywatny odcinek (do wglądu; do VAT cały dzień jest służbowy). */
+  privateKm?: number;
 }
 
 export interface Attachment extends BaseRecord {
