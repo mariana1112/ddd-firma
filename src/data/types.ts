@@ -185,7 +185,8 @@ export type PayMethod = 'gotowka' | 'blik' | 'przelew';
 /** Rola konta w firmie: admin (szef), technik albo księgowa. */
 export type Role = 'owner' | 'technik' | 'ksiegowosc';
 /** Co robimy w zleceniu: oprysk ciśnieniowy, ULV, zamgławianie, żelowanie, zalanie odpływów. */
-export type TreatmentMethod = 'oprysk' | 'ulv' | 'zamglawianie' | 'zelowanie' | 'odplywy';
+/** „zamglawianie” zostało w starszych zleceniach; teraz to jedna metoda „Zamgławianie ULV” (ulv). */
+export type TreatmentMethod = 'oprysk' | 'ulv' | 'zamglawianie' | 'zelowanie' | 'odplywy' | 'parowanie';
 
 export interface Phone {
   number: string;

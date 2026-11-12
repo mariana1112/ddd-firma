@@ -1,5 +1,6 @@
 // Kilometrówka: wpisy ewidencji przebiegu pojazdu wyliczane z przejazdów.
 import type { Trip } from './types';
+import { normalizeCity } from './cities';
 
 /** Numer rejestracyjny w jednej postaci: wielkie litery, bez spacji, np. „WE1KR10”. */
 export function normalizePlate(plate: string | null | undefined): string {
@@ -23,12 +24,46 @@ const viaPoints = (via: string | undefined) =>
 
 /** Trasa „Łódź - Kutno - Łódź”. Jazda w obrębie jednej miejscowości to sama nazwa, np. „Łódź”. */
 export function routeText(points: string[]): string {
+  return routePoints(points).join(' - ');
+}
+
+/**
+ * Punkty trasy z poprawionymi nazwami miejscowości („gdansk” → „Gdańsk”), bez powtórzeń obok siebie:
+ * „Gdańsk, Gdańsk” to jeden „Gdańsk”, a „Gdańsk, Gdynia, Gdańsk” zostaje.
+ */
+export function routePoints(points: string[]): string[] {
   const out: string[] = [];
   for (const raw of points) {
-    const point = raw.trim();
+    const point = normalizeCity(raw);
     if (point && point.toLowerCase() !== out.at(-1)?.toLowerCase()) out.push(point);
   }
-  return out.join(' - ');
+  return out;
+}
+
+/**
+ * Proponowane trasy przejazdu służbowego: z bazy przez miejscowości zabiegów danego dnia (po kolei) i z powrotem
+ * („Gdańsk - Gdynia - Gdańsk”; same zabiegi w Gdańsku: „Gdańsk”), a dalej ostatnio jeżdżone trasy. Bez powtórzeń.
+ */
+export function suggestRoutes(input: { base: string; visitCities: string[]; recent: Array<Pick<Trip, 'from' | 'via' | 'to'>> }): string[][] {
+  const out: string[][] = [];
+  const add = (points: string[]) => {
+    const route = routePoints(points);
+    if (route.length && !out.some((r) => r.join('|') === route.join('|'))) out.push(route);
+  };
+  const base = normalizeCity(input.base) || normalizeCity(input.visitCities[0] ?? '');
+  if (input.visitCities.length) add([base, ...input.visitCities, base]);
+  for (const t of input.recent) add([t.from, ...(t.via ?? '').split(','), t.to]);
+  return out.slice(0, 4);
+}
+
+/** Baza technika: miejscowość, z której najczęściej wyjeżdża (ostatnie przejazdy). */
+export function homeBase(list: Array<Pick<Trip, 'from'>>): string {
+  const count = new Map<string, number>();
+  for (const t of list) {
+    const city = normalizeCity(t.from);
+    if (city) count.set(city, (count.get(city) ?? 0) + 1);
+  }
+  return [...count.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
 }
 
 export interface MileageEntry {

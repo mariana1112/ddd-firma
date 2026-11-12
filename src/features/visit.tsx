@@ -11,9 +11,7 @@ import { getAppSettings, getCompany, type AppSettings } from '../data/settings';
 import { formatAccount } from '../data/card';
 import { CopyRow } from './card';
 import {
-  accessDetails,
   INVOICES,
-  orderAddress,
   PAY_NAMES,
   PINK_PLACEHOLDER,
   pestName,
@@ -26,8 +24,8 @@ import { TomorrowReminders } from './reminders';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet } from '../ui/kit';
-import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen } from './common';
+import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect } from '../ui/kit';
+import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock } from './common';
 import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
 import { Photos } from './photos';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
@@ -348,7 +346,7 @@ function FinishSheet(props: {
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="Godzina">
-              <input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} />
+              <TimeSelect value={time} onChange={setTime} />
             </Field>
           </div>
         )}
@@ -513,10 +511,7 @@ export function VisitPage() {
           {order.pink && <PinkBadge />}
         </div>
         <h2>{order.clientName || order.phones[0]?.number || "Klient"}</h2>
-        <p>
-          {orderAddress(order)}
-          {accessDetails(order) ? ` · ${accessDetails(order)}` : ''}
-        </p>
+        <AddressBlock order={order} />
         <p>
           {pestName(order)} · {visitWhen(visit)}
         </p>
@@ -728,7 +723,6 @@ export function VisitPage() {
               <AutoText label="Ile owadów?" placeholder="Np. kilka, ok. 20" rows={1} value={interview.seenCount} onSave={(v) => saveInterview('seenCount', v)} />
             )}
             <YesNoField label="Czy klient używał środków na własną rękę?" value={interview.selfTreatment} onChange={(v) => saveInterview('selfTreatment', v)} />
-            <AutoText label="Inne uwagi" placeholder="Czy coś zauważyłem podczas zabiegu" rows={3} value={interview.other} onSave={(v) => saveInterview('other', v)} />
           </Group>
 
           <Group title="Wykonane" plain>
@@ -785,6 +779,18 @@ export function VisitPage() {
 
           {visit.status === 'w_trakcie' ? (
             <>
+              {later?.start ? (
+                <p className="notice notice-info">
+                  <Icon name="calendar" />
+                  <span>
+                    Kolejny zabieg {roman(later.seq)} umówiony: <strong>{formatTerm(later.start)}</strong>
+                  </span>
+                </p>
+              ) : (
+                <button type="button" className="btn btn-block" onClick={() => setPlanningNext(true)}>
+                  <Icon name="calendar" /> Umów od razu kolejny zabieg
+                </button>
+              )}
               <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void requestFinish()}>
                 <Icon name="check" /> Zakończ zabieg
               </button>
@@ -929,7 +935,7 @@ function Reschedule({ visit, onDone }: { visit: Visit; onDone: () => void }) {
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <Field label="Godzina">
-          <input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} />
+          <TimeSelect value={time} onChange={setTime} />
         </Field>
       </div>
       <button type="submit" className="btn btn-primary btn-block">

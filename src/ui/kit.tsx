@@ -328,3 +328,39 @@ export function NotFound({ back }: { back: string }) {
     </Page>
   );
 }
+
+/**
+ * Godzina zabiegu: godzina i minuty co 10 (iPhone ignoruje „step” w zwykłym polu godziny i kręci minutami po 1).
+ * Godzina spoza kroku zapisana wcześniej (np. 10:05) zostaje do wyboru, żeby jej nie zgubić.
+ */
+export function TimeSelect(props: { value: string; onChange: (value: string) => void; stepMin?: number; fromHour?: number; toHour?: number; label?: string }) {
+  const step = props.stepMin ?? 10;
+  const [h, m] = /^\d{2}:\d{2}$/.test(props.value) ? props.value.split(':') : ['', ''];
+  const hours = Array.from({ length: (props.toHour ?? 22) - (props.fromHour ?? 6) + 1 }, (_, i) => String((props.fromHour ?? 6) + i).padStart(2, '0'));
+  if (h && !hours.includes(h)) hours.push(h);
+  hours.sort();
+  const minutes = Array.from({ length: Math.ceil(60 / step) }, (_, i) => String(i * step).padStart(2, '0'));
+  if (m && !minutes.includes(m)) minutes.push(m);
+  minutes.sort();
+  return (
+    <span className="time-select">
+      <select aria-label={`${props.label ?? 'Godzina'}: godzina`} value={h} onChange={(e) => props.onChange(e.target.value ? `${e.target.value}:${m || '00'}` : '')}>
+        {!h && <option value="">--</option>}
+        {hours.map((x) => (
+          <option key={x} value={x}>
+            {x}
+          </option>
+        ))}
+      </select>
+      <span className="time-select-sep">:</span>
+      <select aria-label={`${props.label ?? 'Godzina'}: minuty`} value={m} disabled={!h} onChange={(e) => props.onChange(`${h}:${e.target.value}`)}>
+        {!m && <option value="">--</option>}
+        {minutes.map((x) => (
+          <option key={x} value={x}>
+            {x}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}

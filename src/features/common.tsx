@@ -3,13 +3,13 @@ import type { NextVisitState } from '../data/order-list';
 // Elementy wspólne ekranów zleceń: etykiety, akcje kontaktu z klientem i udostępnianie tekstu.
 import type { Order, PayMethod, Phone, Visit } from '../data/types';
 import { formatTerm, formatDate } from '../lib/dates';
-import { PAY_NAMES, smsUrl, telUrl } from '../data/texts';
+import { PAY_NAMES, smsUrl, telUrl, BUILDINGS } from '../data/texts';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Sheet } from '../ui/kit';
 import { isIos, mapsQuery, navigationTargets } from '../data/maps';
 import { orderAddress } from '../data/texts';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { EARLY_MINUTES, earlierSms, LATE_MINUTES, lateSms, type SmsKind } from '../data/sms';
 import { getAppSettings, getProfile } from '../data/settings';
@@ -69,17 +69,12 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** Akcje kontaktu: każda pyta o potwierdzenie, bo jedno dotknięcie dzwoni albo otwiera wiadomość. */
+/** Akcje kontaktu. Dzwonienie bez pytania: iPhone i tak pyta „Zadzwonić?”, a SMS pokazuje treść przed wysłaniem. */
 export function useContactActions() {
   const { confirm, toast } = useFeedback();
 
   const call = async (phone: Phone) => {
-    const ok = await confirm({
-      title: 'Zadzwonić do klienta?',
-      message: `${phone.number}${phone.label ? ` (${phone.label})` : ''}`,
-      confirmLabel: 'Zadzwoń',
-    });
-    if (ok) window.location.href = telUrl(phone.number);
+    window.location.href = telUrl(phone.number);
   };
 
   /** Kopiuje treść do schowka i po potwierdzeniu otwiera Wiadomości z gotowym tekstem. */
@@ -174,6 +169,13 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
   const [kind, setKind] = useState<SmsKind>(props.initial ?? (done ? 'zalecenia' : planned ? 'przypomnienie' : 'wlasna'));
   const [minutes, setMinutes] = useState(15);
   const [text, setText] = useState('');
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.5))}px`;
+  }, [text]);
 
   // Treść gotowej wiadomości przelicza się po wyborze rodzaju i minut; własną wpisuje technik.
   useEffect(() => {
@@ -241,7 +243,8 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
         )}
         <label className="field">
           <span className="field-label">Treść (możesz poprawić)</span>
-          <textarea rows={5} value={text} placeholder="Wpisz wiadomość" onChange={(e) => setText(e.target.value)} />
+          {/* Tekst zawija się w dół, a pole rośnie razem z nim: nic nie ucieka w bok przy pisaniu. */}
+          <textarea ref={textRef} className="sms-text" rows={5} wrap="soft" value={text} placeholder="Wpisz wiadomość" onChange={(e) => setText(e.target.value)} />
         </label>
         <button type="button" className="btn btn-primary btn-block" disabled={!phone || !text.trim()} onClick={() => void send()}>
           <Icon name="message" /> Wyślij {phone ? `do ${phone.number}` : ''}
@@ -276,3 +279,39 @@ export function ContactBar(props: { order: Order; visit?: Visit | null }) {
   );
 }
 
+
+/**
+ * Adres zlecenia czytelnie, do szybkiego spojrzenia w drodze: ulica z numerem (duże), kod i miejscowość, klatka
+ * i piętro, a pod spodem „jak dotrzeć”. Dotknięcie otwiera nawigację.
+ */
+export function AddressBlock({ order }: { order: Order }) {
+  const [navOpen, setNavOpen] = useState(false);
+  const flat = order.building === 'blok' && order.flatNo.trim() ? `/${order.flatNo.trim()}` : '';
+  const street = `${order.street.trim()} ${order.houseNo.trim()}${flat}`.trim();
+  const city = [order.postalCode.trim(), order.city.trim()].filter(Boolean).join(' ');
+  const details = [
+    order.building === 'blok' && order.flatNo.trim() && `mieszkanie ${order.flatNo.trim()}`,
+    order.building === 'blok' && order.staircase.trim() && `klatka ${order.staircase.trim()}`,
+    order.building === 'blok' && order.floor.trim() && `piętro ${order.floor.trim()}`,
+    BUILDINGS[order.building]?.toLowerCase(),
+  ].filter(Boolean);
+  return (
+    <>
+      <button type="button" className="address-block" onClick={() => setNavOpen(true)} aria-label={`Adres: ${street}, ${city}. Nawiguj`}>
+        <span className="address-icon">
+          <Icon name="pin" size={22} />
+        </span>
+        <span className="address-text">
+          <strong className="address-street">{street || 'Brak adresu'}</strong>
+          {city && <span className="address-city">{city}</span>}
+          {details.length > 0 && <span className="address-details">{details.join(' · ')}</span>}
+          {order.access.trim() && <span className="address-access">{order.access.trim()}</span>}
+        </span>
+        <span className="address-go">
+          <Icon name="nav" size={20} />
+        </span>
+      </button>
+      <NavigateSheet order={order} open={navOpen} onClose={() => setNavOpen(false)} />
+    </>
+  );
+}

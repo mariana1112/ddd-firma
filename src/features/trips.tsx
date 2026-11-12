@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { normalizeCity } from '../data/cities';
 import { useEffect, useState } from 'react';
 import { restoreRecord } from '../data/domain';
-import { driverSummary, mileageSheets, normalizePlate, routeText } from '../data/mileage';
+import { driverSummary, mileageSheets, normalizePlate, routeText, suggestRoutes, homeBase } from '../data/mileage';
 import { lastOdometer, tripKm } from '../data/orders';
-import { trips } from '../data/repo';
+import { trips, orders, visits } from '../data/repo';
 import { COMPANY_NAME, getCompany, getProfile, getSyncState, getVehicle, ownedBy, saveVehicle, type VehicleSettings } from '../data/settings';
 import type { CompanySettings, Trip, TripKind } from '../data/types';
 import { formatDate, formatMonth, monthOf, nowWarsaw, shiftMonth, todayWarsaw } from '../lib/dates';
@@ -94,6 +95,23 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
     if (last?.value != null) setStart(String(last.value));
   }, [last?.value]);
 
+  // Propozycje tras: z bazy przez miejscowości dzisiejszych zabiegów i z powrotem, potem ostatnie trasy.
+  const routes = useLiveQuery(async () => {
+    const me = (await getProfile()).userId;
+    const mine = (await trips.all()).filter((t) => !me || !t.ownerId || t.ownerId === me).sort((a, b) => b.date.localeCompare(a.date) || b.timeFrom.localeCompare(a.timeFrom));
+    const byOrder = new Map((await orders.all()).map((o) => [o.id, o]));
+    const dayVisits = (await visits.all())
+      .filter((v) => v.status !== 'odwolany' && (v.doneOn === date || v.start?.slice(0, 10) === date) && (!me || !v.technicianId || v.technicianId === me))
+      .sort((a, b) => (a.startedAt ?? a.start ?? '').localeCompare(b.startedAt ?? b.start ?? ''));
+    const visitCities = dayVisits.map((v) => byOrder.get(v.orderId)?.city ?? '').filter(Boolean);
+    return suggestRoutes({ base: homeBase(mine.slice(0, 30)), visitCities, recent: mine.slice(0, 15) });
+  }, [date]);
+  const applyRoute = (points: string[]) => {
+    setFrom(points[0] ?? '');
+    setTo(points[points.length - 1] ?? '');
+    setVia(points.slice(1, -1).join(', '));
+  };
+
   // Puste „Licznik przed”: bierzemy stan po poprzednim przejeździe.
   const effectiveStart = start || (last?.value != null ? String(last.value) : '');
   const startKm = Number(effectiveStart);
@@ -116,9 +134,10 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
             kind,
             timeFrom,
             timeTo,
-            from: from.trim(),
-            via: via.trim(),
-            to: to.trim(),
+            // Miejscowości z poprawioną pisownią; trasa „Gdańsk - Gdańsk” w ewidencji to jeden „Gdańsk”.
+            from: normalizeCity(from),
+            via: via.split(',').map(normalizeCity).filter(Boolean).join(', '),
+            to: normalizeCity(to),
             purpose: '',
             vehicle: vehicle.plate,
             driver: vehicle.driver || profile.name,
@@ -158,6 +177,18 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
           <input type="time" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} />
         </Field>
       </div>
+      {kind === 'sluzbowy' && routes && routes.length > 0 && (
+        <div className="field">
+          <span className="field-label">Proponowane trasy</span>
+          <div className="chips chips-wrap">
+            {routes.map((r) => (
+              <button key={r.join('|')} type="button" className="chip" onClick={() => applyRoute(r)}>
+                {r.join(' - ')}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="form-row">
         <Field label="Skąd">
           <input value={from} placeholder="Np. Łódź" onChange={(e) => setFrom(e.target.value)} />

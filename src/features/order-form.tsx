@@ -8,7 +8,7 @@ import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
 import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind, TreatmentMethod } from '../data/types';
-import { METHOD_LABEL, METHODS } from '../data/methods';
+import { METHOD_LABEL, METHODS, orderMethods } from '../data/methods';
 import { normalizeCity } from '../data/cities';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
@@ -17,7 +17,7 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { formatPhoneInput, formatPostalInput, isValidNip, phoneError } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Field, Group, Info, Loading, NotFound, Page, Sheet, goBack } from '../ui/kit';
+import { Field, Group, Info, Loading, NotFound, Page, Sheet, goBack, TimeSelect } from '../ui/kit';
 
 interface FormState {
   building: BuildingType;
@@ -153,7 +153,7 @@ function fromOrder(order: Order): FormState {
     pink: order.pink,
     pinkNote: order.pinkNote,
     mapsLink: order.mapsLink ?? '',
-    methods: order.methods ?? [],
+    methods: orderMethods(order),
     protocol: order.protocol ?? false,
     invoiceName: order.invoiceName ?? '',
   };
@@ -573,7 +573,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <input type="date" value={s.date} onChange={(e) => set({ date: e.target.value })} />
             </Field>
             <Field label="Godzina" error={errors.time}>
-              <input type="time" step={900} value={s.time} onChange={(e) => set({ time: e.target.value })} />
+              <TimeSelect value={s.time} onChange={(time) => set({ time })} />
             </Field>
           </div>
           <Field label="Przewidywany czas">
@@ -681,12 +681,12 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <input value={s.phone2Label} onChange={(e) => set({ phone2Label: e.target.value })} autoComplete="off" />
             </Field>
           </div>
-          <Field
-            label={s.invoice !== 'brak' ? 'E-mail (do faktury)' : s.protocol ? 'E-mail (do protokołu)' : 'E-mail (nieobowiązkowy)'}
-            error={errors.email}
-          >
+          {/* Bez faktury i protokołu nie ma pola na dane do nich (e-mail). */}
+          {needsDocuments(s) && (
+          <Field label={s.invoice !== 'brak' ? 'E-mail (do faktury)' : 'E-mail (do protokołu)'} error={errors.email}>
             <input type="email" inputMode="email" autoCapitalize="none" value={s.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" />
           </Field>
+          )}
           {s.invoice === 'vat' && (
             <>
               <Field label="Nazwa firmy" error={errors.invoiceName}>

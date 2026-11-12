@@ -180,8 +180,8 @@ export function workLines(visit: Pick<Visit, 'treatments' | 'places' | 'scope'>)
       const label = method === 'oprysk' ? 'Oprysk ciśnieniowy' : 'Żelowanie';
       return places ? `${label} (${places}).` : `${label}.`;
     }
-    if (method === 'ulv') return `Zamgławianie ULV ${where}.`;
-    if (method === 'zamglawianie') return `Zamgławianie ${where}.`;
+    if (method === 'ulv' || method === 'zamglawianie') return `Zamgławianie ULV ${where}.`;
+    if (method === 'parowanie') return 'Parowanie gorącą parą.';
     if (method === 'odplywy') return 'Zalanie odpływów.';
     return `${name.trim()}.`;
   });

@@ -6,10 +6,10 @@ import type { Order, PestCategory, TreatmentMethod, Visit } from './types';
  */
 export const METHODS: Array<[TreatmentMethod, string]> = [
   ['oprysk', 'Oprysk ciśnieniowy'],
-  ['ulv', 'ULV'],
-  ['zamglawianie', 'Zamgławianie'],
+  ['ulv', 'Zamgławianie ULV'],
   ['zelowanie', 'Żelowanie'],
   ['odplywy', 'Zalanie odpływów'],
+  ['parowanie', 'Parowanie gorącą parą'],
 ];
 
 /** Metody, przy których klient opuszcza lokal i potem sprząta: ULV i zamgławianie. */
@@ -17,19 +17,22 @@ export const FOGGING: TreatmentMethod[] = ['ulv', 'zamglawianie'];
 
 export const hasFogging = (methods: TreatmentMethod[]) => methods.some((m) => FOGGING.includes(m));
 
-export const METHOD_LABEL = Object.fromEntries(METHODS) as Record<TreatmentMethod, string>;
+// Stare „Zamgławianie” to dziś ta sama metoda co ULV.
+export const METHOD_LABEL = { ...Object.fromEntries(METHODS), zamglawianie: 'Zamgławianie ULV' } as Record<TreatmentMethod, string>;
 
 /** Nazwy zabiegów z wcześniejszych wersji, które oznaczają tę samą metodę. */
 const ALIASES: Record<string, TreatmentMethod> = {
   'żel': 'zelowanie',
   'żelowanie': 'zelowanie',
-  'zamgławianie': 'zamglawianie',
-  'zamglawianie': 'zamglawianie',
+  'zamgławianie': 'ulv',
+  'zamglawianie': 'ulv',
   'zamgławianie ulv': 'ulv',
   'ulv': 'ulv',
   'oprysk ciśnieniowy': 'oprysk',
   'oprysk': 'oprysk',
   'zalanie odpływów': 'odplywy',
+  'parowanie gorącą parą': 'parowanie',
+  'parowanie': 'parowanie',
 };
 
 /** Metoda z nazwy zabiegu zaznaczonej przy wykonaniu („Żel” → żelowanie). */
@@ -38,7 +41,10 @@ export function methodOf(treatment: string): TreatmentMethod | null {
 }
 
 /** Metody zlecenia; zlecenia sprzed tej opcji nie mają żadnej. */
-export const orderMethods = (order: Pick<Order, 'methods'>): TreatmentMethod[] => order.methods ?? [];
+/** Metody zlecenia (stare „zamglawianie” jako „Zamgławianie ULV”); zlecenia sprzed tej opcji nie mają żadnej. */
+export const orderMethods = (order: Pick<Order, 'methods'>): TreatmentMethod[] => [
+  ...new Set((order.methods ?? []).map((m): TreatmentMethod => (m === 'zamglawianie' ? 'ulv' : m))),
+];
 
 /** Wykonane metody: z zaznaczonych zabiegów, a gdy żadna nie pasuje, metody zlecenia. */
 export function doneMethods(treatments: string[], order: Pick<Order, 'methods'>): TreatmentMethod[] {
@@ -69,6 +75,7 @@ export const METHOD_RECOMMENDATIONS: Record<TreatmentMethod, string[]> = {
     'Nie używać sprayów owadobójczych, bo odstraszają owady od żelu.',
     'Chować żywność w szczelnych pojemnikach i nie zostawiać resztek.',
   ],
+  parowanie: [],
   odplywy: [
     'Nie używać odpływów (zlew, umywalka, prysznic, wanna) przez 2 godziny po zabiegu.',
     'Nie wlewać do odpływów środków czyszczących przez 3 dni.',
@@ -84,7 +91,7 @@ const PEST_RECOMMENDATIONS: Partial<Record<PestCategory, string[]>> = {
 const ALWAYS: string[] = [];
 
 /** Zabiegi spoza metod zlecenia, zawsze do zaznaczenia przy wykonaniu. */
-export const EXTRA_TREATMENTS = ['Parowanie gorącą parą'];
+export const EXTRA_TREATMENTS: string[] = [];
 
 /** Co można zaznaczyć w „Czy trzeba uszczelnić?”. */
 export const SEALING_OPTIONS = ['kratki wentylacyjne/piony', 'szczeliny i dziury w podłodze', 'szczeliny i dziury w ścianie', 'listwy przypodłogowe'];

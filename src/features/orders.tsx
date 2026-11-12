@@ -18,11 +18,11 @@ import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Page, Row, Search, Sheet } from '../ui/kit';
+import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Page, Row, Search, Sheet, TimeSelect } from '../ui/kit';
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
-import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen } from './common';
+import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen, AddressBlock } from './common';
 
 type StatusFilter = ListFilter;
 type PayFilter = 'wszystkie' | PayMethod;
@@ -428,7 +428,7 @@ export function ScheduleNext(props: {
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         </Field>
         <Field label="Godzina">
-          <input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} required />
+          <TimeSelect value={time} onChange={setTime} />
         </Field>
       </div>
       <Field label="Czas trwania (min)">
@@ -544,7 +544,7 @@ export function OrderDetailPage() {
           {order.closed && <Badge tone="ok">Zakończone</Badge>}
         </div>
         <h2>{order.clientName || order.phones[0]?.number || "Klient"}</h2>
-        <p>{orderAddress(order)}</p>
+        <AddressBlock order={order} />
       </div>
 
       <ContactBar order={order} visit={nextPlanned ?? current} />

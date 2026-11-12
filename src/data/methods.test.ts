@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeCity } from './cities';
-import { doneMethods, documentTags, METHOD_RECOMMENDATIONS, methodOf, recommendationsFor } from './methods';
+import { doneMethods, documentTags, METHOD_RECOMMENDATIONS, methodOf, orderMethods, recommendationsFor } from './methods';
 import { urgentReason } from './order-list';
 import { orderMatches } from './order-search';
 import type { Order, Visit } from './types';
@@ -26,7 +26,10 @@ const order = {
 describe('metody zabiegu i zalecenia', () => {
   it('nazwy zabiegów (także dawne) wskazują metodę; bez zaznaczonych zostają metody zlecenia', () => {
     expect(methodOf('Żel')).toBe('zelowanie');
-    expect(methodOf('Zamgławianie')).toBe('zamglawianie');
+    // Dawne „Zamgławianie” to dziś „Zamgławianie ULV”; parowanie jest osobną metodą.
+    expect(methodOf('Zamgławianie')).toBe('ulv');
+    expect(methodOf('Parowanie gorącą parą')).toBe('parowanie');
+    expect(orderMethods({ methods: ['zamglawianie', 'ulv', 'oprysk'] })).toEqual(['ulv', 'oprysk']);
     expect(methodOf('Zamgławianie ULV')).toBe('ulv');
     expect(methodOf('ULV')).toBe('ulv');
     expect(methodOf('Oprysk ciśnieniowy')).toBe('oprysk');

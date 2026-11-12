@@ -144,6 +144,8 @@ export default function CalendarPage() {
           listItemEventTitleClass="cal-list-title"
           events={events}
           editable
+          // Przeciąganie zabiegu przesuwa termin co 10 minut.
+          snapDuration="00:10:00"
           eventDurationEditable={false}
           longPressDelay={350}
           datesSet={(info) => {

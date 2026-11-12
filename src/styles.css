@@ -2862,3 +2862,91 @@ body {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+/* Treść SMS do klienta: zawija się w dół, nigdy w bok (także na iPhonie). */
+.field textarea.sms-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+  resize: none;
+}
+
+.sheet-body {
+  overflow-x: hidden;
+}
+
+/* Godzina zabiegu: dwa wybory (godzina : minuty co 10) */
+.time-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.time-select select {
+  flex: 1;
+  min-width: 0;
+}
+
+.time-select-sep {
+  font-weight: 700;
+}
+
+/* Adres zlecenia: duży i czytelny, dotknięcie otwiera nawigację */
+.address-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.address-icon {
+  display: inline-flex;
+  padding-top: 2px;
+  color: var(--primary);
+}
+
+.address-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.address-street {
+  font-size: 1.25rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.address-city {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.address-details {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.address-access {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  font-size: 0.9rem;
+}
+
+.address-go {
+  display: inline-flex;
+  align-self: center;
+  color: var(--primary);
+}
