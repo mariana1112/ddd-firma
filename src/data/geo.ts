@@ -4,7 +4,7 @@
 // Nominatim) trafia tylko miejscowość z kodem, nigdy ulica, numer domu ani dane klienta (wyjątek: „Jestem na
 // miejscu” w nowym zleceniu wysyła na żądanie technika same współrzędne jego pozycji). Wynik jest
 // zapamiętywany na urządzeniu, więc każda miejscowość jest sprawdzana raz.
-import { addDays, addMinutes } from '../lib/dates';
+import { addDays, addMinutes, nowWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
 import { db } from './db';
 import { DomainError } from './domain';
@@ -85,7 +85,7 @@ export function suggestSlots(
     const { visit, point } = item;
     if (!point || !visit.start || visit.status !== 'zaplanowany') continue;
     const date = visit.start.slice(0, 10);
-    if (date <= today || date > limit) continue;
+    if (date < today || date > limit) continue;
     const distanceKm = haversineKm(target, point);
     if (distanceKm > MAX_DISTANCE_KM) continue;
     const travelMin = travelMinutes(distanceKm);
@@ -95,6 +95,8 @@ export function suggestSlots(
       start = addMinutes(start, -(Number(start.slice(14, 16)) % 15));
       if (start.slice(11) < WORK_START) continue;
     }
+    // Dziś tylko godziny, które jeszcze nie minęły.
+    if (date === today && start.slice(11) < nowWarsaw().slice(11)) continue;
     const suggestion: Suggestion = { start, date, distanceKm, travelMin, near: { order: item.order, visit } };
     const current = best.get(date);
     if (!current || distanceKm < current.distanceKm) best.set(date, suggestion);
@@ -166,4 +168,47 @@ export function currentPosition(): Promise<LatLng & { accuracy: number }> {
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 },
     );
   });
+}
+
+// ---------- Plan dnia przy umawianiu: trasa i wolne godziny ----------
+
+export interface DayStop {
+  start: string;
+  durationMin: number;
+  label: string;
+  city: string;
+  point: LatLng | null;
+}
+
+const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+const toHhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+const roundUp10 = (min: number) => Math.ceil(min / 10) * 10;
+/** Dojazd między dwoma miejscami: z odległości, a bez położenia przyjmujemy 30 minut. */
+const drive = (a: LatLng | null, b: LatLng | null) => (a && b ? travelMinutes(haversineKm(a, b)) : 30);
+
+/**
+ * Wolne godziny w danym dniu na nowy zabieg (co 10 minut): po każdym zabiegu z dojazdem, tak żeby zdążyć na
+ * kolejny, w godzinach pracy 8:00–19:00, a dziś nie wcześniej niż teraz. Najwyżej 4 propozycje.
+ */
+export function freeSlots(stops: DayStop[], target: LatLng | null, durationMin: number, opts: { nowMin?: number } = {}): string[] {
+  const dayStart = toMin(WORK_START);
+  const dayEnd = toMin(WORK_END);
+  const sorted = [...stops].sort((a, b) => a.start.localeCompare(b.start));
+  const candidates = [dayStart, ...sorted.map((s) => toMin(s.start.slice(11, 16)) + s.durationMin + drive(s.point, target))];
+  const out: string[] = [];
+  for (const raw of candidates) {
+    const start = roundUp10(Math.max(raw, opts.nowMin !== undefined ? roundUp10(opts.nowMin) : 0));
+    const end = start + durationMin;
+    if (end > dayEnd) continue;
+    const clash = sorted.some((s) => {
+      const sStart = toMin(s.start.slice(11, 16));
+      const sEnd = sStart + s.durationMin;
+      // Nowy zabieg musi skończyć się z zapasem na dojazd do kolejnego i zacząć po dojeździe z poprzedniego.
+      return start < sEnd + drive(s.point, target) && end + drive(target, s.point) > sStart;
+    });
+    const label = toHhmm(start);
+    if (!clash && !out.includes(label)) out.push(label);
+    if (out.length >= 4) break;
+  }
+  return out;
 }

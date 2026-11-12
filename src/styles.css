@@ -3117,3 +3117,25 @@ body {
   font-size: 0.85rem;
   font-weight: 800;
 }
+
+/* Plan dnia przy umawianiu: trasa i wolne godziny */
+.day-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.day-plan-route {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.92rem;
+}
+
+.day-plan-route li.fresh {
+  color: var(--primary);
+  font-weight: 700;
+}

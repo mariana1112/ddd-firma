@@ -1,9 +1,9 @@
-import { orderCode } from '../data/codes';
+import { orderCode, visitCode } from '../data/codes';
 import { isSyncConfigured } from '../data/sync/config';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { addressAt, currentPosition, locate, suggestSlots, type Suggestion } from '../data/geo';
+import { addressAt, currentPosition, freeSlots, locate, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
 import { createOrder, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
@@ -13,7 +13,7 @@ import { METHOD_LABEL, METHODS, orderMethods } from '../data/methods';
 import { normalizeCity } from '../data/cities';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl, readMapsInput, isShortMapsLink } from '../data/maps';
-import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
+import { formatDateLong, formatTerm, isValidDate, todayWarsaw, nowWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { formatPhoneInput, formatPostalInput, isValidNip, phoneError } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
@@ -110,9 +110,11 @@ const DRAFT_KEY = 'ddd-szkic-zlecenia';
 function loadDraft(): FormState {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    return raw ? { ...EMPTY, ...(JSON.parse(raw) as Partial<FormState>) } : EMPTY;
+    // Nowe zlecenie domyślnie na dziś.
+    const draft = raw ? { ...EMPTY, ...(JSON.parse(raw) as Partial<FormState>) } : EMPTY;
+    return draft.date ? draft : { ...draft, date: todayWarsaw() };
   } catch {
-    return EMPTY;
+    return { ...EMPTY, date: todayWarsaw() };
   }
 }
 
@@ -500,6 +502,88 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
   );
 }
 
+/**
+ * Plan wybranego dnia przy umawianiu: zabiegi po kolei (trasa) z nowym zleceniem w miejscu wybranej godziny
+ * i wolne godziny z uwzględnieniem dojazdu. Bez internetu dojazd liczy się jako 30 minut.
+ */
+function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
+  const { date, time, duration, city, postalCode } = props.state;
+  const [plan, setPlan] = useState<{ stops: DayStop[]; slots: string[] } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const byId = new Map((await orders.all()).map((o) => [o.id, o]));
+      const dayVisits = (await visits.all()).filter((v) => (v.status === 'zaplanowany' || v.status === 'w_trakcie') && v.start?.slice(0, 10) === date);
+      const online = typeof navigator === 'undefined' || navigator.onLine;
+      const stops: DayStop[] = [];
+      for (const v of dayVisits) {
+        const order = byId.get(v.orderId);
+        if (!order) continue;
+        stops.push({
+          start: v.start!,
+          durationMin: v.durationMin || 60,
+          label: visitCode(order, v.seq),
+          city: order.city,
+          point: online ? await locate(order.city, order.postalCode) : null,
+        });
+      }
+      const target = online && city.trim() ? await locate(city, postalCode) : null;
+      const now = nowWarsaw();
+      const nowMin = date === now.slice(0, 10) ? Number(now.slice(11, 13)) * 60 + Number(now.slice(14, 16)) : undefined;
+      if (!cancelled) setPlan({ stops: stops.sort((a, b) => a.start.localeCompare(b.start)), slots: freeSlots(stops, target, Number(duration) || 60, { nowMin }) });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [date, duration, city, postalCode]);
+  if (!plan) return null;
+  // Kolizja: wybrana godzina nachodzi na inny zabieg tego dnia (bez liczenia dojazdu).
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const clash = plan.stops.find((st) => {
+    const a0 = toMin(st.start.slice(11, 16));
+    const b0 = toMin(time);
+    return b0 < a0 + st.durationMin && b0 + (Number(duration) || 60) > a0;
+  });
+  // Trasa z nowym zleceniem wstawionym według wybranej godziny.
+  const route = [...plan.stops.map((s) => ({ time: s.start.slice(11, 16), text: `${s.city || '—'} · ${s.label}`, fresh: false })), { time, text: `${city || 'nowe zlecenie'} · nowe`, fresh: true }].sort((a, b) => a.time.localeCompare(b.time));
+  return (
+    <div className="day-plan">
+      <span className="field-label">Trasa w dniu {formatDateLong(date)}</span>
+      {plan.stops.length === 0 ? (
+        <p className="field-hint">Brak innych zabiegów tego dnia: cały dzień wolny.</p>
+      ) : (
+        <ol className="day-plan-route">
+          {route.map((r, i) => (
+            <li key={i} className={r.fresh ? 'fresh' : undefined}>
+              <strong>{r.time}</strong> {r.text}
+            </li>
+          ))}
+        </ol>
+      )}
+      {clash && (
+        <p className="notice notice-warn">
+          <Icon name="alert" />
+          <span>
+            O {time} trwa już {clash.label} ({clash.city}). Wybierz wolną godzinę poniżej.
+          </span>
+        </p>
+      )}
+      {plan.slots.length > 0 ? (
+        <div className="chips chips-wrap">
+          <span className="chips-label">Wolne godziny:</span>
+          {plan.slots.map((t) => (
+            <button key={t} type="button" className={t === time ? 'chip active' : 'chip'} onClick={() => props.onPick(t)}>
+              {t}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="field-hint">Tego dnia nie ma już wolnego okna na {duration} min (z dojazdem). Wybierz inny dzień.</p>
+      )}
+    </div>
+  );
+}
+
 function ReturningClient(props: { phone: string; onFill: (order: Order) => void; currentId?: string; withAddress?: boolean }) {
   const [filled, setFilled] = useState(false);
   const digits = props.phone.replace(/\D/g, '');
@@ -682,6 +766,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <TimeSelect value={s.time} onChange={(time) => set({ time })} />
             </Field>
           </div>
+          {s.date && isValidDate(s.date) && <DayPlan state={s} onPick={(time) => set({ time })} />}
           <Field label="Przewidywany czas">
             <select value={s.duration} onChange={(e) => set({ duration: e.target.value })}>
               {[30, 45, 60, 90, 120, 180].map((m) => (
@@ -847,7 +932,7 @@ export function OrderNewPage() {
   const [leaving, setLeaving] = useState(false);
   const steps: StepId[] = [...ALL_STEPS, 'podsumowanie'];
   const step = steps[stepIndex];
-  const hasDraft = useMemo(() => JSON.stringify(state) !== JSON.stringify(EMPTY), [state]);
+  const hasDraft = useMemo(() => JSON.stringify(state) !== JSON.stringify({ ...EMPTY, date: todayWarsaw() }), [state]);
 
   const set = (patch: Partial<FormState>) =>
     setState((prev) => {
@@ -983,7 +1068,7 @@ export function OrderNewPage() {
           className="link"
           onClick={() => {
             saveDraft(null);
-            setState(EMPTY);
+            setState({ ...EMPTY, date: todayWarsaw() });
           }}
         >
           Wyczyść szkic i zacznij od nowa

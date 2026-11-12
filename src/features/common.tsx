@@ -283,10 +283,9 @@ export function ContactBar(props: { order: Order; visit?: Visit | null }) {
 
 /**
  * Adres zlecenia w poziomym prostokącie: w pierwszym wierszu ulica z numerem (duża) i miejscowość, pod spodem
- * w jednym rzędzie budynek, mieszkanie, klatka i piętro, a na dole „jak dotrzeć”. Dotknięcie otwiera nawigację.
+ * w jednym rzędzie budynek, mieszkanie, klatka i piętro, a na dole „jak dotrzeć”.
  */
 export function AddressBlock({ order }: { order: Order }) {
-  const [navOpen, setNavOpen] = useState(false);
   const block = order.building === 'blok';
   const street = `${order.street.trim()} ${order.houseNo.trim()}`.trim();
   const city = [order.postalCode.trim(), order.city.trim()].filter(Boolean).join(' ');
@@ -302,7 +301,8 @@ export function AddressBlock({ order }: { order: Order }) {
   ];
   return (
     <>
-      <button type="button" className="address-card" onClick={() => setNavOpen(true)} aria-label={`Adres: ${street}, ${city}. Otwórz nawigację`}>
+      {/* Sam adres; nawigacja jest przyciskiem „Nawiguj” pod spodem. */}
+      <div className="address-card">
         <span className="address-top">
           <span className="address-pin">
             <Icon name="pin" size={20} />
@@ -327,17 +327,13 @@ export function AddressBlock({ order }: { order: Order }) {
                 <strong>{value}</strong>
               </span>
             ))}
-          <span className="address-nav">
-            <Icon name="nav" size={18} /> Nawiguj
-          </span>
         </span>
         {order.access.trim() && (
           <span className="address-access">
             <span className="address-label">Jak dotrzeć</span> {order.access.trim()}
           </span>
         )}
-      </button>
-      <NavigateSheet order={order} open={navOpen} onClose={() => setNavOpen(false)} />
+      </div>
     </>
   );
 }
