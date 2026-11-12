@@ -2,7 +2,7 @@ import { orderCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { locate, suggestSlots, type Suggestion } from '../data/geo';
+import { addressAt, currentPosition, locate, suggestSlots, type Suggestion } from '../data/geo';
 import { createOrder, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
@@ -476,6 +476,43 @@ function formTerms(s: FormState): VisitTerms {
   };
 }
 
+/**
+ * „Jestem na miejscu”: adres z aktualnej pozycji telefonu (GPS + mapa OpenStreetMap) i dokładny punkt Google Maps
+ * do nawigacji. Numer lokalu, klatkę i piętro technik dopisuje sam.
+ */
+function HerePosition(props: { set: (patch: Partial<FormState>) => void }) {
+  const { run, toast } = useFeedback();
+  const [busy, setBusy] = useState(false);
+  const use = () =>
+    run(async () => {
+      setBusy(true);
+      try {
+        const pos = await currentPosition();
+        const found = await addressAt(pos);
+        props.set({
+          ...(found.street ? { street: found.street } : {}),
+          ...(found.houseNo ? { houseNo: found.houseNo } : {}),
+          ...(found.postalCode ? { postalCode: found.postalCode } : {}),
+          ...(found.city ? { city: normalizeCity(found.city) } : {}),
+          mapsLink: found.mapsLink,
+        });
+        const rough = pos.accuracy > 60 ? ` Dokładność tylko ok. ${Math.round(pos.accuracy)} m: sprawdź ulicę i numer.` : '';
+        toast(
+          found.street
+            ? `Adres z pozycji: ${[found.street, found.houseNo].filter(Boolean).join(' ')}, ${found.city}.${rough}`
+            : 'Zapisano punkt na mapie. Adresu nie udało się odczytać: wpisz go ręcznie.',
+        );
+      } finally {
+        setBusy(false);
+      }
+    });
+  return (
+    <button type="button" className="btn btn-block" disabled={busy} onClick={() => void use()}>
+      <Icon name="pin" /> {busy ? 'Ustalam pozycję…' : 'Jestem na miejscu: użyj mojej pozycji'}
+    </button>
+  );
+}
+
 function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => void; step: StepId; errors: Errors; vatRate: number; editId?: string }) {
   const { state: s, set, errors } = props;
   const price = priceRange(
@@ -487,6 +524,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
     case 'adres':
       return (
         <div className="form">
+          <HerePosition set={set} />
           <Choice
             label="Rodzaj budynku"
             value={s.building}

@@ -1,11 +1,13 @@
 // Propozycje terminów blisko innych zleceń, żeby nie jeździć dwa razy w tygodniu w to samo miejsce.
 //
 // Położenie liczymy z dokładnością do miejscowości i kodu pocztowego. Do usługi map (OpenStreetMap
-// Nominatim) trafia tylko miejscowość z kodem, nigdy ulica, numer domu ani dane klienta. Wynik jest
+// Nominatim) trafia tylko miejscowość z kodem, nigdy ulica, numer domu ani dane klienta (wyjątek: „Jestem na
+// miejscu” w nowym zleceniu wysyła na żądanie technika same współrzędne jego pozycji). Wynik jest
 // zapamiętywany na urządzeniu, więc każda miejscowość jest sprawdzana raz.
 import { addDays, addMinutes } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
 import { db } from './db';
+import { DomainError } from './domain';
 import type { Order, Visit } from './types';
 
 export interface LatLng {
@@ -98,4 +100,70 @@ export function suggestSlots(
     if (!current || distanceKm < current.distanceKm) best.set(date, suggestion);
   }
   return [...best.values()].sort((a, b) => a.distanceKm - b.distanceKm || a.date.localeCompare(b.date)).slice(0, 5);
+}
+
+// ---------- Aktualna pozycja: adres z miejsca, w którym stoi technik ----------
+
+export interface PositionAddress {
+  street: string;
+  houseNo: string;
+  postalCode: string;
+  city: string;
+  /** Link do Google Maps z dokładnym punktem: „Nawiguj” prowadzi dokładnie tutaj. */
+  mapsLink: string;
+}
+
+/** Link Google Maps do punktu (rozpoznawany przez pole „Miejsce w Google Maps” i nawigację). */
+export const pointMapsLink = (p: LatLng) => `https://www.google.com/maps/search/?api=1&query=${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
+
+/** Nominatim „reverse”: pola adresu z odpowiedzi usługi map. */
+export function addressFromNominatim(address: Record<string, string | undefined>): Omit<PositionAddress, 'mapsLink'> {
+  return {
+    street: address.road ?? address.pedestrian ?? address.footway ?? address.square ?? '',
+    houseNo: address.house_number ?? '',
+    postalCode: address.postcode ?? '',
+    city: address.city ?? address.town ?? address.village ?? address.hamlet ?? address.municipality ?? '',
+  };
+}
+
+/**
+ * Adres z pozycji GPS: tylko na żądanie technika („Użyj mojej pozycji”). Do OpenStreetMap trafiają same
+ * współrzędne (bez danych klienta). Bez internetu zostaje sam link do punktu na mapie.
+ */
+export async function addressAt(point: LatLng): Promise<PositionAddress> {
+  const mapsLink = pointMapsLink(point);
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return { street: '', houseNo: '', postalCode: '', city: '', mapsLink };
+  const params = new URLSearchParams({ format: 'jsonv2', lat: String(point.lat), lon: String(point.lng), zoom: '18', addressdetails: '1' });
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`, { headers: { 'Accept-Language': 'pl' } });
+    if (!response.ok) return { street: '', houseNo: '', postalCode: '', city: '', mapsLink };
+    const json = (await response.json()) as { address?: Record<string, string> };
+    return { ...addressFromNominatim(json.address ?? {}), mapsLink };
+  } catch {
+    return { street: '', houseNo: '', postalCode: '', city: '', mapsLink };
+  }
+}
+
+/** Pozycja z GPS telefonu (dokładna, do 20 s). Błąd z polskim opisem, gdy brak zgody albo sygnału. */
+export function currentPosition(): Promise<LatLng & { accuracy: number }> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      reject(new DomainError('Ten telefon nie udostępnia lokalizacji.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+      (e) =>
+        reject(
+          new DomainError(
+            e.code === e.PERMISSION_DENIED
+              ? 'Brak zgody na lokalizację. Włącz ją: iPhone → Ustawienia → Prywatność → Usługi lokalizacji → Safari (podczas używania).'
+              : e.code === e.TIMEOUT
+                ? 'Nie udało się ustalić pozycji (słaby sygnał). Spróbuj przy oknie albo na zewnątrz.'
+                : 'Nie udało się ustalić pozycji.',
+          ),
+        ),
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 30000 },
+    );
+  });
 }
