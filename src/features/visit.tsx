@@ -17,7 +17,7 @@ import {
   pestName,
   priceRange,
   workSummary,
-  bookedBy, firstName } from '../data/texts';
+  bookedBy, firstName, orderText } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { TomorrowReminders } from './reminders';
@@ -25,7 +25,7 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect } from '../ui/kit';
-import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock } from './common';
+import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, copyText } from './common';
 import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
 import { Photos } from './photos';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
@@ -592,7 +592,22 @@ export function VisitPage() {
               <Icon name="close" /> Odwołaj zabieg
             </button>
           </div>
-          <Group title="Zlecenie">
+          <Group
+            title="Zlecenie"
+            action={
+          <button
+            type="button"
+            className="link"
+            onClick={() =>
+              void copyText(orderText(order, list, settings.vatRate)).then((ok) =>
+                toast(ok ? 'Skopiowano opis zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
+              )
+            }
+          >
+            <Icon name="copy" /> Kopiuj opis
+          </button>
+        }
+          >
             {order.description && <Info label="Opis">{order.description}</Info>}
             {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
             {price && <Info label="Cena">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}

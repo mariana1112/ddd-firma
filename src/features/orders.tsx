@@ -12,7 +12,7 @@ import { archiveOrder, cancelOrderDeletionRequest, decideOrderDeletion, deleteOr
 import { getSyncState } from '../data/settings';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getProfile } from '../data/settings';
-import { accessDetails, BUILDINGS, INVOICES, orderAddress, pestName, priceRange, bookedBy, firstName } from '../data/texts';
+import { accessDetails, BUILDINGS, INVOICES, orderAddress, orderText, pestName, priceRange, bookedBy, firstName } from '../data/texts';
 import type { Order, PayMethod, Visit } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
@@ -22,7 +22,7 @@ import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Pa
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
-import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen, AddressBlock } from './common';
+import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen, AddressBlock, copyText } from './common';
 
 type StatusFilter = ListFilter;
 type PayFilter = 'wszystkie' | PayMethod;
@@ -643,7 +643,22 @@ export function OrderDetailPage() {
         {order.access && <Info label="Dojazd">{order.access}</Info>}
       </Group>
 
-      <Group title="Problem">
+      <Group
+        title="Problem"
+        action={
+          <button
+            type="button"
+            className="link"
+            onClick={() =>
+              void copyText(orderText(order, data.visits, settings.vatRate)).then((ok) =>
+                toast(ok ? 'Skopiowano opis zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
+              )
+            }
+          >
+            <Icon name="copy" /> Kopiuj opis
+          </button>
+        }
+      >
         {orderMethods(order).length > 0 && <Info label="Co robimy">{orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')}</Info>}
         <Info label="Szkodnik">{pestName(order)}</Info>
         {order.description && <Info label="Opis">{order.description}</Info>}

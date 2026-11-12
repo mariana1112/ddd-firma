@@ -1,8 +1,8 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
-import { methodOf } from './methods';
+import { METHOD_LABEL, methodOf, orderMethods } from './methods';
 import { withCountryCode } from '../lib/validators';
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
-import { roman, visitCode } from './codes';
+import { orderCode, roman, visitCode } from './codes';
 import { normalizeInterview } from './interview';
 import type { AppSettings } from './settings';
 import type { BuildingType, InvoiceType, Order, PayMethod, PestCategory, Visit } from './types';
@@ -254,6 +254,55 @@ export function centralExport(order: Order, visit: Visit, all: Visit[]): string 
   lines.push(`Płatność: ${pay}, ${INVOICES[order.invoice].replace(/^\S/, (c) => c.toLowerCase())}${order.invoice !== 'brak' && order.nip ? ` (NIP ${order.nip})` : ''}`);
   const next = all.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany');
   if (next) lines.push(`Kolejny zabieg: ${next.start ? formatTerm(next.start) : 'technik umówi z klientem'}`);
+  if (order.pink) lines.push(`KOD PINK${order.pinkNote ? `: ${order.pinkNote}` : ''}`);
+  return lines.filter(Boolean).join('\n');
+}
+
+const VISIT_STATE: Record<Visit['status'], string> = {
+  zaplanowany: 'umówiony',
+  w_trakcie: 'w trakcie',
+  wykonany: 'wykonany',
+  odwolany: 'odwołany',
+};
+
+/**
+ * Opis zlecenia do skopiowania (np. do wysłania szefowi, księgowej albo w czacie): klient, telefon, adres z klatką
+ * i piętrem, szkodnik, co robimy, opis, cena, faktura i zabiegi z terminami. Puste pola są pomijane.
+ */
+export function orderText(order: Order, visits: Visit[], vatRate: number): string {
+  const flat = order.building === 'blok'
+    ? [order.staircase.trim() && `klatka ${order.staircase.trim()}`, order.floor.trim() && `piętro ${order.floor.trim()}`].filter(Boolean).join(', ')
+    : '';
+  const price = priceRange({ priceMin: order.priceMin, priceMax: order.priceMax, invoice: order.invoice }, vatRate);
+  const methods = orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ');
+  const invoiceData = order.invoice === 'vat' ? [order.invoiceName, order.nip && `NIP ${order.nip}`].filter(Boolean).join(', ') : '';
+  const invoice = order.invoice === 'brak' ? '' : `${INVOICES[order.invoice]}${invoiceData ? ` (${invoiceData})` : ''}`;
+  const lines = [
+    `Zlecenie ${orderCode(order)}${order.clientName ? ` · ${order.clientName}` : ''}`,
+    order.phones.length ? `Tel.: ${order.phones.map((p) => `${withCountryCode(p.number)}${p.label ? ` (${p.label})` : ''}`).join(', ')}` : '',
+    `Adres: ${orderAddress(order)}${order.postalCode ? ` (${order.postalCode})` : ''}, ${BUILDINGS[order.building].toLowerCase()}${flat ? `, ${flat}` : ''}`,
+    order.access.trim() ? `Jak dotrzeć: ${order.access.trim()}` : '',
+    `Szkodnik: ${pestName(order)}`,
+    methods ? `Co robimy: ${methods}` : '',
+    order.description.trim() ? `Opis: ${order.description.trim()}` : '',
+    order.areaM2 ? `Metraż: ${order.areaM2} m²` : '',
+    price ? `Cena: ${[price.net, price.gross].filter(Boolean).join(' / ')}` : '',
+    invoice ? `Faktura: ${invoice}` : '',
+    order.protocol ? 'Protokół: tak' : '',
+    order.email ? `E-mail: ${order.email}` : '',
+  ];
+  const list = [...visits].filter((v) => !v.deletedAt).sort((a, b) => a.seq - b.seq);
+  if (list.length) {
+    lines.push('Zabiegi:');
+    for (const v of list) {
+      if (v.status === 'zaplanowany' && !v.start) {
+        lines.push(`- ${visitCode(order, v.seq)}: do umówienia`);
+        continue;
+      }
+      const when = v.status === 'wykonany' ? formatDate(v.doneOn ?? v.start) : formatTerm(v.start!);
+      lines.push(`- ${visitCode(order, v.seq)}: ${when} (${VISIT_STATE[v.status]})`);
+    }
+  }
   if (order.pink) lines.push(`KOD PINK${order.pinkNote ? `: ${order.pinkNote}` : ''}`);
   return lines.filter(Boolean).join('\n');
 }
