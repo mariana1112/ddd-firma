@@ -1,7 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { accountingState, accountingTasks, doneVisits, invoiceAmount, pendingInvoices, readyToClose, TASK_LABEL, taskDone, visitInvoiced } from '../data/accounting';
+import { accountingState, accountingTasks, bankPayments, doneVisits, invoiceAmount, paymentUnchecked, pendingInvoices, readyToClose, TASK_LABEL, taskDone, visitInvoiced } from '../data/accounting';
+import { getProfile } from '../data/settings';
+import { PayBadge } from './common';
 import { orderCode, roman, visitCode } from '../data/codes';
 import { deleteExpense } from '../data/domain';
 import { orderMatches } from '../data/order-search';
@@ -47,6 +49,7 @@ export function AccountingPage() {
     .filter((r) => r.state === 'zamkniete')
     .sort((a, b) => (b.order.accountingClosedAt ?? '').localeCompare(a.order.accountingClosedAt ?? ''));
   const shown = tab === 'czeka' ? waiting : closed;
+  const newPayments = bankPayments(data.visits).filter(paymentUnchecked).length;
 
   return (
     <Page title="Księgowość">
@@ -65,6 +68,15 @@ export function AccountingPage() {
           </select>
         </label>
       )}
+      <Group>
+        <Row
+          to="/ksiegowosc/platnosci"
+          icon="wallet"
+          title="BLIK i przelewy"
+          sub="Nowe wpłaty od klientów do sprawdzenia na koncie"
+          trailing={newPayments > 0 ? <Badge tone="warn">Nowe: {newPayments}</Badge> : <Badge tone="ok">Wszystko sprawdzone</Badge>}
+        />
+      </Group>
       <Search value={query} onChange={setQuery} placeholder="Szukaj: nazwisko, adres, kod, fv23, fv, prot" />
       <Chips
         value={tab}
@@ -478,6 +490,117 @@ export function CorrectionsPage() {
           )}
         </>
       )}
+    </Page>
+  );
+}
+
+type PaymentTab = 'nowe' | 'sprawdzone';
+type MethodFilter = 'wszystkie' | 'blik' | 'przelew';
+
+/**
+ * BLIK i przelewy dla księgowej: każda wpłata z wykonanego zabiegu, od najnowszej. „Wpłynęło” oznacza, że kwota
+ * jest na koncie; oznaczenie widzą wszyscy (synchronizacja), a „Cofnij” je zdejmuje.
+ */
+export function PaymentsPage() {
+  const { run, toast } = useFeedback();
+  const data = useLiveQuery(async () => ({ orders: await orders.all(), visits: await visits.all(), regions: await getRegions() }));
+  const [tab, setTab] = useState<PaymentTab>('nowe');
+  const [method, setMethod] = useState<MethodFilter>('wszystkie');
+  const [region, setRegion] = useState('');
+  if (!data) return <Loading />;
+  const byId = new Map(data.orders.map((o) => [o.id, o]));
+  const all = bankPayments(data.visits).filter((v) => byId.has(v.orderId) && (!region || byId.get(v.orderId)!.branchId === region));
+  const fresh = all.filter(paymentUnchecked);
+  const checked = all.filter((v) => !paymentUnchecked(v));
+  const list = (tab === 'nowe' ? fresh : checked).filter((v) => method === 'wszystkie' || v.payMethod === method);
+  const total = list.reduce((sum, v) => sum + (v.amount ?? 0), 0);
+
+  const mark = (v: Visit, ok: boolean) =>
+    run(async () => {
+      const me = await getProfile();
+      await visits.update(v.id, ok ? { paymentCheckedAt: new Date().toISOString(), paymentCheckedBy: me.name } : { paymentCheckedAt: null, paymentCheckedBy: '' });
+      toast(ok ? 'Oznaczono: wpłynęło' : 'Cofnięto oznaczenie', ok ? { action: { label: 'Cofnij', onClick: () => void mark(v, false) } } : undefined);
+    });
+
+  return (
+    <Page title="BLIK i przelewy" back="/ksiegowosc">
+      {Object.keys(data.regions).length > 1 && (
+        <label className="region-line region-switch">
+          <span>region</span>
+          <select value={region} aria-label="Region" onChange={(e) => setRegion(e.target.value)}>
+            <option value="">wszystkie</option>
+            {Object.entries(data.regions)
+              .sort((a, b) => a[1].name.localeCompare(b[1].name, 'pl'))
+              .map(([id, info]) => (
+                <option key={id} value={id}>
+                  {info.name.toLowerCase()}
+                </option>
+              ))}
+          </select>
+        </label>
+      )}
+      <Chips
+        wrap
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'nowe', label: 'Nowe', count: fresh.length },
+          { value: 'sprawdzone', label: 'Sprawdzone' },
+        ]}
+      />
+      <Chips
+        value={method}
+        onChange={setMethod}
+        options={[
+          { value: 'wszystkie', label: 'BLIK i przelewy' },
+          { value: 'blik', label: 'BLIK' },
+          { value: 'przelew', label: 'Przelew' },
+        ]}
+      />
+      {list.length > 0 && (
+        <p className="total-line">
+          <span>{tab === 'nowe' ? 'Do sprawdzenia' : 'Sprawdzone'}: {list.length}</span>
+          <strong>{formatPln(total)}</strong>
+        </p>
+      )}
+      <Group>
+        {list.length === 0 && <Empty icon="wallet" title={tab === 'nowe' ? 'Brak nowych wpłat do sprawdzenia' : 'Nic jeszcze nie sprawdzono'} />}
+        {list.map((v) => {
+          const order = byId.get(v.orderId)!;
+          return (
+            <div key={v.id} className="payment-row">
+              <Link to={`/zabieg/${v.id}`} className="payment-main">
+                <span className="payment-head">
+                  <strong>{formatPln(v.amount ?? 0)}</strong>
+                  {v.payMethod && <PayBadge method={v.payMethod} />}
+                </span>
+                <span>
+                  <span className="order-number">{visitCode(order, v.seq)}</span> {order.clientName || order.phones[0]?.number}
+                </span>
+                <span className="row-sub">
+                  {formatDate(v.doneOn ?? v.start)} · {v.technicianName || 'technik'} · {orderAddress(order)}
+                  {order.invoice !== 'brak' ? ` · ${INVOICES[order.invoice]}` : ''}
+                </span>
+                {v.paymentCheckedAt && (
+                  <span className="row-sub">
+                    Sprawdzone {formatDate(v.paymentCheckedAt)}
+                    {v.paymentCheckedBy ? `, ${v.paymentCheckedBy}` : ''}
+                  </span>
+                )}
+              </Link>
+              {paymentUnchecked(v) ? (
+                <button type="button" className="btn btn-sm btn-primary" onClick={() => void mark(v, true)}>
+                  <Icon name="check" /> Wpłynęło
+                </button>
+              ) : (
+                <button type="button" className="btn btn-sm" onClick={() => void mark(v, false)}>
+                  Cofnij
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </Group>
     </Page>
   );
 }

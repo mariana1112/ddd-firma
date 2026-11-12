@@ -16,7 +16,7 @@ import { ReportsPage } from './features/reports';
 import { BackupPage, MorePage, SettingsPage, TrashPage } from './features/settings';
 import { TripsPage } from './features/trips';
 import { CardPage } from './features/card';
-import { AccountingOrderPage, AccountingPage, CorrectionsPage } from './features/accounting';
+import { AccountingOrderPage, AccountingPage, CorrectionsPage, PaymentsPage } from './features/accounting';
 import { ChatButton, ChatPage, NotificationBell, NotificationsPage } from './features/communication';
 import { VisitPage } from './features/visit';
 import { RegionPage } from './features/regions';
@@ -123,6 +123,7 @@ function AppRoutes() {
       <Route path="/czat" element={<ChatPage />} />
       <Route path="/ksiegowosc" element={<AccountingPage />} />
       <Route path="/ksiegowosc/poprawki" element={<CorrectionsPage />} />
+      <Route path="/ksiegowosc/platnosci" element={<PaymentsPage />} />
       <Route path="/ksiegowosc/:id" element={<AccountingOrderPage />} />
       <Route path="/kalendarz" element={<CalendarPage />} />
       <Route path="/zlecenia" element={<OrdersPage />} />

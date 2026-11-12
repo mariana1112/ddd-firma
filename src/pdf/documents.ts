@@ -1,12 +1,13 @@
-import { roman, visitCode } from '../data/codes';
+import { orderCode, roman, visitCode } from '../data/codes';
+import { METHOD_LABEL, orderMethods } from '../data/methods';
 // Dokumenty PDF jako czyste funkcje: dane wchodzą, definicja pdfmake wychodzi.
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { FIRST_PAGE_ROWS, NEXT_PAGE_ROWS, paginate, romanMonth, type DriverSummary, type MileageEntry } from '../data/mileage';
 import { formatPln, PAY_METHODS, periodTitle, type Report } from '../data/reports';
 import { COMPANY_NAME } from '../data/settings';
-import { orderAddress, PAY_NAMES, pestName } from '../data/texts';
-import type { TripKind } from '../data/types';
-import { formatDate } from '../lib/dates';
+import { BUILDINGS, INVOICES, orderAddress, PAY_NAMES, pestName, priceRange, workSummary } from '../data/texts';
+import type { Order, TripKind, Visit } from '../data/types';
+import { formatDate, formatTerm } from '../lib/dates';
 
 const INK = '#1c1f1d';
 const MUTED = '#5f655f';
@@ -546,4 +547,96 @@ export function companyDocument(
       { text: `Wygenerowano ${formatDate(new Date().toISOString())}`, style: 'small', margin: [0, 16, 0, 0] },
     ],
   };
+}
+
+// ---------- Podsumowanie zlecenia ----------
+
+const VISIT_STATUS: Record<Visit['status'], string> = {
+  zaplanowany: 'Zaplanowany',
+  w_trakcie: 'W trakcie',
+  wykonany: 'Wykonany',
+  odwolany: 'Odwołany',
+};
+
+/**
+ * Podsumowanie jednego zlecenia: klient, adres, co robimy, wszystkie zabiegi (termin, technik, wykonane prace,
+ * płatność) i zalecenia z wykonanych zabiegów. Do wysłania klientowi, księgowej albo do akt.
+ */
+export function orderDocument(order: Order, visits: Visit[], opts: { vatRate: number }): TDocumentDefinitions {
+  const code = orderCode(order);
+  const info = (rows: Array<[string, string]>): Content => ({
+    layout: tableLayout,
+    table: { widths: [110, '*'], body: rows.filter(([, v]) => v.trim()).map(([k, v]) => [{ text: k, color: MUTED }, v]) },
+  });
+  const flatParts = order.building === 'blok'
+    ? [order.flatNo.trim() && `mieszkanie ${order.flatNo.trim()}`, order.staircase.trim() && `klatka ${order.staircase.trim()}`, order.floor.trim() && `piętro ${order.floor.trim()}`].filter(Boolean).join(', ')
+    : '';
+  const price = priceRange({ priceMin: order.priceMin, priceMax: order.priceMax, invoice: order.invoice }, opts.vatRate);
+  const sorted = [...visits].sort((a, b) => a.seq - b.seq);
+  const paid = sorted.filter((v) => v.status === 'wykonany' && v.amount !== null).reduce((sum, v) => sum + (v.amount ?? 0), 0);
+  const when = (v: Visit) => (v.status === 'wykonany' ? formatDate(v.doneOn ?? v.start) : v.start ? formatTerm(v.start) : 'nieumówiony');
+  const done = sorted.filter((v) => v.status === 'wykonany');
+
+  return {
+    ...base(`Zlecenie ${code}`),
+    content: [
+      { text: `Podsumowanie zlecenia ${code}`, style: 'title' },
+      { text: `${COMPANY_NAME} · wygenerowano ${formatDate(new Date().toISOString())}`, style: 'small', margin: [0, 2, 0, 8] },
+      { text: 'Klient', style: 'section' },
+      info([
+        ['Imię i nazwisko / firma', order.clientName],
+        ['Telefon', order.phones.map((p) => `${p.number}${p.label ? ` (${p.label})` : ''}`).join(', ')],
+        ['E-mail', order.email],
+        ['Faktura', INVOICES[order.invoice]],
+        ['Dane do faktury', order.invoice === 'vat' ? [order.invoiceName ?? '', order.nip && `NIP ${order.nip}`].filter(Boolean).join(', ') : ''],
+        ['Protokół', order.protocol ? 'Tak' : 'Nie'],
+      ]),
+      { text: 'Adres', style: 'section' },
+      info([
+        ['Ulica', `${order.street} ${order.houseNo}`.trim()],
+        ['Miejscowość', [order.postalCode, order.city].filter(Boolean).join(' ')],
+        ['Budynek', BUILDINGS[order.building] ?? ''],
+        ['Lokal', flatParts],
+        ['Jak dotrzeć', order.access],
+      ]),
+      { text: 'Zlecenie', style: 'section' },
+      info([
+        ['Szkodnik', pestName(order)],
+        ['Co robimy', orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')],
+        ['Opis', order.description],
+        ['Metraż', order.areaM2 ? `${order.areaM2} m²` : ''],
+        ['Cena', price ? [price.net, price.gross].filter(Boolean).join(' / ') : ''],
+      ]),
+      { text: 'Zabiegi', style: 'section' },
+      {
+        layout: tableLayout,
+        table: {
+          headerRows: 1,
+          widths: [52, 62, 60, 70, '*', 70],
+          body: [
+            [{ text: 'Zabieg', style: 'th' }, { text: 'Stan', style: 'th' }, { text: 'Termin', style: 'th' }, { text: 'Technik', style: 'th' }, { text: 'Wykonano', style: 'th' }, { text: 'Płatność', style: 'th', alignment: 'right' }],
+            ...sorted.map((v) => [
+              visitCode(order, v.seq),
+              VISIT_STATUS[v.status],
+              when(v),
+              v.technicianName || '—',
+              workSummary(v) || '—',
+              right(v.amount !== null && v.status === 'wykonany' ? `${formatPln(v.amount)}${v.payMethod ? `\n${PAY_NAMES[v.payMethod]}` : ''}` : '—'),
+            ]),
+            [{ text: 'Razem zapłacono', bold: true, colSpan: 5 }, '', '', '', '', right(formatPln(paid), { bold: true })],
+          ],
+        },
+      },
+      ...done.flatMap((v): Content[] => {
+        const recs = [...v.recommendations, ...(v.sealing?.length ? [`Do uszczelnienia: ${v.sealing.join(', ')}`] : [])];
+        const notes = [v.findings && `Zastano: ${v.findings}`, v.problems && `Problemy: ${v.problems}`].filter(Boolean) as string[];
+        if (!recs.length && !notes.length) return [];
+        return [
+          { text: `Zalecenia po zabiegu ${roman(v.seq)} (${formatDate(v.doneOn ?? v.start)})`, style: 'section' },
+          ...(notes.length ? [{ text: notes.join('\n'), margin: [0, 0, 0, 4] } as Content] : []),
+          ...(recs.length ? [{ ul: recs } as Content] : []),
+        ];
+      }),
+    ],
+  } as TDocumentDefinitions;
 }

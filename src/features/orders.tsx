@@ -450,7 +450,7 @@ export function OrderDetailPage() {
   const [params, setParams] = useSearchParams();
   const [deleteReason, setDeleteReason] = useState('');
   const navigate = useNavigate();
-  const { confirm, run, toast } = useFeedback();
+  const { confirm, deliverFile, run, toast } = useFeedback();
   const data = useLiveQuery(async () => {
     const order = await orders.get(id);
     if (!order || order.deletedAt) return null;
@@ -606,6 +606,18 @@ export function OrderDetailPage() {
       )}
       <button type="button" className="btn btn-block" onClick={() => setScheduling(true)}>
         <Icon name="calendar" /> Umów kolejny zabieg
+      </button>
+      <button
+        type="button"
+        className="btn btn-block"
+        onClick={() =>
+          void run(async () => {
+            const [{ orderDocument }, { renderPdf }] = await Promise.all([import('../pdf/documents'), import('../pdf/render')]);
+            deliverFile(await renderPdf(orderDocument(order, data.visits, { vatRate: settings.vatRate })), `zlecenie-${orderCode(order).replace(/[^\w-]+/g, '-')}.pdf`);
+          })
+        }
+      >
+        <Icon name="file" /> Podsumowanie zlecenia (PDF)
       </button>
       <Sheet open={scheduling} title={`Umów kolejny zabieg · ${visitCode(order, nextSeq)}`} onClose={() => setScheduling(false)}>
         {scheduling && (

@@ -7,7 +7,8 @@ import { EMPTY_INTERVIEW } from '../data/orders';
 import { buildReport, periodOf } from '../data/reports';
 import type { Expense, Order, Trip, Visit } from '../data/types';
 import { driverSummary, mileageSheets } from '../data/mileage';
-import { mileageDocument, reportDocument } from './documents';
+import { mileageDocument, orderDocument, reportDocument } from './documents';
+import { bankPayments, paymentUnchecked } from '../data/accounting';
 
 const require = createRequire(import.meta.url);
 const stamps = { createdAt: '2026-11-01T10:00:00.000Z', updatedAt: '2026-11-01T10:00:00.000Z', deletedAt: null };
@@ -109,6 +110,25 @@ const trip = (date: string, kind: Trip['kind'], start: number, end: number): Tri
 });
 
 describe('dokumenty PDF', () => {
+  it('podsumowanie zlecenia: klient, adres, zabiegi z płatnością i zalecenia', async () => {
+    const done = { ...visit('2026-10-27', 'blik', 30000), treatments: ['Oprysk ciśnieniowy'], places: ['listwy'], recommendations: ['Nie myć podłóg przez tydzień.'] };
+    const planned: Visit = { ...visit('2026-11-10', null, 0), id: 'v2', seq: 2, status: 'zaplanowany', doneOn: null, amount: null, finishedAt: null };
+    const doc = orderDocument({ ...order, building: 'blok', flatNo: '3', staircase: '2', floor: '4', access: 'Domofon 3' } as Order, [planned, done], { vatRate: 23 });
+    const json = JSON.stringify(doc.content);
+    expect(json).toContain('Podsumowanie zlecenia');
+    expect(json).toContain('klatka 2');
+    expect(json).toContain('Nie myć podłóg przez tydzień.');
+    expect(json).toContain('Razem zapłacono');
+    expect(isPdf(await render(doc, 'zlecenie.pdf'))).toBe(true);
+  });
+
+  it('księgowość: BLIK i przelewy od najnowszych, gotówka pomijana', () => {
+    const list = [visit('2026-10-20', 'blik', 10000), visit('2026-10-27', 'przelew', 20000), visit('2026-10-28', 'gotowka', 5000)];
+    expect(bankPayments(list).map((v) => v.payMethod)).toEqual(['przelew', 'blik']);
+    expect(paymentUnchecked({ paymentCheckedAt: null })).toBe(true);
+    expect(paymentUnchecked({ paymentCheckedAt: '2026-10-28T10:00:00Z' })).toBe(false);
+  });
+
   it('raport tygodniowy z polskimi znakami', async () => {
     const report = buildReport(periodOf('tydzien', '2026-10-28'), {
       visits: [visit('2026-10-26', 'gotowka', 35000), visit('2026-10-28', 'blik', 81000), visit('2026-10-29', 'przelew', 30000)],

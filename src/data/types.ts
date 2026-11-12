@@ -350,6 +350,9 @@ export interface Visit extends BaseRecord {
   /** Księgowość: kiedy wystawiono fakturę za ten zabieg (null: jeszcze nie) i jej numer. */
   invoicedAt?: string | null;
   invoiceNumber?: string;
+  /** Księgowość: BLIK albo przelew sprawdzony na koncie (kiedy i kto); null albo brak: jeszcze nie. */
+  paymentCheckedAt?: string | null;
+  paymentCheckedBy?: string;
 }
 
 export type ScopeKind = 'calosc' | 'pokoj' | 'inne';

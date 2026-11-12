@@ -104,8 +104,17 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
       .filter((v) => v.status !== 'odwolany' && (v.doneOn === date || v.start?.slice(0, 10) === date) && (!me || !v.technicianId || v.technicianId === me))
       .sort((a, b) => (a.startedAt ?? a.start ?? '').localeCompare(b.startedAt ?? b.start ?? ''));
     const visitCities = dayVisits.map((v) => byOrder.get(v.orderId)?.city ?? '').filter(Boolean);
-    return suggestRoutes({ base: homeBase(mine.slice(0, 30)), visitCities, recent: mine.slice(0, 15) });
+    // Ostatnie miejsce: „Dokąd” z ostatniego przejazdu (służbowego albo prywatnego).
+    const lastPlace = mine.find((t) => t.to.trim())?.to.trim() ?? '';
+    return {
+      lastPlace,
+      list: suggestRoutes({ base: lastPlace || homeBase(mine.slice(0, 30)), visitCities, recent: mine.slice(0, 15) }),
+    };
   }, [date]);
+  // „Skąd” wypełnia się samo ostatnim miejscem; można je zmienić.
+  useEffect(() => {
+    if (routes?.lastPlace) setFrom((current) => current || routes.lastPlace);
+  }, [routes?.lastPlace]);
   const applyRoute = (points: string[]) => {
     setFrom(points[0] ?? '');
     setTo(points[points.length - 1] ?? '');
@@ -132,8 +141,8 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
             ownerId: profile.userId,
             date,
             kind,
-            timeFrom,
-            timeTo,
+            timeFrom: kind === 'sluzbowy' ? timeFrom || nowWarsaw().slice(11, 16) : timeFrom,
+            timeTo: kind === 'sluzbowy' ? '' : timeTo,
             // Miejscowości z poprawioną pisownią; trasa „Gdańsk - Gdańsk” w ewidencji to jeden „Gdańsk”.
             from: normalizeCity(from),
             via: via.split(',').map(normalizeCity).filter(Boolean).join(', '),
@@ -166,22 +175,29 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
           ? 'Służbowy: trafia do ewidencji przebiegu dla celów VAT.'
           : 'Prywatny: w aplikacji zapisany jako prywatny (do wglądu), ale do ewidencji VAT wchodzi jako służbowy. Licznik jest ten sam dla obu rodzajów.'}
       </p>
-      <div className="form-row form-row-3">
+      {/* Służbowy: wystarczy dzień i dokąd; godziny są tylko przy prywatnym (kolejność przejazdów ustala zapis). */}
+      {kind === 'sluzbowy' ? (
         <Field label="Dzień">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
-        <Field label="Od">
-          <input type="time" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} />
-        </Field>
-        <Field label="Do">
-          <input type="time" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} />
-        </Field>
-      </div>
-      {kind === 'sluzbowy' && routes && routes.length > 0 && (
+      ) : (
+        <div className="form-row form-row-3">
+          <Field label="Dzień">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          <Field label="Od">
+            <input type="time" value={timeFrom} onChange={(e) => setTimeFrom(e.target.value)} />
+          </Field>
+          <Field label="Do">
+            <input type="time" value={timeTo} onChange={(e) => setTimeTo(e.target.value)} />
+          </Field>
+        </div>
+      )}
+      {kind === 'sluzbowy' && routes && routes.list.length > 0 && (
         <div className="field">
           <span className="field-label">Proponowane trasy</span>
           <div className="chips chips-wrap">
-            {routes.map((r) => (
+            {routes.list.map((r) => (
               <button key={r.join('|')} type="button" className="chip" onClick={() => applyRoute(r)}>
                 {r.join(' - ')}
               </button>
@@ -190,7 +206,7 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
         </div>
       )}
       <div className="form-row">
-        <Field label="Skąd">
+        <Field label="Skąd" hint={routes?.lastPlace && from === routes.lastPlace ? 'Ostatnie miejsce z poprzedniego przejazdu.' : undefined}>
           <input value={from} placeholder="Np. Łódź" onChange={(e) => setFrom(e.target.value)} />
         </Field>
         <Field label="Dokąd">

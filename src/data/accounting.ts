@@ -78,3 +78,13 @@ export function accountingNote(order: DocOrder, list: Visit[]): string | null {
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 const romanSeq = (n: number) => ROMAN[n] ?? String(n);
+
+/** Płatności do sprawdzenia przez księgową: BLIK i przelewy z wykonanych zabiegów, od najnowszych. */
+export function bankPayments(list: Visit[]): Visit[] {
+  return list
+    .filter((v) => v.status === 'wykonany' && !v.deletedAt && (v.payMethod === 'blik' || v.payMethod === 'przelew') && (v.amount ?? 0) > 0)
+    .sort((a, b) => (b.finishedAt ?? b.doneOn ?? '').localeCompare(a.finishedAt ?? a.doneOn ?? ''));
+}
+
+/** BLIK albo przelew jeszcze niesprawdzony na koncie: „nowy” dla księgowej. */
+export const paymentUnchecked = (v: Pick<Visit, 'paymentCheckedAt'>) => !v.paymentCheckedAt;
