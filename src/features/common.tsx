@@ -281,16 +281,15 @@ export function ContactBar(props: { order: Order; visit?: Visit | null }) {
 
 
 /**
- * Adres zlecenia z opisanymi polami, do szybkiego spojrzenia w drodze: Ulica, Budynek, Mieszkanie, Klatka, Piętro,
- * Miejscowość, a pod spodem „Jak dotrzeć”. Puste pola się nie pokazują. Dotknięcie „Adres” otwiera nawigację.
+ * Adres zlecenia w poziomym prostokącie: w pierwszym wierszu ulica z numerem (duża) i miejscowość, pod spodem
+ * w jednym rzędzie budynek, mieszkanie, klatka i piętro, a na dole „jak dotrzeć”. Dotknięcie otwiera nawigację.
  */
 export function AddressBlock({ order }: { order: Order }) {
   const [navOpen, setNavOpen] = useState(false);
   const block = order.building === 'blok';
   const street = `${order.street.trim()} ${order.houseNo.trim()}`.trim();
-  const fields: Array<[string, string, string?]> = [
-    ['Ulica', street, 'address-wide address-big'],
-    ['Miejscowość', [order.postalCode.trim(), order.city.trim()].filter(Boolean).join(' '), 'address-wide'],
+  const city = [order.postalCode.trim(), order.city.trim()].filter(Boolean).join(' ');
+  const small: Array<[string, string]> = [
     ['Budynek', BUILDINGS[order.building] ?? ''],
     ...(block
       ? ([
@@ -301,29 +300,43 @@ export function AddressBlock({ order }: { order: Order }) {
       : []),
   ];
   return (
-    <div className="address-block">
-      <button type="button" className="address-head" onClick={() => setNavOpen(true)} aria-label="Adres: otwórz nawigację">
-        <span className="address-title">
-          <Icon name="pin" size={18} /> Adres
+    <>
+      <button type="button" className="address-card" onClick={() => setNavOpen(true)} aria-label={`Adres: ${street}, ${city}. Otwórz nawigację`}>
+        <span className="address-top">
+          <span className="address-pin">
+            <Icon name="pin" size={20} />
+          </span>
+          <span className="address-main">
+            <span className="address-label">Ulica</span>
+            <strong className="address-street">{street || 'Brak adresu'}</strong>
+          </span>
+          {city && (
+            <span className="address-side">
+              <span className="address-label">Miejscowość</span>
+              <strong>{city}</strong>
+            </span>
+          )}
         </span>
-      </button>
-      <dl className="address-grid">
-        {fields
-          .filter(([, value]) => value)
-          .map(([label, value, cls]) => (
-            <div key={label} className={`address-field ${cls ?? ''}`.trim()}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
+        <span className="address-row">
+          {small
+            .filter(([, value]) => value)
+            .map(([label, value]) => (
+              <span key={label} className="address-cell">
+                <span className="address-label">{label}</span>
+                <strong>{value}</strong>
+              </span>
+            ))}
+          <span className="address-nav">
+            <Icon name="nav" size={18} /> Nawiguj
+          </span>
+        </span>
         {order.access.trim() && (
-          <div className="address-field address-wide address-access">
-            <dt>Jak dotrzeć</dt>
-            <dd>{order.access.trim()}</dd>
-          </div>
+          <span className="address-access">
+            <span className="address-label">Jak dotrzeć</span> {order.access.trim()}
+          </span>
         )}
-      </dl>
+      </button>
       <NavigateSheet order={order} open={navOpen} onClose={() => setNavOpen(false)} />
-    </div>
+    </>
   );
 }

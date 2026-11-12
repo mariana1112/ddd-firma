@@ -2892,78 +2892,94 @@ body {
   font-weight: 700;
 }
 
-/* Adres zlecenia: opisane pola (Ulica, Budynek, Mieszkanie, Klatka, Piętro, Miejscowość) */
-.address-block {
+/* Adres zlecenia: poziomy prostokąt (ulica i miejscowość, rząd szczegółów, jak dotrzeć) */
+.address-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
   margin: 8px 0;
-  padding: 12px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-left: 4px solid var(--primary);
+  border-radius: 0 12px 12px 0;
   background: var(--surface);
   color: var(--text);
   text-align: left;
 }
 
-.address-head {
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  text-align: left;
+.address-top {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-.address-title {
+.address-pin {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  padding-top: 14px;
   color: var(--primary);
-  font-weight: 700;
 }
 
-.address-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
-  gap: 8px 6px;
-  margin: 0;
-}
-
-.address-field {
+.address-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-width: 0;
 }
 
-.address-field dt {
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.address-field dd {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
+.address-street {
+  font-size: 1.3rem;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
-.address-wide {
-  grid-column: 1 / -1;
+.address-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  max-width: 45%;
 }
 
-.address-big dd {
-  font-size: 1.3rem;
+.address-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
-.address-access dd {
-  margin-top: 2px;
+.address-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.address-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.address-cell strong {
+  font-size: 1.05rem;
+}
+
+.address-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.address-access {
   padding: 6px 8px;
   border-radius: 8px;
   background: var(--primary-soft);
-  font-size: 0.95rem;
-  font-weight: 500;
+  font-size: 0.9rem;
 }
 
 /* Księgowość: BLIK i przelewy */
