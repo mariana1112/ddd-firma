@@ -1,4 +1,5 @@
 import { orderCode } from '../data/codes';
+import { isSyncConfigured } from '../data/sync/config';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -309,7 +310,20 @@ function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState
     run(async () => {
       const raw = input.trim();
       if (!raw) return;
-      const { url, address, coords } = readMapsInput(raw);
+      let { url, address, coords } = readMapsInput(raw);
+      // Skrócony link bez adresu obok: serwer rozwija go do pełnego linku z adresem albo współrzędnymi.
+      if (url && !address && !coords && isShortMapsLink(url) && isSyncConfigured) {
+        setFilling(true);
+        try {
+          const full = await (await import('../data/sync/supabase')).resolveMapsLink(url);
+          if (full) {
+            ({ address, coords } = readMapsInput(full));
+            url = full;
+          }
+        } finally {
+          setFilling(false);
+        }
+      }
       // Zapisujemy tylko link; sam wklejony adres (bez linku) nie zostaje w polu linku.
       props.set({ mapsLink: url || (readMapsInput(raw).address ? '' : raw) });
       const fill = (a: { street: string; houseNo: string; flatNo?: string; postalCode: string; city: string }) => {
@@ -338,7 +352,7 @@ function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState
         return;
       }
       if (url && isShortMapsLink(url)) {
-        toast('Zapisano link. Skrócony link nie zawiera adresu: w Google Maps dotknij adresu, wybierz „Kopiuj” i wklej go tutaj, albo wpisz adres.');
+        toast(navigator.onLine === false ? 'Zapisano link. Bez internetu adres z linku uzupełni się później: wpisz go albo wklej link ponownie.' : 'Zapisano link. Nie udało się odczytać z niego adresu: w Google Maps dotknij adresu, wybierz „Kopiuj” i wklej go tutaj, albo wpisz adres.');
       }
     });
   const paste = async () => {
@@ -384,7 +398,7 @@ function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState
         }}
         aria-label="Link do miejsca z Google Maps"
       />
-      {filling && <span className="field-hint">Odczytuję adres z mapy…</span>}
+      {filling && <span className="field-hint">Odczytuję adres z linku…</span>}
       {props.error ? (
         <span className="field-message">{props.error}</span>
       ) : (

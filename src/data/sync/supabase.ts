@@ -438,6 +438,22 @@ export async function setMemberBranch(orgId: string, userId: string, branchId: s
  */
 // ---------- Rejestracja z kodem weryfikacyjnym od admina ----------
 
+/**
+ * Rozwija skrócony link Google Maps (maps.app.goo.gl) przez funkcję serwera „mapy”: przeglądarka nie może sama
+ * odczytać przekierowania. Zwraca pełny link albo null (brak sesji, internetu albo funkcji na serwerze).
+ */
+export async function resolveMapsLink(url: string): Promise<string | null> {
+  try {
+    if (!(await hasSession())) return null;
+    const { data, error } = await supabase().functions.invoke('mapy', { body: { url } });
+    if (error) return null;
+    const full = (data as { url?: string } | null)?.url;
+    return typeof full === 'string' && /^https:\/\//.test(full) ? full : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Wywołanie funkcji serwera „konta” z czytelnym komunikatem błędu. */
 async function invokeKonta(body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { data, error } = await supabase().functions.invoke('konta', { body });
