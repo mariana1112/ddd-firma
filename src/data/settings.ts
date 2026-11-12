@@ -369,38 +369,63 @@ export async function saveMyPhone(phone: string): Promise<void> {
   await db.meta.put({ key: 'myPhone', value: phone.trim(), updatedAt: new Date().toISOString() });
 }
 
+/**
+ * Numeracja zleceń jest osobna dla każdego regionu: region ma własny prefiks (GDA-0141) i własną pulę numerów
+ * na serwerze (seria „order:<region>”), więc zlecenie dodane w jednym regionie nie przesuwa numerów w innym.
+ * Bez konta firmy (albo bez regionu) jest jedna numeracja urządzenia.
+ */
+export const orderSeries = (branchId: string | null | undefined) => (branchId ? `order:${branchId}` : 'order');
+export const orderNumbersKey = (branchId: string | null | undefined) => `numbers:${orderSeries(branchId)}`;
+const orderCounterKey = (branchId: string | null | undefined) => (branchId ? `counter:order:${branchId}` : 'counter:order');
+
+/** Dawna wspólna pula numerów całej firmy (przed numeracją regionów); już nieużywana. */
 export const ORDER_NUMBERS_KEY = 'numbers:order';
 
-/** Numer, od którego zaczyna się numeracja, np. żeby kontynuować dotychczasową (#210). */
-export async function localOrderCounter(): Promise<number> {
-  return (await getMeta<number>('counter:order')) ?? 0;
-}
-
-export async function setOrderCounter(last: number): Promise<void> {
-  await db.meta.put({ key: 'counter:order', value: last, updatedAt: new Date().toISOString() });
+async function currentBranch(): Promise<string | null> {
+  return (await getMeta<SyncState>('sync'))?.branchId ?? null;
 }
 
 /**
- * Kolejny numer zlecenia. Przy synchronizacji pochodzi z puli zarezerwowanej na serwerze, więc
- * urządzenia nie nadają tych samych numerów. Gdy pula wyczerpie się bez internetu, numer jest
- * kolejnym po najwyższym znanym. Rzadki duplikat nie psuje danych, bo numer służy do wyszukiwania.
+ * Ostatni numer zlecenia w regionie: zapamiętany licznik albo najwyższy numer zlecenia tego regionu na telefonie
+ * (zlecenia sprzed numeracji regionów też się liczą, więc numeracja regionu ciągnie się dalej).
+ */
+export async function localOrderCounter(branchId?: string | null): Promise<number> {
+  const branch = branchId === undefined ? await currentBranch() : branchId;
+  const saved = (await getMeta<number>(orderCounterKey(branch))) ?? 0;
+  const highest = (await db.orders.toArray())
+    .filter((o) => !branch || (o.branchId ?? branch) === branch)
+    .reduce((max, o) => Math.max(max, o.number || 0), 0);
+  return Math.max(saved, highest);
+}
+
+export async function setOrderCounter(last: number, branchId?: string | null): Promise<void> {
+  const branch = branchId === undefined ? await currentBranch() : branchId;
+  await db.meta.put({ key: orderCounterKey(branch), value: last, updatedAt: new Date().toISOString() });
+}
+
+/**
+ * Kolejny numer zlecenia w regionie. Przy synchronizacji pochodzi z puli regionu zarezerwowanej na serwerze, więc
+ * telefony z tego regionu nie nadają tych samych numerów. Gdy pula wyczerpie się bez internetu, numer jest kolejnym
+ * po najwyższym znanym w regionie. Rzadki duplikat nie psuje danych, bo numer służy do wyszukiwania.
  */
 export async function nextOrderNumber(): Promise<number> {
-  return db.transaction('rw', db.meta, async () => {
-    const counter = await localOrderCounter();
+  return db.transaction('rw', [db.meta, db.orders], async () => {
+    const branch = await currentBranch();
+    const counter = await localOrderCounter(branch);
     if (await getMeta<SyncState>('sync')) {
-      const blocks = (await getMeta<NumberBlock[]>(ORDER_NUMBERS_KEY)) ?? [];
-      const block = blocks.find((b) => b.next <= b.end);
+      const key = orderNumbersKey(branch);
+      const blocks = (await getMeta<NumberBlock[]>(key)) ?? [];
+      const block = blocks.find((b) => b.next <= b.end && b.next > counter);
       if (block) {
         const number = block.next;
         block.next += 1;
-        await db.meta.put({ key: ORDER_NUMBERS_KEY, value: blocks, updatedAt: new Date().toISOString() });
-        await db.meta.put({ key: 'counter:order', value: Math.max(counter, number), updatedAt: new Date().toISOString() });
+        await db.meta.put({ key, value: blocks, updatedAt: new Date().toISOString() });
+        await db.meta.put({ key: orderCounterKey(branch), value: Math.max(counter, number), updatedAt: new Date().toISOString() });
         return number;
       }
     }
     const next = counter + 1;
-    await db.meta.put({ key: 'counter:order', value: next, updatedAt: new Date().toISOString() });
+    await db.meta.put({ key: orderCounterKey(branch), value: next, updatedAt: new Date().toISOString() });
     return next;
   });
 }

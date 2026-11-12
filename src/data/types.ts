@@ -456,6 +456,8 @@ export interface SyncState {
   branchName?: string;
   /** Rekordy na urządzeniu mają już znacznik regionu z serwera (jednorazowe pobranie od nowa po aktualizacji). */
   regionsTagged?: boolean;
+  /** Pełne pobranie po poprawce synchronizacji (zakładka przy pobieraniu): raz na urządzeniu, potem przyrostowo. */
+  fullPullV2?: boolean;
   /** Konto z loginem tymczasowym od admina: przed pracą trzeba ustawić własny e-mail i hasło. */
   temp?: boolean;
 }

@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useReportKm } from '../lib/report-prefs';
 import { renamePersonInRecords } from '../data/people';
 import { DomainError } from '../data/domain';
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -740,6 +741,7 @@ export function AdminPage() {
   const [kind, setKind] = useState<PeriodKind>('tydzien');
   const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [withKm, setWithKm] = useReportKm();
   const { confirm, deliverFile, run, toast } = useFeedback();
   const regionsApi = useRegions(gate.state);
   // Dane całej firmy, bez filtra regionu z ekranów technika.
@@ -772,7 +774,7 @@ export function AdminPage() {
         const [{ reportDocument }, { renderPdf }, settings] = await Promise.all([import('../pdf/documents'), import('../pdf/render'), getAppSettings()]);
         const names = { technician: selected ? `region ${selected.name}` : 'cała firma', bossGenitive: settings.bossName };
         const slug = selected ? (selected.prefix || selected.name).toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'firma';
-        deliverFile(await renderPdf(reportDocument(report, names)), `raport-${slug}-${period.kind}-${period.from}.pdf`);
+        deliverFile(await renderPdf(reportDocument(report, names, { km: withKm })), `raport-${slug}-${period.kind}-${period.from}.pdf`);
       } finally {
         setPdfBusy(false);
       }
@@ -811,9 +813,13 @@ export function AdminPage() {
         <Stat label="Zabiegi" value={String(report.visits.length)} />
         <Stat label="Koszty z premiami" value={formatPln(report.costs + report.bonus)} />
         <Stat label="Wynik gotówka" value={formatPln(report.cashForBoss)} tone={report.cashForBoss < 0 ? 'danger' : 'ok'} />
-        <Stat label="Km służbowo (VAT)" value={`${report.km.sluzbowy} km`} />
-        <Stat label="w tym prywatne" value={`${report.km.prywatny} km`} />
+        {withKm && <Stat label="Km służbowo (VAT)" value={`${report.km.sluzbowy} km`} />}
+        {withKm && <Stat label="w tym prywatne" value={`${report.km.prywatny} km`} />}
       </div>
+      <label className="check">
+        <input type="checkbox" checked={withKm} onChange={(e) => setWithKm(e.target.checked)} />
+        Raport z kilometrami
+      </label>
       <button type="button" className="btn btn-block" disabled={pdfBusy} onClick={() => void reportPdf()}>
         <Icon name="file" /> {pdfBusy ? 'Przygotowuję PDF…' : `Raport PDF: ${kind === 'dzien' ? 'dzień' : kind === 'tydzien' ? 'tydzień' : 'miesiąc'}`}
       </button>

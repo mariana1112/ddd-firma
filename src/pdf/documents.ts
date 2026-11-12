@@ -62,7 +62,7 @@ function base(title: string, orientation: 'portrait' | 'landscape' = 'portrait')
 const right = (text: string, extra: object = {}): TableCell => ({ text, alignment: 'right', noWrap: true, ...extra });
 
 /** Raport rozliczeniowy: obrót, formy płatności, koszty, premia, gotówka dla szefa i szczegóły. */
-export function reportDocument(report: Report, names: { technician: string; bossGenitive: string }): TDocumentDefinitions {
+export function reportDocument(report: Report, names: { technician: string; bossGenitive: string }, opts: { km?: boolean } = {}): TDocumentDefinitions {
   const summary: Array<[string, number, boolean?]> = [
     ['Obrót', report.turnover, true],
     ...PAY_METHODS.map((m): [string, number] => [PAY_NAMES[m], report.byMethod[m]]),
@@ -149,8 +149,13 @@ export function reportDocument(report: Report, names: { technician: string; boss
       visits,
       { text: 'Koszty', style: 'section' },
       costs,
-      { text: 'Kilometry', style: 'section' },
-      { text: `Służbowe (do ewidencji VAT): ${report.km.sluzbowy} km, w tym prywatne: ${report.km.prywatny} km` },
+      // Kilometry tylko na życzenie („Z kilometrami” w Raportach).
+      ...(opts.km
+        ? [
+            { text: 'Kilometry', style: 'section' } as Content,
+            { text: `Służbowe (do ewidencji VAT): ${report.km.sluzbowy} km, w tym prywatne: ${report.km.prywatny} km` } as Content,
+          ]
+        : []),
     ],
   } as TDocumentDefinitions;
 }

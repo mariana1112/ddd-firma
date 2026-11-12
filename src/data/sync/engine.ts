@@ -10,10 +10,11 @@ import {
   getSyncState,
   localOrderCounter,
   saveProfile,
-  ORDER_NUMBERS_KEY,
   setDataKey,
   setSyncState,
   SYNCED_META_KEYS,
+  orderNumbersKey,
+  orderSeries,
 } from '../settings';
 import type { Attachment, ChangeOp, MetaRow, NumberBlock, SyncState, SyncTable } from '../types';
 import { createDataKey, decryptFields, decryptFile, encryptFields, encryptFile, type WrappedKey } from './crypto';
@@ -58,6 +59,8 @@ export type Account = Pick<SyncState, 'orgId' | 'orgName' | 'userId' | 'email' |
 const PUSH_BATCH = 200;
 const PULL_PAGE = 500;
 const NUMBER_BLOCK = 20;
+/** Ile ostatnich zmian pobierać ponownie przy każdej synchronizacji (zob. pullAll). */
+const PULL_OVERLAP = 100;
 const NUMBER_LOW_WATER = 5;
 
 const recordTables = () => SYNC_TABLES.map((t) => db.table(t));
@@ -223,24 +226,31 @@ const KNOWN_TABLES = new Set<string>([...SYNC_TABLES, 'meta']);
 /** Zwraca liczbę rekordów, których nie dało się odszyfrować. */
 async function pullAll(server: SyncServer, state: SyncState, key: CryptoKey): Promise<number> {
   // Rekordy pobrane przed wersją z regionami nie mają znacznika regionu: jednorazowo pobieramy wszystko od nowa.
-  let cursor = state.regionsTagged ? state.cursor : 0;
+  // Pełne pobranie od zera: raz po wersji z regionami, raz po poprawce zakładki (zmiany pominięte wcześniej).
+  let cursor = state.regionsTagged && state.fullPullV2 ? state.cursor : 0;
+  // Zakładka: numery zmian nadaje serwer przy zapisie, ale dwie zmiany zapisywane w tej samej chwili mogą trafić do
+  // bazy w odwrotnej kolejności. Pobranie od nieco wcześniejszego numeru łapie taką spóźnioną zmianę; ponowne
+  // wczytanie tych samych rekordów niczego nie zmienia.
+  let from = Math.max(0, cursor - PULL_OVERLAP);
   let unreadable = 0;
   for (;;) {
-    const rows = await server.pull(state.orgId, cursor, PULL_PAGE);
+    const rows = await server.pull(state.orgId, from, PULL_PAGE);
     if (rows.length === 0) {
       const latest = await getSyncState();
-      if (latest && !latest.regionsTagged) await setSyncState({ ...latest, regionsTagged: true });
+      if (latest && (!latest.regionsTagged || !latest.fullPullV2)) await setSyncState({ ...latest, regionsTagged: true, fullPullV2: true });
       return unreadable;
     }
     // Odszyfrowanie przed transakcją: IndexedDB zamyka transakcję, gdy czeka ona na WebCrypto.
     const { readable, failed } = await decryptRows(key, rows);
     unreadable += failed;
     await applyRemote(readable);
-    cursor = rows[rows.length - 1].rev;
+    cursor = Math.max(cursor, rows[rows.length - 1].rev);
+    from = rows[rows.length - 1].rev;
     const latest = await getSyncState();
     if (!latest) return unreadable;
-    await setSyncState({ ...latest, cursor, regionsTagged: true });
-    if (rows.length < PULL_PAGE) return unreadable;
+    const done = rows.length < PULL_PAGE;
+    await setSyncState({ ...latest, cursor, regionsTagged: true, ...(done ? { fullPullV2: true } : {}) });
+    if (done) return unreadable;
   }
 }
 
@@ -307,14 +317,16 @@ export async function applyRemote(rows: RemoteRecord[]): Promise<void> {
 
 /** Pula numerów zleceń (#210) zarezerwowana na serwerze, żeby urządzenia nie nadawały tych samych. */
 async function topUpNumbers(server: SyncServer, state: SyncState): Promise<void> {
-  const blocks = (((await db.meta.get(ORDER_NUMBERS_KEY))?.value as NumberBlock[] | undefined) ?? []).filter((b) => b.next <= b.end);
-  const left = blocks.reduce((sum, b) => sum + b.end - b.next + 1, 0);
+  // Pula aktywnego regionu (każdy region numeruje osobno, zob. orderSeries).
+  const key = orderNumbersKey(state.branchId);
+  const counter = await localOrderCounter(state.branchId ?? null);
+  const blocks = (((await db.meta.get(key))?.value as NumberBlock[] | undefined) ?? []).filter((b) => b.next <= b.end && b.end > counter);
+  const left = blocks.reduce((sum, b) => sum + b.end - Math.max(b.next, counter + 1) + 1, 0);
   if (left >= NUMBER_LOW_WATER) return;
-  // Numery nadane przed włączeniem synchronizacji albo bez internetu nie mogą się powtórzyć.
-  const minNext = (await localOrderCounter()) + 1;
-  const first = await server.reserveNumbers(state.orgId, 'order', minNext, NUMBER_BLOCK);
+  // Numery nadane wcześniej w regionie (także bez internetu) nie mogą się powtórzyć.
+  const first = await server.reserveNumbers(state.orgId, orderSeries(state.branchId), counter + 1, NUMBER_BLOCK);
   blocks.push({ next: first, end: first + NUMBER_BLOCK - 1 });
-  await db.meta.put({ key: ORDER_NUMBERS_KEY, value: blocks, updatedAt: new Date().toISOString() });
+  await db.meta.put({ key, value: blocks, updatedAt: new Date().toISOString() });
 }
 
 /** Plik zdjęcia zrobionego na innym urządzeniu, pobierany i odszyfrowywany przy pierwszym wyświetleniu. */

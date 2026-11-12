@@ -2,7 +2,7 @@ import { roman, visitCode } from '../data/codes';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
-import { cancelVisit, finishVisit, normalizeInterview, orderVisits, restoreOrder, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
+import { cancelVisit, defaultDoneOn, finishVisit, normalizeInterview, orderVisits, restoreOrder, revertStartedVisit, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
 import { googleCalendarUrl } from '../data/calendar';
 import { ScheduleNext } from './orders';
 import { paymentMissing } from '../data/order-list';
@@ -24,7 +24,7 @@ import { TomorrowReminders } from './reminders';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect } from '../ui/kit';
+import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect, goBack } from '../ui/kit';
 import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
 import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
 import { Photos } from './photos';
@@ -284,9 +284,11 @@ function FinishSheet(props: {
   initialTerms: VisitTerms;
   invoice: Order['invoice'];
   order: Order;
-  onFinish: (input: { recommendations: string[]; next: NextVisit }) => Promise<void>;
+  onFinish: (input: { recommendations: string[]; next: NextVisit; doneOn: string }) => Promise<void>;
 }) {
   const { visit, later, settings } = props;
+  // Dzień wykonania decyduje o raporcie: zabieg z wcześniejszego dnia zamykany później liczy się do tamtego dnia.
+  const [doneOn, setDoneOn] = useState(() => defaultDoneOn(visit, todayWarsaw()));
   // Zalecenia: najpierw proponowane do wykonanych metod, potem pozostałe. Nic nie zaznacza się samo: technik wybiera.
   const forMethods = recommendationsFor(doneMethods(visit.treatments, props.order), props.order.pest);
   const others = settings.recommendations.filter((r) => !forMethods.list.includes(r));
@@ -311,6 +313,9 @@ function FinishSheet(props: {
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
       <div className="form">
+        <Field label="Data wykonania" hint={doneOn === todayWarsaw() ? 'Dzisiaj: zabieg trafi do dzisiejszego raportu.' : `Zabieg trafi do raportu z ${formatDate(doneOn)}.`}>
+          <input type="date" value={doneOn} max={todayWarsaw()} onChange={(e) => setDoneOn(e.target.value || todayWarsaw())} />
+        </Field>
         <div className="field">
           <span className="field-label">
             Zalecenia proponowane
@@ -359,7 +364,7 @@ function FinishSheet(props: {
             const t = props.initialTerms;
             const next: NextVisit =
               mode === 'umowiony' ? { mode, start: `${date}T${time}`, durationMin: visit.durationMin, terms: t } : mode === 'technik' ? { mode, terms: t } : { mode };
-            await props.onFinish({ recommendations, next });
+            await props.onFinish({ recommendations, next, doneOn });
             setBusy(false);
           }}
         >
@@ -377,6 +382,7 @@ export function VisitPage() {
   const [finishing, setFinishing] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
   const [editingPlanned, setEditingPlanned] = useState(false);
+  const [leavingStarted, setLeavingStarted] = useState(false);
   const [planningNext, setPlanningNext] = useState(false);
   const [editingTerms, setEditingTerms] = useState(false);
   // Próba zakończenia bez płatności: sekcja płatności świeci na czerwono, ekran przewija się do niej.
@@ -484,9 +490,10 @@ export function VisitPage() {
     });
   };
 
-  const finish = async (input: { recommendations: string[]; next: NextVisit }) => {
+  const finish = async (input: { recommendations: string[]; next: NextVisit; doneOn: string }) => {
     await run(async () => {
       await finishVisit(visit.id, {
+        doneOn: input.doneOn,
         payMethod: visit.payMethod,
         amount: visit.amount,
         treatments: visit.treatments,
@@ -505,7 +512,53 @@ export function VisitPage() {
 
   return (
     // Klucz: przejście do innego zabiegu tworzy pola od nowa, żeby nie zostały w nich wartości poprzedniego.
-    <Page key={visit.id} title={visitCode(order, visit.seq)} back={`/zlecenia/${order.id}`}>
+    <Page
+      key={visit.id}
+      title={visitCode(order, visit.seq)}
+      back={`/zlecenia/${order.id}`}
+      onBack={visit.status === 'w_trakcie' ? () => setLeavingStarted(true) : undefined}
+    >
+      {/* Wyjście z rozpoczętego zabiegu: dokończyć później (czeka w Pilnych) albo wycofać wszystko, co wpisano. */}
+      <Sheet open={leavingStarted} title={`Zabieg ${visitCode(order, visit.seq)} jest rozpoczęty`} onClose={() => setLeavingStarted(false)}>
+        <div className="form">
+          <p className="sheet-text">Wpisane dane są zapisane. Możesz wrócić do zabiegu później: czeka na Pulpicie w „Pilnych”.</p>
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            onClick={() => {
+              setLeavingStarted(false);
+              toast('Zabieg czeka w „Pilnych” na Pulpicie');
+              goBack(navigate, `/zlecenia/${order.id}`);
+            }}
+          >
+            <Icon name="alert" /> Dokończ później (do Pilnych)
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger-quiet btn-block"
+            onClick={async () => {
+              const ok = await confirm({
+                title: 'Usunąć wszystko, co wpisano?',
+                message: 'Zabieg wróci do „umówiony” z tym samym terminem. Wykonane prace, wywiad, zalecenia, płatność i zdjęcia (do kosza) znikną.',
+                confirmLabel: 'Usuń wpisane dane',
+                danger: true,
+              });
+              if (!ok) return;
+              await run(async () => {
+                await revertStartedVisit(visit.id);
+                setLeavingStarted(false);
+                toast('Wycofano rozpoczęcie zabiegu');
+                goBack(navigate, `/zlecenia/${order.id}`);
+              });
+            }}
+          >
+            <Icon name="trash" /> Usuń wszystko, co wpisano
+          </button>
+          <button type="button" className="btn btn-block" onClick={() => setLeavingStarted(false)}>
+            Zostań w zabiegu
+          </button>
+        </div>
+      </Sheet>
       <div className="job-hero">
         <div className="hero-badges">
           <VisitBadge visit={visit} />
@@ -828,6 +881,15 @@ export function VisitPage() {
             </>
           ) : (
             <Group title="Po zabiegu" plain>
+              {/* Dzień wykonania decyduje o raporcie: można go poprawić, gdy zabieg zamknięto później. */}
+              <Field label="Data wykonania" hint="Zabieg liczy się do raportu z tego dnia.">
+                <input
+                  type="date"
+                  value={visit.doneOn ?? ''}
+                  max={todayWarsaw()}
+                  onChange={(e) => e.target.value && void run(async () => { await visits.update(visit.id, { doneOn: e.target.value }); toast(`Data wykonania: ${formatDate(e.target.value)}`); })}
+                />
+              </Field>
               {visit.bonus > 0 && <Badge tone="ok">Premia {moneyToInput(visit.bonus)} zł</Badge>}
               {later && (
                 <p className="field-hint">

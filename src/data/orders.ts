@@ -1,6 +1,6 @@
 // Zlecenia i zabiegi Pogromców Insektów. Operacje wielotabelowe działają w transakcjach.
 import { METHOD_LABEL, orderMethods } from './methods';
-import { startToSave } from './texts';
+import { startToSave, dayInWarsaw } from './texts';
 import { todayWarsaw } from '../lib/dates';
 import type { VisitTerms } from './visit-terms';
 import { newId } from '../lib/ids';
@@ -110,12 +110,52 @@ export async function startVisit(id: string): Promise<void> {
   });
 }
 
+/**
+ * Domyślny dzień wykonania przy kończeniu zabiegu: zabieg rozpoczęty albo umówiony na wcześniejszy dzień i zamykany
+ * dopiero później liczy się do raportu tamtego dnia; w innym razie dzisiaj.
+ */
+export function defaultDoneOn(visit: Pick<Visit, 'startedAt' | 'start'>, today: string): string {
+  const started = visit.startedAt ? dayInWarsaw(visit.startedAt) : '';
+  if (started && started < today) return started;
+  const planned = visit.start?.slice(0, 10) ?? '';
+  if (planned && planned < today) return planned;
+  return today;
+}
+
+/**
+ * Wycofanie rozpoczętego zabiegu („Usuń wszystko”): zabieg wraca do „umówiony”, a wpisane dane (wykonane prace,
+ * miejsca, wywiad, zalecenia, płatność) i zdjęcia (do kosza) znikają. Termin zostaje.
+ */
+export async function revertStartedVisit(id: string): Promise<void> {
+  await writeTransaction([db.visits, db.attachments], async () => {
+    const visit = await visits.get(id);
+    if (!visit || visit.status !== 'w_trakcie') throw new DomainError('Ten zabieg nie jest w trakcie.');
+    const at = new Date().toISOString();
+    for (const photo of await attachments.where('jobId', id)) await attachments.softDelete(photo.id, at);
+    await visits.update(id, {
+      status: 'zaplanowany',
+      startedAt: null,
+      treatments: [],
+      places: [],
+      sealing: [],
+      findings: '',
+      problems: '',
+      recommendations: [],
+      payMethod: null,
+      amount: null,
+      interview: { ...EMPTY_INTERVIEW },
+    });
+  });
+}
+
 export type NextVisit =
   | { mode: 'brak' }
   | { mode: 'technik'; terms?: VisitTerms }
   | { mode: 'umowiony'; start: string; durationMin: number; terms?: VisitTerms };
 
 export interface FinishInput {
+  /** Dzień wykonania (raport tego dnia). Puste: dzisiaj. */
+  doneOn?: string;
   payMethod: PayMethod | null;
   amount: number | null;
   treatments: string[];
@@ -164,7 +204,7 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
       status: 'wykonany',
       startedAt: startToSave(visit.startedAt, finishedAt),
       finishedAt,
-      doneOn: visit.doneOn ?? todayWarsaw(),
+      doneOn: input.doneOn || visit.doneOn || todayWarsaw(),
       payMethod: input.payMethod,
       amount: input.amount,
       treatments: input.treatments,

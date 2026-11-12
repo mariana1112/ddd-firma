@@ -1,4 +1,5 @@
 import { visitCode } from '../data/codes';
+import { useReportKm } from '../lib/report-prefs';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useContext, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -47,6 +48,8 @@ export function ReportsPage() {
     };
   }, [otherId, onlyMine, inPanel]);
 
+  const [withKm, setWithKm] = useReportKm();
+
   if (!data) {
     return (
       <Page title="Raporty">
@@ -63,7 +66,7 @@ export function ReportsPage() {
 
   const pdf = async () => {
     setBusy(true);
-    await run(async () => deliverFile(await renderPdf(reportDocument(report, names)), `raport-${period.kind}-${period.from}.pdf`));
+    await run(async () => deliverFile(await renderPdf(reportDocument(report, names, { km: withKm })), `raport-${period.kind}-${period.from}.pdf`));
     setBusy(false);
   };
 
@@ -98,6 +101,14 @@ export function ReportsPage() {
         </button>
       </div>
 
+      <Chips
+        value={withKm ? 'z' : 'bez'}
+        onChange={(v: string) => setWithKm(v === 'z')}
+        options={[
+          { value: 'bez', label: 'Bez kilometrów' },
+          { value: 'z', label: 'Z kilometrami' },
+        ]}
+      />
       <div className="stats">
         <Stat label="Obrót" value={formatPln(report.turnover)} />
         <Stat label={`Gotówka dla ${names.bossGenitive}`} value={formatPln(report.cashForBoss)} tone={report.cashForBoss < 0 ? 'danger' : 'ok'} />
@@ -106,8 +117,8 @@ export function ReportsPage() {
         ))}
         <Stat label="Koszty" value={formatPln(report.costs)} />
         <Stat label="Premia" value={formatPln(report.bonus)} />
-        <Stat label="Km służbowo (VAT)" value={`${report.km.sluzbowy} km`} />
-        <Stat label="w tym prywatne" value={`${report.km.prywatny} km`} />
+        {withKm && <Stat label="Km służbowo (VAT)" value={`${report.km.sluzbowy} km`} />}
+        {withKm && <Stat label="w tym prywatne" value={`${report.km.prywatny} km`} />}
       </div>
       {report.unpaid > 0 && <Badge tone="warn">Zabiegi bez zapisanej płatności: {report.unpaid}</Badge>}
 

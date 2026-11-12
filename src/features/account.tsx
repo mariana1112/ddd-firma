@@ -937,6 +937,16 @@ function SyncStatus({ state }: { state: SyncState }) {
       toast('Zsynchronizowano');
     });
 
+  /** Naprawa: telefon pobiera wszystkie dane firmy od nowa (gdy czegoś brakuje, np. w raportach z innego dnia). */
+  const fullResync = () =>
+    run(async () => {
+      const latest = await getSyncState();
+      if (!latest) return;
+      await setSyncState({ ...latest, fullPullV2: false });
+      await syncInBackground();
+      toast('Pobrano wszystkie dane od nowa');
+    });
+
   const signOut = async (wipe: boolean) => {
     if (wipe && pending > 0) {
       const ok = await confirm({
@@ -1008,6 +1018,9 @@ function SyncStatus({ state }: { state: SyncState }) {
           {state.role === 'owner' && <ChangePassphrase />}
           <button type="button" className="btn btn-primary btn-block" disabled={running} onClick={() => void syncNow()}>
             {running ? 'Synchronizuję…' : 'Synchronizuj teraz'}
+          </button>
+          <button type="button" className="btn btn-block" disabled={running} onClick={() => void fullResync()}>
+            <Icon name="refresh" /> Pobierz wszystkie dane od nowa
           </button>
           <p className="field-hint">
             Synchronizacja działa sama, gdy aplikacja jest otwarta: po starcie, po każdej zmianie i co minutę. iPhone nie pozwala
