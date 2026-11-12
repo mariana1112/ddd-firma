@@ -2892,12 +2892,8 @@ body {
   font-weight: 700;
 }
 
-/* Adres zlecenia: duży i czytelny, dotknięcie otwiera nawigację */
+/* Adres zlecenia: opisane pola (Ulica, Budynek, Mieszkanie, Klatka, Piętro, Miejscowość) */
 .address-block {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 100%;
   margin: 8px 0;
   padding: 12px;
   border: 1px solid var(--line);
@@ -2907,46 +2903,65 @@ body {
   text-align: left;
 }
 
-.address-icon {
-  display: inline-flex;
-  padding-top: 2px;
-  color: var(--primary);
+.address-head {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.address-text {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
+.address-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.address-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  gap: 8px 6px;
+  margin: 0;
+}
+
+.address-field {
   min-width: 0;
 }
 
-.address-street {
-  font-size: 1.25rem;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.address-city {
-  font-size: 1.05rem;
+.address-field dt {
+  color: var(--muted);
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
-.address-details {
-  color: var(--muted);
-  font-size: 0.9rem;
+.address-field dd {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
-.address-access {
-  margin-top: 4px;
+.address-wide {
+  grid-column: 1 / -1;
+}
+
+.address-big dd {
+  font-size: 1.3rem;
+}
+
+.address-access dd {
+  margin-top: 2px;
   padding: 6px 8px;
   border-radius: 8px;
   background: var(--primary-soft);
-  font-size: 0.9rem;
-}
-
-.address-go {
-  display: inline-flex;
-  align-self: center;
-  color: var(--primary);
+  font-size: 0.95rem;
+  font-weight: 500;
 }

@@ -281,37 +281,49 @@ export function ContactBar(props: { order: Order; visit?: Visit | null }) {
 
 
 /**
- * Adres zlecenia czytelnie, do szybkiego spojrzenia w drodze: ulica z numerem (duże), kod i miejscowość, klatka
- * i piętro, a pod spodem „jak dotrzeć”. Dotknięcie otwiera nawigację.
+ * Adres zlecenia z opisanymi polami, do szybkiego spojrzenia w drodze: Ulica, Budynek, Mieszkanie, Klatka, Piętro,
+ * Miejscowość, a pod spodem „Jak dotrzeć”. Puste pola się nie pokazują. Dotknięcie „Adres” otwiera nawigację.
  */
 export function AddressBlock({ order }: { order: Order }) {
   const [navOpen, setNavOpen] = useState(false);
-  const flat = order.building === 'blok' && order.flatNo.trim() ? `/${order.flatNo.trim()}` : '';
-  const street = `${order.street.trim()} ${order.houseNo.trim()}${flat}`.trim();
-  const city = [order.postalCode.trim(), order.city.trim()].filter(Boolean).join(' ');
-  const details = [
-    order.building === 'blok' && order.flatNo.trim() && `mieszkanie ${order.flatNo.trim()}`,
-    order.building === 'blok' && order.staircase.trim() && `klatka ${order.staircase.trim()}`,
-    order.building === 'blok' && order.floor.trim() && `piętro ${order.floor.trim()}`,
-    BUILDINGS[order.building]?.toLowerCase(),
-  ].filter(Boolean);
+  const block = order.building === 'blok';
+  const street = `${order.street.trim()} ${order.houseNo.trim()}`.trim();
+  const fields: Array<[string, string, string?]> = [
+    ['Ulica', street, 'address-wide address-big'],
+    ['Miejscowość', [order.postalCode.trim(), order.city.trim()].filter(Boolean).join(' '), 'address-wide'],
+    ['Budynek', BUILDINGS[order.building] ?? ''],
+    ...(block
+      ? ([
+          ['Mieszkanie', order.flatNo.trim()],
+          ['Klatka', order.staircase.trim()],
+          ['Piętro', order.floor.trim()],
+        ] as Array<[string, string]>)
+      : []),
+  ];
   return (
-    <>
-      <button type="button" className="address-block" onClick={() => setNavOpen(true)} aria-label={`Adres: ${street}, ${city}. Nawiguj`}>
-        <span className="address-icon">
-          <Icon name="pin" size={22} />
-        </span>
-        <span className="address-text">
-          <strong className="address-street">{street || 'Brak adresu'}</strong>
-          {city && <span className="address-city">{city}</span>}
-          {details.length > 0 && <span className="address-details">{details.join(' · ')}</span>}
-          {order.access.trim() && <span className="address-access">{order.access.trim()}</span>}
-        </span>
-        <span className="address-go">
-          <Icon name="nav" size={20} />
+    <div className="address-block">
+      <button type="button" className="address-head" onClick={() => setNavOpen(true)} aria-label="Adres: otwórz nawigację">
+        <span className="address-title">
+          <Icon name="pin" size={18} /> Adres
         </span>
       </button>
+      <dl className="address-grid">
+        {fields
+          .filter(([, value]) => value)
+          .map(([label, value, cls]) => (
+            <div key={label} className={`address-field ${cls ?? ''}`.trim()}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        {order.access.trim() && (
+          <div className="address-field address-wide address-access">
+            <dt>Jak dotrzeć</dt>
+            <dd>{order.access.trim()}</dd>
+          </div>
+        )}
+      </dl>
       <NavigateSheet order={order} open={navOpen} onClose={() => setNavOpen(false)} />
-    </>
+    </div>
   );
 }
