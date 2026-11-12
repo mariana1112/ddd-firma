@@ -127,7 +127,8 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
             if (invoicesOnly && order.invoice === 'brak') return false;
             if (pay !== 'wszystkie' && visit.payMethod !== pay) return false;
             if (searching && !archive) return true;
-            return visitInFilter(order, visit, status, today);
+            // Zlecenie odwołane (także z pustym, nieumówionym zabiegiem) jest w archiwum, a nie na liście.
+            return visitInFilter({ ...order, archived: isArchived(order, byOrder.get(order.id) ?? []) }, visit, status, today);
           })
           .map((visit) => ({ order, visits: [visit] })),
       );

@@ -129,6 +129,13 @@ describe('zlecenia', () => {
     const list = await orderVisits(other.order.id);
     expect(list.map((v) => v.status)).toEqual(['wykonany', 'odwolany']);
     expect(isArchived((await orders.get(other.order.id))!, list)).toBe(true);
+
+    // Zabieg I odwołany, a zabieg II jeszcze nieumówiony (bez terminu): zlecenie i tak trafia do archiwum.
+    const third = await createOrder(draft(), { start: '2026-11-12T10:00', durationMin: 60 }, null);
+    const waiting = await visits.create({ ...third.visits[0], id: undefined, seq: 2, start: null } as never);
+    expect(await cancelVisit(third.visits[0].id)).toEqual({ archived: true });
+    expect((await orders.get(third.order.id))?.archived).toBe(true);
+    expect((await visits.get(waiting.id))?.status).toBe('odwolany');
   });
 
   it('wykonany zabieg bez płatności jest pilny', async () => {

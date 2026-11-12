@@ -25,8 +25,15 @@ export function urgentReason(order: Pick<Order, 'archived'>, list: Visit[], toda
 }
 
 /** Zlecenie w archiwum: przeniesione ręcznie albo ze wszystkimi zabiegami odwołanymi. */
+/**
+ * Zlecenie w archiwum: oznaczone przy odwołaniu albo bez niczego do zrobienia po odwołaniu (same odwołane zabiegi
+ * i ewentualnie pusty, nieumówiony zabieg, np. II, który został po odwołaniu zabiegu I).
+ */
 export function isArchived(order: Pick<Order, 'archived'>, list: Visit[]): boolean {
-  return Boolean(order.archived) || (list.length > 0 && list.every((v) => v.status === 'odwolany'));
+  if (order.archived) return true;
+  return (
+    list.some((v) => v.status === 'odwolany') && list.every((v) => v.status === 'odwolany' || (v.status === 'zaplanowany' && !v.start))
+  );
 }
 
 /** Kolejność listy zleceń. */

@@ -216,7 +216,11 @@ export async function cancelVisit(id: string): Promise<{ archived: boolean }> {
     if (!visit || visit.deletedAt) throw new DomainError('Nie znaleziono zabiegu.');
     await visits.update(id, { status: 'odwolany' });
     const rest = (await orderVisits(visit.orderId)).filter((v) => v.id !== id && v.status !== 'odwolany');
-    if (rest.length === 0) {
+    // Do zrobienia zostaje tylko zabieg w trakcie albo z umówionym terminem. Pusty „jeszcze nieumówiony” zabieg
+    // (np. II po zabiegu I) nie trzyma zlecenia poza archiwum: odwołujemy go razem z tym zabiegiem.
+    const pending = rest.filter((v) => v.status === 'w_trakcie' || (v.status === 'zaplanowany' && v.start));
+    if (pending.length === 0) {
+      for (const v of rest) if (v.status === 'zaplanowany') await visits.update(v.id, { status: 'odwolany' });
       await orders.update(visit.orderId, { archived: true, closed: true });
       return { archived: true };
     }
