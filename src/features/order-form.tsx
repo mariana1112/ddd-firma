@@ -11,7 +11,7 @@ import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind, Treatme
 import { METHOD_LABEL, METHODS, orderMethods } from '../data/methods';
 import { normalizeCity } from '../data/cities';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
-import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl } from '../data/maps';
+import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl, readMapsInput, isShortMapsLink } from '../data/maps';
 import { formatDateLong, formatTerm, isValidDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { formatPhoneInput, formatPostalInput, isValidNip, phoneError } from '../lib/validators';
@@ -299,10 +299,52 @@ function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState
     const opened = window.open(mapsSearchUrl(query), '_blank');
     if (!opened) window.location.href = mapsSearchUrl(query);
   };
+  const { run } = useFeedback();
+  const [filling, setFilling] = useState(false);
+  /**
+   * Wklejony link (albo tekst z Google Maps) uzupełnia adres jak „Jestem na miejscu”: z adresu w tekście lub w linku,
+   * a gdy link ma tylko współrzędne, z mapy. Zapisany zostaje sam link.
+   */
+  const applyInput = (input: string) =>
+    run(async () => {
+      const raw = input.trim();
+      if (!raw) return;
+      const { url, address, coords } = readMapsInput(raw);
+      // Zapisujemy tylko link; sam wklejony adres (bez linku) nie zostaje w polu linku.
+      props.set({ mapsLink: url || (readMapsInput(raw).address ? '' : raw) });
+      const fill = (a: { street: string; houseNo: string; flatNo?: string; postalCode: string; city: string }) => {
+        props.set({
+          // Nowa ulica przynosi swój numer i lokal (także puste), żeby nie zostały numery poprzedniego adresu.
+          ...(a.street ? { street: a.street, houseNo: a.houseNo, flatNo: a.flatNo ?? '' } : {}),
+          ...(a.flatNo ? { building: 'blok' as BuildingType } : {}),
+          ...(a.postalCode ? { postalCode: a.postalCode } : {}),
+          ...(a.city ? { city: normalizeCity(a.city) } : {}),
+        });
+        toast(`Adres z linku: ${[[a.street, a.houseNo].filter(Boolean).join(' '), a.city].filter(Boolean).join(', ')}. Sprawdź numer lokalu.`);
+      };
+      if (address) {
+        fill(address);
+        return;
+      }
+      if (coords) {
+        setFilling(true);
+        try {
+          const found = await addressAt(coords);
+          if (found.street || found.city) fill(found);
+          else toast('Zapisano miejsce z linku. Adresu nie udało się odczytać: wpisz go ręcznie.');
+        } finally {
+          setFilling(false);
+        }
+        return;
+      }
+      if (url && isShortMapsLink(url)) {
+        toast('Zapisano link. Skrócony link nie zawiera adresu: w Google Maps dotknij adresu, wybierz „Kopiuj” i wklej go tutaj, albo wpisz adres.');
+      }
+    });
   const paste = async () => {
     try {
       const text = (await navigator.clipboard.readText()).trim();
-      if (text) props.set({ mapsLink: text });
+      if (text) await applyInput(text);
     } catch {
       // Bez zgody na schowek link wkleja się ręcznie w pole.
     }
@@ -325,12 +367,24 @@ function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState
       </div>
       <input
         value={props.state.mapsLink}
-        placeholder="https://maps.app.goo.gl/…"
+        placeholder="https://maps.app.goo.gl/… albo adres z Google Maps"
         inputMode="url"
         autoComplete="off"
         onChange={(e) => props.set({ mapsLink: e.target.value })}
+        onPaste={(e) => {
+          // Wklejenie w pole od razu uzupełnia adres (tekst z Google Maps może mieć adres i link razem).
+          const text = e.clipboardData.getData('text');
+          if (!text.trim()) return;
+          e.preventDefault();
+          void applyInput(text);
+        }}
+        onBlur={(e) => {
+          const value = e.target.value.trim();
+          if (value && !props.state.street.trim()) void applyInput(value);
+        }}
         aria-label="Link do miejsca z Google Maps"
       />
+      {filling && <span className="field-hint">Odczytuję adres z mapy…</span>}
       {props.error ? (
         <span className="field-message">{props.error}</span>
       ) : (
@@ -339,7 +393,7 @@ function MapsLinkField(props: { state: FormState; set: (patch: Partial<FormState
             ? coords
               ? `Zapisane miejsce: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}. Nawigacja poprowadzi dokładnie tutaj.`
               : 'Zapisany link do miejsca. Nawigacja Google otworzy dokładnie to miejsce.'
-            : 'Opcjonalnie: sprawdź adres w Google Maps, potem „Udostępnij” → „Kopiuj link” i wklej go tutaj. Dane formularza zostają zapisane.'}
+            : 'Wklej link albo adres z Google Maps: ulica, numer, kod i miejscowość uzupełnią się same. Dane formularza zostają zapisane.'}
         </span>
       )}
     </div>

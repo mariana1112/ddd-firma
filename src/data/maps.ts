@@ -67,3 +67,83 @@ export function isIos(): boolean {
   if (typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
+
+// ---------- Adres z linku (albo udostępnionego tekstu) Google Maps ----------
+
+export interface ParsedAddress {
+  street: string;
+  houseNo: string;
+  flatNo: string;
+  postalCode: string;
+  city: string;
+}
+
+const STREET_RE = /^(?:ul\.?|ulica)?\s*(.+?)\s+(\d+[a-zA-Z]?)(?:\s*\/\s*(\d+[a-zA-Z]?)|\s+(?:m\.?|lok\.?)\s*(\d+[a-zA-Z]?))?$/i;
+
+/**
+ * Adres z tekstu Google Maps: „Długa 47/3, 80-831 Gdańsk, Polska”, „Restauracja X, Długa 47, 80-831 Gdańsk”
+ * albo „Długa 47, Gdańsk”. Null, gdy nie ma w nim ani ulicy z numerem, ani miejscowości.
+ */
+export function parseAddressText(text: string): ParsedAddress | null {
+  const clean = text.replace(/\s+/g, ' ').replace(/,?\s*(Polska|Poland)\s*$/i, '').trim();
+  if (!clean || /^https?:\/\//i.test(clean)) return null;
+  const segs = clean.split(',').map((s) => s.trim()).filter(Boolean);
+  let postalCode = '';
+  let city = '';
+  const postalAt = segs.findIndex((s) => /^\d{2}-\d{3}\b/.test(s));
+  if (postalAt >= 0) {
+    const m = /^(\d{2}-\d{3})\s*(.*)$/.exec(segs[postalAt])!;
+    postalCode = m[1];
+    city = m[2].trim();
+  }
+  const candidates = postalAt >= 0 ? segs.slice(0, postalAt) : segs;
+  let street = '';
+  let houseNo = '';
+  let flatNo = '';
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const m = STREET_RE.exec(candidates[i]);
+    if (m) {
+      street = m[1].trim();
+      houseNo = m[2];
+      flatNo = m[3] ?? m[4] ?? '';
+      // Bez kodu pocztowego miejscowość to zwykle ostatni fragment po ulicy.
+      if (!city && postalAt < 0 && i < segs.length - 1) city = segs[segs.length - 1];
+      break;
+    }
+  }
+  if (!city && postalAt < 0 && !street && segs.length === 1) city = segs[0];
+  if (!street && !city) return null;
+  return { street, houseNo, flatNo, postalCode, city };
+}
+
+/** Pierwszy link w tekście (udostępnienie z Google Maps to często „nazwa, adres” + link). */
+export function firstUrl(text: string): string {
+  return /https?:\/\/\S+/i.exec(text)?.[0].replace(/[),.]+$/, '') ?? '';
+}
+
+/** Skrócony link z „Udostępnij” (maps.app.goo.gl): nie ma w nim ani adresu, ani współrzędnych. */
+export const isShortMapsLink = (url: string) => /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(url.trim());
+
+/**
+ * Co da się odczytać z wklejonego tekstu Google Maps bez internetu: link do zapisania, adres (z tekstu obok
+ * linku, z nazwy miejsca w linku albo z wyszukiwanej frazy) i współrzędne.
+ */
+export function readMapsInput(input: string): { url: string; address: ParsedAddress | null; coords: { lat: number; lng: number } | null } {
+  const url = firstUrl(input);
+  const text = url ? input.replace(url, ' ').trim() : input.trim();
+  let address = text ? parseAddressText(text) : null;
+  if (!address && url) {
+    const place = /\/maps\/place\/([^/@?]+)/.exec(url)?.[1];
+    if (place) address = parseAddressText(decodeURIComponent(place.replace(/\+/g, ' ')));
+  }
+  if (!address && url) {
+    try {
+      const params = new URL(url).searchParams;
+      const q = params.get('q') ?? params.get('query') ?? params.get('destination') ?? params.get('daddr') ?? '';
+      if (q && !/^-?\d+\.\d+\s*,\s*-?\d+\.\d+$/.test(q.trim())) address = parseAddressText(q);
+    } catch {
+      // Niepoprawny link: zostaje bez adresu.
+    }
+  }
+  return { url, address, coords: url ? coordsFromLink(url) : null };
+}
