@@ -10,6 +10,7 @@ export const METHODS: Array<[TreatmentMethod, string]> = [
   ['zelowanie', 'Żelowanie'],
   ['odplywy', 'Zalanie odpływów'],
   ['parowanie', 'Parowanie gorącą parą'],
+  ['inne', 'Inna metoda'],
 ];
 
 /** Metody, przy których klient opuszcza lokal i potem sprząta: ULV i zamgławianie. */
@@ -42,7 +43,7 @@ export function methodOf(treatment: string): TreatmentMethod | null {
 
 /** Metody zlecenia; zlecenia sprzed tej opcji nie mają żadnej. */
 /** Metody zlecenia (stare „zamglawianie” jako „Zamgławianie ULV”); zlecenia sprzed tej opcji nie mają żadnej. */
-export const orderMethods = (order: Pick<Order, 'methods'>): TreatmentMethod[] => [
+export const orderMethods = (order: Pick<Order, 'methods'> & { methodOther?: string }): TreatmentMethod[] => [
   ...new Set((order.methods ?? []).map((m): TreatmentMethod => (m === 'zamglawianie' ? 'ulv' : m))),
 ];
 
@@ -76,6 +77,8 @@ export const METHOD_RECOMMENDATIONS: Record<TreatmentMethod, string[]> = {
     'Chować żywność w szczelnych pojemnikach i nie zostawiać resztek.',
   ],
   parowanie: [],
+  // „Inna”: bez pakietu, zalecenia wybiera się z listy pozostałych.
+  inne: [],
   odplywy: [
     'Nie używać odpływów (zlew, umywalka, prysznic, wanna) przez 2 godziny po zabiegu.',
     'Nie wlewać do odpływów środków czyszczących przez 3 dni.',
@@ -96,10 +99,26 @@ export const EXTRA_TREATMENTS: string[] = [];
 /** Co można zaznaczyć w „Czy trzeba uszczelnić?”. */
 export const SEALING_OPTIONS = ['kratki wentylacyjne/piony', 'szczeliny i dziury w podłodze', 'szczeliny i dziury w ścianie', 'listwy przypodłogowe'];
 
-/** Zalecenia dla wykonanych metod i szkodnika, bez powtórzeń; obowiązkowe to zalecenia ULV i zamgławiania. */
-export function recommendationsFor(methods: TreatmentMethod[], pest: PestCategory): { list: string[]; required: string[] } {
-  const required = hasFogging(methods) ? FOGGING_RECOMMENDATIONS : [];
-  const list = [...new Set([...required, ...methods.flatMap((m) => METHOD_RECOMMENDATIONS[m]), ...(PEST_RECOMMENDATIONS[pest] ?? []), ...ALWAYS])];
+/** Pakiety zaleceń ustawione przez technika (Ustawienia → Pakiety zaleceń); brak wpisu to pakiet domyślny. */
+export type MethodPackages = Partial<Record<TreatmentMethod, string[]>>;
+
+/** Metody z pakietem zaleceń do ustawienia: „Inna metoda” nie ma pakietu. */
+export const PACKAGE_METHODS = METHODS.map(([m]) => m).filter((m) => m !== 'inne');
+
+/** Pakiet zaleceń metody: ustawiony przez technika albo domyślny. „Inna metoda” nie ma pakietu. */
+export function methodPackage(method: TreatmentMethod, packages?: MethodPackages): string[] {
+  if (method === 'inne') return [];
+  const m = method === 'zamglawianie' ? 'ulv' : method;
+  return packages?.[m] ?? METHOD_RECOMMENDATIONS[m];
+}
+
+/**
+ * Zalecenia dla wykonanych metod i szkodnika, bez powtórzeń: pakiety metod (zaznaczają się same przy zakończeniu
+ * zabiegu) i zalecenia do szkodnika. `required` to pakiet ULV, wyróżniony przy zamgławianiu.
+ */
+export function recommendationsFor(methods: TreatmentMethod[], pest: PestCategory, packages?: MethodPackages): { list: string[]; required: string[] } {
+  const required = hasFogging(methods) ? methodPackage('ulv', packages) : [];
+  const list = [...new Set([...required, ...methods.flatMap((m) => methodPackage(m, packages)), ...(PEST_RECOMMENDATIONS[pest] ?? []), ...ALWAYS])];
   return { list, required };
 }
 
@@ -120,4 +139,9 @@ export function documentTags(order: Pick<Order, 'invoice' | 'protocol'>): string
   if (order.invoice === 'imienna') tags.push('fv');
   if (order.protocol) tags.push('prot');
   return tags;
+}
+
+/** Nazwy metod zlecenia do pokazania: „Inna metoda” jako wpisana nazwa (np. „Dezynfekcja”). */
+export function methodNames(order: Pick<Order, 'methods' | 'methodOther'>): string[] {
+  return orderMethods(order).map((x) => (x === 'inne' ? order.methodOther?.trim() || METHOD_LABEL.inne : METHOD_LABEL[x]));
 }

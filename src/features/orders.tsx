@@ -1,11 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { mainPhone, orderMatches } from '../data/order-search';
 import { orderCode, roman, visitCode } from '../data/codes';
 import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, sortOrderRows, URGENT_LABEL, urgentReason, visitInFilter, visitUrgent, type ListFilter, type OrderSort } from '../data/order-list';
-import { documentTags, METHOD_LABEL, orderMethods, tagDone } from '../data/methods';
+import { documentTags, orderMethods, tagDone, methodNames } from '../data/methods';
 import { accountingNote } from '../data/accounting';
 import { googleCalendarUrl } from '../data/calendar';
 import { archiveOrder, cancelOrderDeletionRequest, decideOrderDeletion, deleteOrder, orderVisits, requestOrderDeletion, restoreOrder, scheduleNextVisit } from '../data/orders';
@@ -108,7 +108,8 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
   }, [data, today, mode]);
   const [pay, setPay] = useState<PayFilter>('wszystkie');
   const [invoicesOnly, setInvoicesOnly] = useState(false);
-  const [sort, setSort] = useState<OrderSort>('najpozniej');
+  // Zlecenia od dziś rosnąco (dziś, jutro, kolejne dni); archiwum od najnowszych.
+  const [sort, setSort] = useState<OrderSort>(archive ? 'najpozniej' : 'od_dzis');
   const changeStatus = (next: StatusFilter) => {
     setStatus(next);
     setSort(defaultSort(next));
@@ -132,7 +133,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
           })
           .map((visit) => ({ order, visits: [visit] })),
       );
-      return sortOrderRows(perVisit, sort);
+      return sortOrderRows(perVisit, sort, today);
     }
     const filtered = data.orders
       .map((order) => ({ order, visits: byOrder.get(order.id) ?? [] }))
@@ -151,7 +152,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
         if (status === 'wykonane') return !active;
         return true;
       });
-    return sortOrderRows(filtered, sort);
+    return sortOrderRows(filtered, sort, today);
   }, [data, query, status, pay, invoicesOnly, sort, searching, today, mode, archive]);
   const renderRow = (row: { order: Order; visits: Visit[] }) =>
     mode === 'zabiegi' ? (
@@ -222,6 +223,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
             <span className="chips-label">Sortuj:</span>
             {(
               [
+                ...(archive ? [] : ([['od_dzis', 'Od dziś']] as Array<[OrderSort, string]>)),
                 ['najwczesniej', 'Najwcześniejsze'],
                 ['najpozniej', 'Najpóźniejsze'],
                 ['numer', 'Numer'],
@@ -496,6 +498,11 @@ export function OrderDetailPage() {
   };
 
   const archived = isArchived(order, data.visits);
+  // Zwykła karta zlecenia nie jest potrzebna: wejście w zlecenie otwiera kartę aktualnego zabiegu, gdzie są też
+  // wszystkie informacje i opcje zlecenia. Karta zlecenia zostaje dla archiwum i „Pełnej karty” (?pelna=1).
+  if (!archived && current && !params.has('pelna')) {
+    return <Navigate to={`/zabieg/${current.id}${params.has('nowe') ? '?nowe=1' : ''}`} replace />;
+  }
   // Usuwa tylko admin (i aplikacja bez konta firmy); technik prosi o usunięcie, admin zatwierdza.
   const canDelete = !data.role || data.role === 'owner';
   const pendingDelete = order.deleteRequest?.status === 'czeka' ? order.deleteRequest : null;
@@ -672,7 +679,7 @@ export function OrderDetailPage() {
           ) : undefined
         }
       >
-        {orderMethods(order).length > 0 && <Info label="Co robimy">{orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')}</Info>}
+        {orderMethods(order).length > 0 && <Info label="Co robimy">{methodNames(order).join(', ')}</Info>}
         <Info label="Szkodnik">{pestName(order)}</Info>
         {order.description && <Info label="Opis">{order.description}</Info>}
         {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}

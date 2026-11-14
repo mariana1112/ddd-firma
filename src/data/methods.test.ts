@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeCity } from './cities';
-import { doneMethods, documentTags, METHOD_RECOMMENDATIONS, methodOf, orderMethods, recommendationsFor } from './methods';
+import { doneMethods, documentTags, METHOD_RECOMMENDATIONS, methodNames, methodOf, methodPackage, orderMethods, recommendationsFor } from './methods';
 import { urgentReason } from './order-list';
 import { orderMatches } from './order-search';
 import type { Order, Visit } from './types';
@@ -103,5 +103,20 @@ describe('lista: każdy zabieg osobno', () => {
     expect(visitInFilter({ archived: true }, done, 'wykonane', today)).toBe(false);
     // Połączony widok: odwołany zabieg II nie zasłania wykonanego zabiegu I.
     expect(currentVisit([{ ...done, seq: 1 } as Visit, { ...cancelled, seq: 2 } as Visit])?.status).toBe('wykonany');
+  });
+});
+
+describe('pakiety zaleceń i inna metoda', () => {
+  it('pakiet ustawiony przez technika zastępuje domyślny, „Inna metoda” nie ma pakietu', () => {
+    expect(methodPackage('oprysk')).toEqual(METHOD_RECOMMENDATIONS.oprysk);
+    expect(methodPackage('oprysk', { oprysk: ['Tylko to'] })).toEqual(['Tylko to']);
+    expect(methodPackage('zamglawianie', { ulv: ['Wyjść na 4 godz.'] })).toEqual(['Wyjść na 4 godz.']);
+    expect(methodPackage('inne', { inne: ['x'] })).toEqual([]);
+    expect(recommendationsFor(['oprysk', 'inne'], 'karaluchy', { oprysk: ['A'] }).list).toEqual(['A']);
+  });
+
+  it('nazwa innej metody zamiast „Inna metoda”', () => {
+    expect(methodNames({ methods: ['oprysk', 'inne'], methodOther: 'Dezynfekcja' })).toEqual(['Oprysk ciśnieniowy', 'Dezynfekcja']);
+    expect(methodNames({ methods: ['inne'], methodOther: ' ' })).toEqual(['Inna metoda']);
   });
 });

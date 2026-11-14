@@ -186,7 +186,7 @@ export type PayMethod = 'gotowka' | 'blik' | 'przelew';
 export type Role = 'owner' | 'technik' | 'ksiegowosc';
 /** Co robimy w zleceniu: oprysk ciśnieniowy, ULV, zamgławianie, żelowanie, zalanie odpływów. */
 /** „zamglawianie” zostało w starszych zleceniach; teraz to jedna metoda „Zamgławianie ULV” (ulv). */
-export type TreatmentMethod = 'oprysk' | 'ulv' | 'zamglawianie' | 'zelowanie' | 'odplywy' | 'parowanie';
+export type TreatmentMethod = 'oprysk' | 'ulv' | 'zamglawianie' | 'zelowanie' | 'odplywy' | 'parowanie' | 'inne';
 
 export interface Phone {
   number: string;
@@ -239,6 +239,8 @@ export interface Order extends BaseRecord {
   mapsLink?: string;
   /** Co robimy (wybierane przy tworzeniu). Brak w zleceniach sprzed tej opcji. */
   methods?: TreatmentMethod[];
+  /** Metoda „Inna”: wpisana nazwa (bez pakietu zaleceń; zalecenia wybiera się z listy innych). */
+  methodOther?: string;
   /** Klient chce protokół z zabiegu (zaznacza technik albo przyjmujący zlecenie). */
   protocol?: boolean;
   /** Folder w archiwum, np. „Usunięty region: Gdańsk”. */

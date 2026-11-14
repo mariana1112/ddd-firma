@@ -1,5 +1,5 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
-import { METHOD_LABEL, methodOf, orderMethods } from './methods';
+import { methodOf, methodNames } from './methods';
 import { withCountryCode } from '../lib/validators';
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
 import { orderCode, roman, visitCode } from './codes';
@@ -249,9 +249,15 @@ export function centralExport(order: Order, visit: Visit, all: Visit[]): string 
   ];
   const interview = interviewLines(visit.interview);
   if (interview.length) lines.push('Wywiad:', ...interview.map((l) => `- ${l}`));
+  if (visit.sealing?.length) lines.push(`Do uszczelnienia: ${visit.sealing.join(', ')}`);
   if (visit.recommendations.length) lines.push('Zalecenia:', ...visit.recommendations.map((r) => `- ${r}`));
   const pay = visit.amount ? `${zl(visit.amount)} zł, ${visit.payMethod ? PAY_NAMES[visit.payMethod] : 'forma nieznana'}` : 'brak';
   lines.push(`Płatność: ${pay}, ${INVOICES[order.invoice].replace(/^\S/, (c) => c.toLowerCase())}${order.invoice !== 'brak' && order.nip ? ` (NIP ${order.nip})` : ''}`);
+  // Dane do faktury, gdy klient jej chce: nazwa albo imię i nazwisko, NIP, adres i e-mail.
+  if (order.invoice !== 'brak') {
+    const invoice = [order.invoiceName, order.invoice === 'vat' && order.nip && `NIP ${order.nip}`, order.invoiceAddress, order.email].filter(Boolean).join(', ');
+    if (invoice) lines.push(`Dane do faktury: ${invoice}`);
+  }
   const next = all.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany');
   if (next) lines.push(`Kolejny zabieg: ${next.start ? formatTerm(next.start) : 'technik umówi z klientem'}`);
   if (order.pink) lines.push(`KOD PINK${order.pinkNote ? `: ${order.pinkNote}` : ''}`);
@@ -274,7 +280,7 @@ export function orderText(order: Order, visits: Visit[], vatRate: number): strin
     ? [order.staircase.trim() && `klatka ${order.staircase.trim()}`, order.floor.trim() && `piętro ${order.floor.trim()}`].filter(Boolean).join(', ')
     : '';
   const price = priceRange({ priceMin: order.priceMin, priceMax: order.priceMax, invoice: order.invoice }, vatRate);
-  const methods = orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ');
+  const methods = methodNames(order).join(', ');
   const invoiceData = order.invoice === 'vat' ? [order.invoiceName, order.nip && `NIP ${order.nip}`].filter(Boolean).join(', ') : '';
   const invoice = order.invoice === 'brak' ? '' : `${INVOICES[order.invoice]}${invoiceData ? ` (${invoiceData})` : ''}`;
   const lines = [

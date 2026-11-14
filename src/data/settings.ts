@@ -1,4 +1,5 @@
 import { newId } from '../lib/ids';
+import type { MethodPackages } from './methods';
 import { logChange } from './changes';
 import { db, writeTransaction } from './db';
 import { setOwnBranch } from './scope';
@@ -152,6 +153,8 @@ export interface AppSettings {
   treatments: string[];
   places: string[];
   recommendations: string[];
+  /** Pakiety zaleceń dla metod (zaznaczają się same przy zakończeniu zabiegu); brak wpisu to pakiet domyślny. */
+  methodPackages: MethodPackages;
   reminderTemplate: string;
   finishGreeting: string;
   /** Początek SMS-a po zabiegu (podsumowanie i zalecenia). */
@@ -185,6 +188,7 @@ export const DEFAULT_APP: AppSettings = {
     'Uszczelnić szczeliny i otwory przy rurach.',
     'Zgłosić obecność owadów przed kolejnym zabiegiem.',
   ],
+  methodPackages: {},
   reminderTemplate:
     'Dzień dobry, przypominamy o zabiegu {data} o {godzina}, adres: {adres}. Prosimy o potwierdzenie, że termin jest aktualny. Pogromcy Insektów',
   finishGreeting: 'Dzień dobry, dziękujemy za skorzystanie z usług Pogromców Insektów.',
@@ -218,6 +222,7 @@ export const PERSONAL_KEYS = [
   'bossName',
   'vatRate',
   'recommendations',
+  'methodPackages',
   'treatments',
   'places',
   'reminderTemplate',

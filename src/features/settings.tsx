@@ -1,4 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { METHOD_LABEL, methodPackage, PACKAGE_METHODS, type MethodPackages } from '../data/methods';
+import type { TreatmentMethod } from '../data/types';
 import { useEffect, useState, useRef } from 'react';
 import { normalizePrefix, orderCode, PREFIX_MAX, roman, visitCode } from '../data/codes';
 import {
@@ -133,6 +135,69 @@ function UpdatesGroup() {
 }
 
 // ---------- Ustawienia ----------
+
+/**
+ * Pakiet zaleceń każdej metody: zaznacza się sam przy zakończeniu zabiegu. Można dopisać, usunąć i przywrócić domyślny.
+ * „Inna metoda” nie ma pakietu: zalecenia wybiera się z listy pozostałych.
+ */
+function MethodPackagesEditor(props: { packages: MethodPackages; pool: string[]; onChange: (packages: MethodPackages) => void }) {
+  const [open, setOpen] = useState<TreatmentMethod | null>(null);
+  return (
+    <div className="field">
+      <span className="field-label">Pakiety zaleceń dla metod</span>
+      <p className="field-hint">Pakiet zaznacza się sam przy zakończeniu zabiegu tą metodą. Przy zakończeniu możesz coś odznaczyć albo dopisać.</p>
+      {PACKAGE_METHODS.map((m) => {
+        const items = methodPackage(m, props.packages);
+        const changed = props.packages[m] !== undefined;
+        const extra = props.pool.filter((r) => !items.includes(r));
+        return (
+          <div key={m} className="package">
+            <button type="button" className="package-head" aria-expanded={open === m} onClick={() => setOpen(open === m ? null : m)}>
+              <strong>{METHOD_LABEL[m]}</strong>
+              <span className="muted">
+                {items.length ? `${items.length} ${items.length === 1 ? 'zalecenie' : items.length < 5 ? 'zalecenia' : 'zaleceń'}` : 'bez zaleceń'}
+                {changed ? ' · Twój' : ''}
+              </span>
+              <span className={open === m ? 'package-chevron open' : 'package-chevron'}><Icon name="chevron" size={18} /></span>
+            </button>
+            {open === m && (
+              <div className="package-body">
+                <ListEditor label="W pakiecie" items={items} placeholder="Dopisz zalecenie do pakietu" onChange={(list) => props.onChange({ ...props.packages, [m]: list })} />
+                {extra.length > 0 && (
+                  <select
+                    value=""
+                    aria-label="Dodaj z innych zaleceń"
+                    onChange={(e) => e.target.value && props.onChange({ ...props.packages, [m]: [...items, e.target.value] })}
+                  >
+                    <option value="">Dodaj z innych zaleceń…</option>
+                    {extra.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {changed && (
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      const next = { ...props.packages };
+                      delete next[m];
+                      props.onChange(next);
+                    }}
+                  >
+                    Przywróć domyślny pakiet
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ListEditor(props: { label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string }) {
   const [draft, setDraft] = useState('');
@@ -362,7 +427,8 @@ function SettingsForm(props: {
       <fieldset>
         <legend>Zabieg (Twoje ustawienia)</legend>
         <p className="field-hint">Każda osoba ustawia to sobie sama, na swoim telefonie.</p>
-        <ListEditor label="Zalecenia dla klienta" items={s.recommendations} placeholder="Nowe zalecenie" onChange={(recommendations) => set({ recommendations })} />
+        <MethodPackagesEditor packages={s.methodPackages ?? {}} pool={s.recommendations} onChange={(methodPackages) => set({ methodPackages })} />
+        <ListEditor label="Inne zalecenia dla klienta (do zaznaczenia przy zakończeniu)" items={s.recommendations} placeholder="Nowe zalecenie" onChange={(recommendations) => set({ recommendations })} />
         <ListEditor label="Rodzaje zabiegu" items={s.treatments} placeholder="Np. Oprysk ciśnieniowy" onChange={(treatments) => set({ treatments })} />
         <ListEditor label="Miejsca" items={s.places} placeholder="Np. listwy" onChange={(places) => set({ places })} />
       </fieldset>

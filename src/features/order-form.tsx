@@ -51,6 +51,7 @@ interface FormState {
   nip: string;
   invoiceAddress: string;
   phone1: string;
+  phone1Label: string;
   phone2: string;
   phone2Label: string;
   pink: boolean;
@@ -59,6 +60,7 @@ interface FormState {
   mapsLink: string;
   /** Co robimy: wymagane przy tworzeniu, od tego zależą zalecenia. */
   methods: TreatmentMethod[];
+  methodOther: string;
   /** Klient chce protokół z zabiegu. */
   protocol: boolean;
   /** Nazwa firmy do faktury VAT. */
@@ -95,12 +97,14 @@ const EMPTY: FormState = {
   nip: '',
   invoiceAddress: '',
   phone1: '',
+  phone1Label: '',
   phone2: '',
   phone2Label: '',
   pink: false,
   pinkNote: '',
   mapsLink: '',
   methods: [],
+  methodOther: '',
   protocol: false,
   invoiceName: '',
 };
@@ -151,12 +155,14 @@ function fromOrder(order: Order): FormState {
     nip: order.nip,
     invoiceAddress: order.invoiceAddress,
     phone1: order.phones[0]?.number ?? '',
+    phone1Label: order.phones[0]?.label ?? '',
     phone2: order.phones[1]?.number ?? '',
     phone2Label: order.phones[1]?.label ?? '',
     pink: order.pink,
     pinkNote: order.pinkNote,
     mapsLink: order.mapsLink ?? '',
     methods: orderMethods(order),
+    methodOther: order.methodOther ?? '',
     protocol: order.protocol ?? false,
     invoiceName: order.invoiceName ?? '',
   };
@@ -164,7 +170,7 @@ function fromOrder(order: Order): FormState {
 
 function toDraft(s: FormState): OrderDraft {
   // Numery zawsze z kierunkowym +48.
-  const phones = s.phone1.trim() ? [{ number: formatPhoneInput(s.phone1), label: '' }] : [];
+  const phones = s.phone1.trim() ? [{ number: formatPhoneInput(s.phone1), label: s.phone1Label.trim() }] : [];
   if (s.phone2.trim()) phones.push({ number: formatPhoneInput(s.phone2), label: s.phone2Label.trim() });
   return {
     building: s.building,
@@ -194,6 +200,7 @@ function toDraft(s: FormState): OrderDraft {
     pinkNote: s.pink ? s.pinkNote.trim() : '',
     mapsLink: s.mapsLink.trim(),
     methods: s.methods,
+    methodOther: s.methods.includes('inne') ? s.methodOther.trim() : '',
     protocol: s.protocol,
   };
 }
@@ -242,6 +249,7 @@ function validate(step: StepId, s: FormState): Errors {
     if (s.mapsLink.trim() && !isMapsLink(s.mapsLink)) e.mapsLink = 'Wklej link z Google Maps (Udostępnij → Kopiuj link)';
   }
   if (step === 'problem') {
+    if (s.methods.includes('inne') && !s.methodOther.trim()) e.methodOther = 'Wpisz, jaka metoda';
     if (s.methods.length === 0) e.methods = 'Zaznacz, co dokładnie robimy: oprysk ciśnieniowy, ULV, zamgławianie, żelowanie albo zalanie odpływów';
     if (s.pest === 'inne' && !s.pestOther.trim()) e.pestOther = 'Wpisz, jaki szkodnik';
     if (s.area.trim() && !/^\d+([.,]\d+)?$/.test(s.area.trim())) e.area = 'Podaj liczbę, np. 48';
@@ -263,10 +271,10 @@ function validate(step: StepId, s: FormState): Errors {
     if (!s.phone1.trim()) e.phone1 = 'Podaj numer telefonu';
     else e.phone1 = phoneError(s.phone1);
     if (!e.phone1) delete e.phone1;
-  }
-  if (step === 'klient') {
     const second = phoneError(s.phone2);
     if (second) e.phone2 = second;
+  }
+  if (step === 'klient') {
     // E-mail, imię albo nazwa firmy są potrzebne tylko do faktury albo protokołu; bez nich pola są nieobowiązkowe.
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
     else if (needsDocuments(s) && !s.email.trim()) e.email = s.invoice !== 'brak' ? 'Do faktury potrzebny jest e-mail' : 'Do protokołu potrzebny jest e-mail';
@@ -722,6 +730,11 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
       return (
         <div className="form">
           <MethodsField value={s.methods} onChange={(methods) => set({ methods })} error={errors.methods} />
+          {s.methods.includes('inne') && (
+            <Field label="Jaka metoda?" error={errors.methodOther} hint="Bez pakietu zaleceń: zalecenia wybierzesz przy zakończeniu zabiegu.">
+              <input value={s.methodOther} placeholder="Np. dezynfekcja, opylanie" onChange={(e) => set({ methodOther: e.target.value })} />
+            </Field>
+          )}
           <Choice
             label="Szkodnik"
             value={s.pest}
@@ -830,6 +843,17 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           <Field label="Telefon" error={errors.phone1} hint="Stały klient: aplikacja podpowie jego dane i adres.">
             <input type="tel" inputMode="tel" value={s.phone1} placeholder="+48 500 600 700" onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })} autoComplete="off" />
           </Field>
+          <Field label="Do kogo (nieobowiązkowe)" hint="Np. pani Anna, właściciel, administrator">
+            <input value={s.phone1Label} onChange={(e) => set({ phone1Label: e.target.value })} autoComplete="off" />
+          </Field>
+          <div className="form-row">
+            <Field label="Drugi telefon (nieobowiązkowe)" error={errors.phone2}>
+              <input type="tel" inputMode="tel" value={s.phone2} placeholder="+48 500 600 700" onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })} autoComplete="off" />
+            </Field>
+            <Field label="Do kogo" hint="Np. tata, tutaj dzwonić">
+              <input value={s.phone2Label} onChange={(e) => set({ phone2Label: e.target.value })} autoComplete="off" />
+            </Field>
+          </div>
           <ReturningClient
             phone={s.phone1}
             currentId={props.editId}
@@ -864,14 +888,6 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           <Field label={needsDocuments(s) ? 'Imię i nazwisko albo nazwa firmy' : 'Imię i nazwisko albo nazwa firmy (nieobowiązkowe)'} error={errors.clientName}>
             <input value={s.clientName} onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
           </Field>
-          <div className="form-row">
-            <Field label="Drugi telefon" error={errors.phone2}>
-              <input type="tel" inputMode="tel" value={s.phone2} placeholder="+48 500 600 700" onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })} autoComplete="off" />
-            </Field>
-            <Field label="Dopisek" hint="Np. tata, tutaj dzwonić">
-              <input value={s.phone2Label} onChange={(e) => set({ phone2Label: e.target.value })} autoComplete="off" />
-            </Field>
-          </div>
           {/* Bez faktury i protokołu nie ma pola na dane do nich (e-mail). */}
           {needsDocuments(s) && (
           <Field label={s.invoice !== 'brak' ? 'E-mail (do faktury)' : 'E-mail (do protokołu)'} error={errors.email}>
@@ -1088,6 +1104,8 @@ export function OrderEditPage() {
   }, [id]);
   const [state, setState] = useState<FormState | null>(null);
   const [errors, setErrors] = useState<Errors>({});
+  // Numer zlecenia do poprawienia (np. przepisany z kartki); pusty to bez zmiany.
+  const [numberText, setNumberText] = useState('');
   const editKey = `ddd-edycja-zlecenia-${id}`;
 
   // Niezapisane zmiany są w pamięci przeglądarki: przejście do Google Maps albo zamknięcie aplikacji ich nie gubi.
@@ -1120,9 +1138,32 @@ export function OrderEditPage() {
     });
   const sections: StepId[] = ['telefon', 'adres', 'problem', 'cena', 'klient'];
 
+  const current = loaded.order;
+  const newNumber = numberText.trim() ? Number(numberText) : current.number;
+  const numberError = numberText.trim() && (!Number.isInteger(newNumber) || newNumber < 1 || newNumber > 99999) ? 'Podaj numer od 1 do 99999' : undefined;
+
   const save = async () => {
     const found = Object.assign({}, ...sections.map((step) => validate(step, state))) as Errors;
     setErrors(found);
+    if (numberError) {
+      toast(numberError, { tone: 'error' });
+      return;
+    }
+    if (newNumber !== current.number) {
+      // Ten sam numer w tym samym regionie: ostrzeżenie, bo numer służy do wyszukiwania i w dokumentach.
+      const same = (await orders.all()).find(
+        (o) => o.id !== current.id && !o.deletedAt && o.number === newNumber && (o.prefix ?? '') === (current.prefix ?? '') && (o.branchId ?? null) === (current.branchId ?? null),
+      );
+      if (same) {
+        const ok = await confirm({
+          title: `Numer ${orderCode({ ...current, number: newNumber })} jest już zajęty`,
+          message: `Ma go zlecenie ${[same.clientName, orderAddress(same)].filter(Boolean).join(', ') || orderCode(same)}. Dwa zlecenia z tym samym numerem łatwo pomylić.`,
+          confirmLabel: 'Zapisz mimo to',
+          cancelLabel: 'Zmienię numer',
+        });
+        if (!ok) return;
+      }
+    }
     if (Object.keys(found).length) {
       toast('Popraw zaznaczone pola', { tone: 'error' });
       return;
@@ -1143,7 +1184,7 @@ export function OrderEditPage() {
     void run(async () => {
       const draft = toDraft(state);
       const before = loaded.order;
-      await orders.update(id, draft);
+      await orders.update(id, newNumber !== before.number ? { ...draft, number: newNumber } : draft);
       // Zmiana widełek zlecenia przechodzi na zabiegi do zrobienia, które miały dotychczasowe widełki.
       if (draft.priceMin !== before.priceMin || draft.priceMax !== before.priceMax) {
         for (const v of await visits.where('orderId', id)) {
@@ -1163,6 +1204,16 @@ export function OrderEditPage() {
 
   return (
     <Page title={`Edycja ${orderCode(loaded.order)}`} back={`/zlecenia/${id}`}>
+      <section className="edit-section">
+        <h2 className="wizard-title">Numer zlecenia</h2>
+        <Field
+          label="Numer"
+          error={numberError}
+          hint={newNumber !== current.number ? `Po zapisaniu: ${orderCode({ ...current, number: newNumber })} (zabiegi: ${orderCode({ ...current, number: newNumber })}/I, /II…)` : `Teraz: ${orderCode(current)}. Zmień, np. gdy numer był nadany na kartce.`}
+        >
+          <input inputMode="numeric" value={numberText} placeholder={String(current.number)} onChange={(e) => setNumberText(e.target.value.replace(/\D/g, '').slice(0, 5))} />
+        </Field>
+      </section>
       {sections.map((step) => (
         <section key={step} className="edit-section">
           <h2 className="wizard-title">{STEP_TITLES[step]}</h2>

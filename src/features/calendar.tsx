@@ -23,7 +23,8 @@ import { AddLink, Page } from '../ui/kit';
 const VIEW_KEY = 'ddd-kalendarz-widok';
 
 const STATUS_COLOR: Record<VisitStatus, string> = {
-  zaplanowany: 'var(--primary)',
+  // Umówione wyraźnie na niebiesko, odróżniają się od wykonanych (zielone).
+  zaplanowany: 'var(--planned)',
   w_trakcie: 'var(--warn)',
   wykonany: 'var(--ok)',
   odwolany: 'var(--muted)',
@@ -77,7 +78,7 @@ export default function CalendarPage() {
           start: v.start!,
           end: addMinutes(v.start!, v.durationMin),
           color: STATUS_COLOR[v.status],
-          textColor: 'var(--surface)',
+          textColor: v.status === 'zaplanowany' ? '#ffffff' : 'var(--surface)',
           editable: v.status === 'zaplanowany',
           extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, label: `${pestName(order)}, ${order.city}`, phone },
         };
@@ -110,13 +111,17 @@ export default function CalendarPage() {
           scrollTime="07:00:00"
           eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
           dayMaxEvents={3}
-          // Miesiąc wygląda jak tydzień: kolorowe bloczki z godziną i numerem zlecenia, wszystkie bez „+więcej”.
+          // Miesiąc wygląda jak tydzień: kolorowe bloczki z godziną i numerem zlecenia. Najwyżej 3 w dniu, reszta jako
+          // „…+2”: dotknięcie otwiera ten dzień (jak w Kalendarzu Google), więc okienko dnia się nie rozciąga.
           // Na komputerze bloczek ma pełny kod, szkodnika i miejscowość. Na telefonie (dzień ok. 50 px) mieszczą się tylko
           // cztery cyfry, a numer kolejnego zabiegu (II, III) jest w osobnej, małej linii.
           eventDisplay="block"
           eventClass="cal-event"
           dayCellClass="cal-day"
-          views={{ dayGridMonth: { dayMaxEvents: false } }}
+          views={{ dayGridMonth: { dayMaxEvents: 3 } }}
+          moreLinkClick="timeGridDay"
+          moreLinkContent={(arg) => `…+${arg.num}`}
+          moreLinkHint={(num) => `Jeszcze ${num}: otwórz dzień`}
           eventContent={(arg) => {
             if (arg.view.type !== 'dayGridMonth') return true;
             const { number, digits, seq, pink, label, phone } = arg.event.extendedProps as {

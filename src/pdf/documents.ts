@@ -1,5 +1,5 @@
 import { orderCode, roman, visitCode } from '../data/codes';
-import { METHOD_LABEL, orderMethods } from '../data/methods';
+import { methodNames } from '../data/methods';
 // Dokumenty PDF jako czyste funkcje: dane wchodzą, definicja pdfmake wychodzi.
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { FIRST_PAGE_ROWS, NEXT_PAGE_ROWS, paginate, romanMonth, type DriverSummary, type MileageEntry } from '../data/mileage';
@@ -626,7 +626,7 @@ export function orderDocument(order: Order, visits: Visit[], opts: { vatRate: nu
       { text: 'Zlecenie', style: 'section' },
       info([
         ['Szkodnik', pestName(order)],
-        ['Co robimy', orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')],
+        ['Co robimy', methodNames(order).join(', ')],
         ['Opis', order.description],
         ['Metraż', order.areaM2 ? `${order.areaM2} m²` : ''],
         ['Cena', price ? [price.net, price.gross].filter(Boolean).join(' / ') : ''],

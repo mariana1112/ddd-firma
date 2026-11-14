@@ -22,6 +22,7 @@
   --radius: 14px;
   --tabbar: 58px;
   --shadow: 0 8px 28px rgb(20 25 20 / 18%);
+  --planned: #1763d1;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 16px;
   line-height: 1.35;
@@ -50,6 +51,7 @@
     --danger-soft: #431c18;
     --muted-soft: #2a2e2a;
     --shadow: 0 8px 28px rgb(0 0 0 / 55%);
+    --planned: #2f74d6;
   }
 }
 
@@ -3138,4 +3140,87 @@ body {
 .day-plan-route li.fresh {
   color: var(--primary);
   font-weight: 700;
+}
+
+/* Karta zabiegu: opis zlecenia od przyjmującego i opcje zlecenia */
+.order-note {
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--primary-soft);
+}
+
+.order-note-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.order-note p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  font-size: 1rem;
+  line-height: 1.45;
+}
+
+.order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+/* Pakiety zaleceń dla metod (Ustawienia) i własne zalecenie przy zakończeniu */
+.package {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  background: var(--surface);
+}
+
+.package-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.package-head .muted {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.package-chevron {
+  display: inline-flex;
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+
+.package-chevron.open {
+  transform: rotate(-90deg);
+}
+
+.package-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+
+.add-own {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.add-own input {
+  flex: 1;
+  min-width: 0;
 }

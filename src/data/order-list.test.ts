@@ -29,6 +29,11 @@ describe('lista zleceń według daty', () => {
     expect(numbers(sortOrderRows(rows, 'numer'))).toEqual([6, 5, 4, 3, 2, 1]);
   });
 
+  it('od dziś: dziś i kolejne dni rosnąco, potem do umówienia, na końcu minione', () => {
+    const numbers = (list: OrderListRow[]) => list.map((r) => r.order.number);
+    expect(numbers(sortOrderRows(rows, 'od_dzis', '2026-11-10'))).toEqual([4, 1, 6, 3, 2, 5]);
+  });
+
   it('grupuje po dniach i opisuje dzień', () => {
     const groups = groupByDay(sortOrderRows(rows, 'najwczesniej'));
     expect(groups.map((g) => [g.date, g.rows.length])).toEqual([

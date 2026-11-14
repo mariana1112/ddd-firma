@@ -37,7 +37,7 @@ export function isArchived(order: Pick<Order, 'archived'>, list: Visit[]): boole
 }
 
 /** Kolejność listy zleceń. */
-export type OrderSort = 'najwczesniej' | 'najpozniej' | 'numer';
+export type OrderSort = 'od_dzis' | 'najwczesniej' | 'najpozniej' | 'numer';
 
 export interface OrderListRow {
   order: Order;
@@ -94,13 +94,26 @@ export function orderTerm(list: Visit[]): OrderTerm {
 }
 
 /** Sortuje wiersze; zlecenia bez terminu zawsze na końcu, przy równym terminie nowsze numery wyżej. */
-export function sortOrderRows<T extends OrderListRow>(rows: T[], sort: OrderSort): T[] {
+export function sortOrderRows<T extends OrderListRow>(rows: T[], sort: OrderSort, today = ''): T[] {
   if (sort === 'numer') return [...rows].sort((a, b) => b.order.number - a.order.number);
   const key = (row: T) => {
     const term = orderTerm(row.visits);
     return term.date ? `${term.date}T${term.time ?? '00:00'}` : null;
   };
   const keyed = rows.map((row) => ({ row, key: key(row) }));
+  if (sort === 'od_dzis') {
+    // Od dziś po kolei jak w kalendarzu (dziś, jutro, 15, 16, 17…), potem do umówienia, na końcu minione od najnowszych.
+    const group = (k: string | null) => (k === null ? 1 : k.slice(0, 10) >= today ? 0 : 2);
+    return keyed
+      .sort((a, b) => {
+        const g = group(a.key) - group(b.key);
+        if (g) return g;
+        if (a.key === null || b.key === null) return b.row.order.number - a.row.order.number;
+        const byDate = group(a.key) === 0 ? a.key.localeCompare(b.key) : b.key.localeCompare(a.key);
+        return byDate || b.row.order.number - a.row.order.number;
+      })
+      .map(({ row }) => row);
+  }
   return keyed
     .sort((a, b) => {
       if (a.key === null || b.key === null) return a.key === b.key ? b.row.order.number - a.row.order.number : a.key === null ? 1 : -1;

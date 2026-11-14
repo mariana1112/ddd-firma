@@ -1,4 +1,5 @@
-import { roman, visitCode } from '../data/codes';
+import { orderCode, roman, visitCode } from '../data/codes';
+import { withCountryCode } from '../lib/validators';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
@@ -17,7 +18,7 @@ import {
   pestName,
   priceRange,
   workSummary,
-  bookedBy, firstName, orderText } from '../data/texts';
+  bookedBy, firstName, orderText, centralExport } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { TomorrowReminders } from './reminders';
@@ -26,7 +27,7 @@ import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect, goBack } from '../ui/kit';
 import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
-import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, orderMethods, recommendationsFor, SEALING_OPTIONS } from '../data/methods';
+import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, recommendationsFor, SEALING_OPTIONS, methodNames } from '../data/methods';
 import { Photos } from './photos';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
 import { isValidNip } from '../lib/validators';
@@ -274,6 +275,76 @@ function History({ list, current, order, vatRate }: { list: Visit[]; current: Vi
   );
 }
 
+/**
+ * Wszystko, co wpisano przy przyjęciu zlecenia, do spokojnego przeczytania na karcie zabiegu: opis (co napisał
+ * przyjmujący, np. szef), co robimy, szkodnik, cena, faktura, protokół, klient i telefony. Pod spodem opcje zlecenia.
+ */
+function OrderInfo(props: { order: Order; visits: Visit[]; vatRate: number }) {
+  const { order } = props;
+  const { deliverFile, run, toast } = useFeedback();
+  const price = priceRange({ priceMin: order.priceMin, priceMax: order.priceMax, invoice: order.invoice }, props.vatRate);
+  const methods = methodNames(order);
+  const invoiceData = order.invoice === 'vat' ? [order.invoiceName, order.nip && `NIP ${order.nip}`, order.invoiceAddress].filter(Boolean).join(', ') : order.invoice === 'imienna' ? order.invoiceAddress : '';
+  return (
+    <Group
+      title={`Zlecenie ${orderCode(order)}`}
+      action={
+        <button
+          type="button"
+          className="link"
+          onClick={() => void copyText(orderText(order, props.visits, props.vatRate)).then((ok) => toast(ok ? 'Skopiowano dane zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
+        >
+          <Icon name="copy" /> Kopiuj dane
+        </button>
+      }
+    >
+      {order.description.trim() && (
+        <div className="order-note">
+          <span className="order-note-label">Opis{order.ownerName ? ` od ${firstName(order.ownerName)}` : ''}</span>
+          <p>{order.description.trim()}</p>
+        </div>
+      )}
+      {methods.length > 0 && <Info label="Co robimy">{methods.join(', ')}</Info>}
+      <Info label="Szkodnik">{pestName(order)}</Info>
+      {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
+      {price && <Info label="Cena">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
+      <Info label="Faktura">{INVOICES[order.invoice]}</Info>
+      {invoiceData && <Info label="Dane do faktury">{invoiceData}</Info>}
+      {order.protocol && <Info label="Protokół">Tak</Info>}
+      {order.clientName.trim() && <Info label="Klient">{order.clientName}</Info>}
+      {order.phones.map((p, i) => (
+        <Info key={i} label={i === 0 ? 'Telefon' : 'Drugi telefon'}>
+          {withCountryCode(p.number)}
+          {p.label ? ` (${p.label})` : ''}
+        </Info>
+      ))}
+      {order.email && <Info label="E-mail">{order.email}</Info>}
+      {order.pink && <Info label="Kod pink">{order.pinkNote || 'Tak'}</Info>}
+      {order.ownerName && <Info label="Przyjął">{`${order.ownerName}, ${formatDate(order.createdAt)}`}</Info>}
+      <div className="order-actions">
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() =>
+            void run(async () => {
+              const [{ orderDocument }, { renderPdf }] = await Promise.all([import('../pdf/documents'), import('../pdf/render')]);
+              deliverFile(await renderPdf(orderDocument(order, props.visits, { vatRate: props.vatRate })), `zlecenie-${orderCode(order).replace(/[^\w-]+/g, '-')}.pdf`);
+            })
+          }
+        >
+          <Icon name="file" /> PDF zlecenia
+        </button>
+        <Link className="btn btn-sm" to={`/zlecenia/${order.id}/edycja`}>
+          <Icon name="edit" /> Edytuj zlecenie
+        </Link>
+        <Link className="btn btn-sm" to={`/zlecenia/${order.id}?pelna=1`}>
+          Wszystkie zabiegi i archiwum
+        </Link>
+      </div>
+    </Group>
+  );
+}
+
 function FinishSheet(props: {
   open: boolean;
   onClose: () => void;
@@ -289,10 +360,18 @@ function FinishSheet(props: {
   const { visit, later, settings } = props;
   // Dzień wykonania decyduje o raporcie: zabieg z wcześniejszego dnia zamykany później liczy się do tamtego dnia.
   const [doneOn, setDoneOn] = useState(() => defaultDoneOn(visit, todayWarsaw()));
-  // Zalecenia: najpierw proponowane do wykonanych metod, potem pozostałe. Nic nie zaznacza się samo: technik wybiera.
-  const forMethods = recommendationsFor(doneMethods(visit.treatments, props.order), props.order.pest);
-  const others = settings.recommendations.filter((r) => !forMethods.list.includes(r));
-  const [recommendations, setRecommendations] = useState<string[]>(() => visit.recommendations);
+  // Zalecenia: pakiet wykonanych metod zaznacza się sam (można odznaczyć), pod nim pozostałe i własne do dopisania.
+  const methods = doneMethods(visit.treatments, props.order);
+  const forMethods = recommendationsFor(methods, props.order.pest, settings.methodPackages);
+  const [recommendations, setRecommendations] = useState<string[]>(() => (visit.recommendations.length ? visit.recommendations : forMethods.list));
+  const [ownText, setOwnText] = useState('');
+  const others = [...new Set([...settings.recommendations, ...recommendations])].filter((r) => !forMethods.list.includes(r));
+  const addOwn = () => {
+    const text = ownText.trim();
+    if (!text) return;
+    if (!recommendations.includes(text)) setRecommendations([...recommendations, text]);
+    setOwnText('');
+  };
   const recommendationRow = (r: string) => (
     <label key={r} className="check">
       <input
@@ -316,19 +395,32 @@ function FinishSheet(props: {
         <Field label="Data wykonania" hint={doneOn === todayWarsaw() ? 'Dzisiaj: zabieg trafi do dzisiejszego raportu.' : `Zabieg trafi do raportu z ${formatDate(doneOn)}.`}>
           <input type="date" value={doneOn} max={todayWarsaw()} onChange={(e) => setDoneOn(e.target.value || todayWarsaw())} />
         </Field>
-        <div className="field">
-          <span className="field-label">
-            Zalecenia proponowane
-            {doneMethods(visit.treatments, props.order).length ? ` (${doneMethods(visit.treatments, props.order).map((m) => METHOD_LABEL[m]).join(', ')})` : ''}: zaznacz wybrane
-          </span>
-          <div className="check-list">{forMethods.list.map(recommendationRow)}</div>
-        </div>
-        {others.length > 0 && (
+        {forMethods.list.length > 0 && (
           <div className="field">
-            <span className="field-label">Inne zalecenia</span>
-            <div className="check-list">{others.map(recommendationRow)}</div>
+            <span className="field-label">Pakiet zaleceń ({methodNames({ methods, methodOther: props.order.methodOther }).join(', ')}): odznacz, czego nie trzeba</span>
+            <div className="check-list">{forMethods.list.map(recommendationRow)}</div>
           </div>
         )}
+        <div className="field">
+          <span className="field-label">{forMethods.list.length ? 'Inne zalecenia' : 'Zalecenia: zaznacz wybrane'}</span>
+          {others.length > 0 && <div className="check-list">{others.map(recommendationRow)}</div>}
+          <div className="add-own">
+            <input
+              value={ownText}
+              placeholder="Dopisz własne zalecenie"
+              onChange={(e) => setOwnText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addOwn();
+                }
+              }}
+            />
+            <button type="button" className="btn btn-sm" disabled={!ownText.trim()} onClick={addOwn}>
+              <Icon name="plus" /> Dodaj
+            </button>
+          </div>
+        </div>
         <div className="field">
           <span className="field-label">Zabieg {roman(nextSeq)}</span>
           <div className="choice">
@@ -393,7 +485,7 @@ export function VisitPage() {
   // Pole opisu kodu pink dostaje kursor tylko zaraz po zaznaczeniu, a nie przy każdym wejściu na ekran.
   const [pinkJustOn, setPinkJustOn] = useState(false);
   // Wykonany zabieg pokazuje podsumowanie; formularz otwiera „Edytuj zabieg” albo link z ?edycja=1.
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [editingId, setEditingId] = useState<string | null>(params.has('edycja') ? id : null);
   useEffect(() => setEditingId(params.has('edycja') ? id : null), [id, params]);
   const editing = editingId === id;
@@ -515,7 +607,7 @@ export function VisitPage() {
     <Page
       key={visit.id}
       title={visitCode(order, visit.seq)}
-      back={`/zlecenia/${order.id}`}
+      back="/zlecenia"
       onBack={visit.status === 'w_trakcie' ? () => setLeavingStarted(true) : undefined}
     >
       {/* Wyjście z rozpoczętego zabiegu: dokończyć później (czeka w Pilnych) albo wycofać wszystko, co wpisano. */}
@@ -576,6 +668,23 @@ export function VisitPage() {
         order={order}
         visit={visit}
       />
+      {params.has('nowe') && visit.start && (
+        <div className="notice notice-info calendar-offer">
+          <Icon name="calendar" />
+          <span>
+            <strong>Zlecenie zapisane.</strong> Dodać termin {formatTerm(visit.start)} do Kalendarza Google?
+          </span>
+          <span className="notice-actions">
+            <a className="btn btn-sm btn-primary" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer" onClick={() => setParams({}, { replace: true })}>
+              Dodaj do kalendarza
+            </a>
+            <button type="button" className="btn btn-sm" onClick={() => setParams({}, { replace: true })}>
+              Nie teraz
+            </button>
+          </span>
+        </div>
+      )}
+      <OrderInfo order={order} visits={list} vatRate={settings.vatRate} />
 
       {order.access && (
         <div className="notice notice-info">
@@ -588,11 +697,6 @@ export function VisitPage() {
           <Icon name="alert" />
           <span>Kod pink{order.pinkNote ? `: ${order.pinkNote}` : ''}</span>
         </div>
-      )}
-      {orderMethods(order).length > 0 && (
-        <p className="methods-line">
-          <span className="terms-label">Co robimy</span> {orderMethods(order).map((m) => METHOD_LABEL[m]).join(', ')}
-        </p>
       )}
 
       {!summary && (
@@ -647,27 +751,6 @@ export function VisitPage() {
               <Icon name="close" /> Odwołaj zabieg
             </button>
           </div>
-          <Group
-            title="Zlecenie"
-            action={
-          <button
-            type="button"
-            className="link"
-            onClick={() =>
-              void copyText(orderText(order, list, settings.vatRate)).then((ok) =>
-                toast(ok ? 'Skopiowano dane zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
-              )
-            }
-          >
-            <Icon name="copy" /> Kopiuj dane
-          </button>
-        }
-          >
-            {order.description && <Info label="Opis">{order.description}</Info>}
-            {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
-            {price && <Info label="Cena">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
-            <Info label="Faktura">{INVOICES[order.invoice]}</Info>
-          </Group>
         </>
       )}
 
@@ -697,6 +780,23 @@ export function VisitPage() {
           {visit.doneOn === todayWarsaw() && <TomorrowReminders afterLastToday />}
           <VisitSummary order={order} visit={visit} vatRate={settings.vatRate} later={later} photos={<Photos visitId={visit.id} readOnly />} />
           <div className="btn-stack">
+            {/* Po zabiegu: opis i wszystkie dane do skopiowania (np. dla centrali albo do faktury). */}
+            {interview.situation.trim() && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void copyText(interview.situation.trim()).then((ok) => toast(ok ? 'Skopiowano opis' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
+              >
+                <Icon name="copy" /> Kopiuj opis
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void copyText(centralExport(order, visit, list)).then((ok) => toast(ok ? 'Skopiowano wszystkie dane zabiegu' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
+            >
+              <Icon name="copy" /> Kopiuj wszystkie dane
+            </button>
             <button type="button" className="btn" onClick={() => setEditingId(visit.id)}>
               <Icon name="edit" /> Edytuj zabieg
             </button>
@@ -705,9 +805,6 @@ export function VisitPage() {
                 <Icon name="calendar" /> Umów kolejny zabieg
               </button>
             )}
-            <button type="button" className="btn" onClick={() => navigate(`/zlecenia/${order.id}`)}>
-              Wróć do zlecenia
-            </button>
           </div>
         </>
       )}
@@ -732,53 +829,6 @@ export function VisitPage() {
 
       {active && (
         <>
-          <div ref={payRef} className={payAlert && (!visit.payMethod || !visit.amount) ? 'pay-group pay-alert' : 'pay-group'}>
-          <Group title="Płatność (wymagana)" plain>
-            {payAlert && (!visit.payMethod || !visit.amount) && (
-              <p className="pay-alert-text">
-                <Icon name="alert" size={16} /> {!visit.payMethod ? 'Wybierz formę płatności' : 'Wpisz kwotę pobraną od klienta'}
-              </p>
-            )}
-            <div className="pay-choice">
-              {(['gotowka', 'blik', 'przelew'] as PayMethod[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={`pay-option pay-opt-${m}${visit.payMethod === m ? ' active' : ''}${payAlert && !visit.payMethod ? ' missing' : ''}`}
-                  aria-pressed={visit.payMethod === m}
-                  onClick={() => save({ payMethod: visit.payMethod === m ? null : m })}
-                >
-                  {PAY_NAMES[m]}
-                </button>
-              ))}
-            </div>
-            {visit.payMethod === 'przelew' && company.bankAccount.trim() && (
-              <div className="pay-details">
-                <CopyRow label="Numer konta do przelewu" value={formatAccount(company.bankAccount)} copyValue={company.bankAccount.replace(/\s/g, '')} />
-              </div>
-            )}
-            {visit.payMethod === 'blik' && company.blikPhone?.trim() && (
-              <div className="pay-details">
-                <CopyRow label="BLIK na telefon" value={company.blikPhone.trim()} copyValue={company.blikPhone.replace(/\s/g, '')} />
-              </div>
-            )}
-            <AmountField value={visit.amount} missing={payAlert && !visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
-            <div className="choice">
-              {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={order.invoice === value ? 'choice-item active' : 'choice-item'}
-                  onClick={() => void run(() => orders.update(order.id, { invoice: value }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <InvoiceData order={order} alert={invoiceAlert} onSave={(patch) => void run(() => orders.update(order.id, patch))} />
-          </Group>
-          </div>
-
           <Group title="Wywiad" plain>
             <AutoText
               label="Opis"
@@ -787,18 +837,7 @@ export function VisitPage() {
               value={interview.situation}
               onSave={(v) => saveInterview('situation', v)}
             />
-            {interview.situation.trim() && (
-              <button
-                type="button"
-                className="link copy-link"
-                onClick={() =>
-                  void copyText(interview.situation.trim()).then((ok) => toast(ok ? 'Skopiowano opis' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))
-                }
-              >
-                <Icon name="copy" /> Kopiuj opis
-              </button>
-            )}
-            <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />
+            {order.pest !== 'karaluchy' && <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />}
             <YesNoField label="Czy widziano owady?" value={interview.seen} onChange={(v) => saveInterview('seen', v)} />
             {interview.seen === 'tak' && (
               <AutoText label="Ile owadów?" placeholder="Np. kilka, ok. 20" rows={1} value={interview.seenCount} onSave={(v) => saveInterview('seenCount', v)} />
@@ -808,7 +847,7 @@ export function VisitPage() {
 
           <Group title="Wykonane" plain>
             <ToggleChips
-              options={[...new Set([...Object.values(METHOD_LABEL), ...EXTRA_TREATMENTS, ...settings.treatments.filter((t) => !methodOf(t))])]}
+              options={[...new Set([...Object.values(METHOD_LABEL).filter((l) => l !== METHOD_LABEL.inne), ...methodNames(order), ...EXTRA_TREATMENTS, ...settings.treatments.filter((t) => !methodOf(t))])]}
               selected={visit.treatments}
               addLabel="Inny zabieg"
               onChange={(treatments) => save({ treatments })}
@@ -856,6 +895,53 @@ export function VisitPage() {
                 onSave={(pinkNote) => void run(() => orders.update(order.id, { pinkNote }))}
               />
             )}
+          </div>
+
+          <div ref={payRef} className={payAlert && (!visit.payMethod || !visit.amount) ? 'pay-group pay-alert' : 'pay-group'}>
+          <Group title="Płatność (wymagana)" plain>
+            {payAlert && (!visit.payMethod || !visit.amount) && (
+              <p className="pay-alert-text">
+                <Icon name="alert" size={16} /> {!visit.payMethod ? 'Wybierz formę płatności' : 'Wpisz kwotę pobraną od klienta'}
+              </p>
+            )}
+            <div className="pay-choice">
+              {(['gotowka', 'blik', 'przelew'] as PayMethod[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`pay-option pay-opt-${m}${visit.payMethod === m ? ' active' : ''}${payAlert && !visit.payMethod ? ' missing' : ''}`}
+                  aria-pressed={visit.payMethod === m}
+                  onClick={() => save({ payMethod: visit.payMethod === m ? null : m })}
+                >
+                  {PAY_NAMES[m]}
+                </button>
+              ))}
+            </div>
+            {visit.payMethod === 'przelew' && company.bankAccount.trim() && (
+              <div className="pay-details">
+                <CopyRow label="Numer konta do przelewu" value={formatAccount(company.bankAccount)} copyValue={company.bankAccount.replace(/\s/g, '')} />
+              </div>
+            )}
+            {visit.payMethod === 'blik' && company.blikPhone?.trim() && (
+              <div className="pay-details">
+                <CopyRow label="BLIK na telefon" value={company.blikPhone.trim()} copyValue={company.blikPhone.replace(/\s/g, '')} />
+              </div>
+            )}
+            <AmountField value={visit.amount} missing={payAlert && !visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
+            <div className="choice">
+              {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={order.invoice === value ? 'choice-item active' : 'choice-item'}
+                  onClick={() => void run(() => orders.update(order.id, { invoice: value }))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <InvoiceData order={order} alert={invoiceAlert} onSave={(patch) => void run(() => orders.update(order.id, patch))} />
+          </Group>
           </div>
 
           {visit.status === 'w_trakcie' ? (
