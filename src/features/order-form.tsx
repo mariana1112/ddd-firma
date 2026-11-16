@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addressAt, currentPosition, freeSlots, locate, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
-import { createOrder, type OrderDraft } from '../data/orders';
+import { createOrder, duplicateOrder, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
@@ -13,12 +13,12 @@ import { METHOD_LABEL, METHODS, orderMethods } from '../data/methods';
 import { normalizeCity } from '../data/cities';
 import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl, readMapsInput, isShortMapsLink } from '../data/maps';
-import { formatDateLong, formatTerm, isValidDate, todayWarsaw, nowWarsaw } from '../lib/dates';
+import { addMinutes, formatDate, formatDateLong, formatTerm, isValidDate, todayWarsaw, nowWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { formatPhoneInput, formatPostalInput, isValidNip, phoneError } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Field, Group, Info, Loading, NotFound, Page, Sheet, goBack, TimeSelect } from '../ui/kit';
+import { Field, Group, Info, Loading, NotFound, Page, PasteButton, Sheet, goBack, TimeSelect } from '../ui/kit';
 
 interface FormState {
   building: BuildingType;
@@ -205,7 +205,7 @@ function toDraft(s: FormState): OrderDraft {
   };
 }
 
-type StepId = 'telefon' | 'adres' | 'problem' | 'termin' | 'cena' | 'klient' | 'podsumowanie';
+type StepId = 'telefon' | 'adres' | 'problem' | 'termin' | 'cena' | 'podsumowanie';
 
 const STEP_TITLES: Record<StepId, string> = {
   telefon: 'Telefon klienta',
@@ -213,7 +213,6 @@ const STEP_TITLES: Record<StepId, string> = {
   problem: 'Co robimy i szkodnik',
   termin: 'Termin',
   cena: 'Cena i faktura',
-  klient: 'Klient',
   podsumowanie: 'Podsumowanie',
 };
 
@@ -230,7 +229,7 @@ function missing(step: StepId, s: FormState): Array<[keyof FormState, string]> {
 }
 
 // Telefon na początku: stały klient od razu podpowiada swoje dane i adres.
-const ALL_STEPS: StepId[] = ['telefon', 'adres', 'problem', 'termin', 'cena', 'klient'];
+const ALL_STEPS: StepId[] = ['telefon', 'adres', 'problem', 'termin', 'cena'];
 
 /** Klient chce fakturę albo protokół: wtedy potrzebne są e-mail i dane klienta. */
 const needsDocuments = (s: Pick<FormState, 'invoice' | 'protocol'>) => s.invoice !== 'brak' || s.protocol;
@@ -274,11 +273,11 @@ function validate(step: StepId, s: FormState): Errors {
     const second = phoneError(s.phone2);
     if (second) e.phone2 = second;
   }
-  if (step === 'klient') {
-    // E-mail, imię albo nazwa firmy są potrzebne tylko do faktury albo protokołu; bez nich pola są nieobowiązkowe.
+  if (step === 'cena' && needsDocuments(s)) {
+    // E-mail oraz imię i nazwisko (albo firma) są wymagane tylko przy fakturze albo protokole.
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
-    else if (needsDocuments(s) && !s.email.trim()) e.email = s.invoice !== 'brak' ? 'Do faktury potrzebny jest e-mail' : 'Do protokołu potrzebny jest e-mail';
-    if (s.invoice === 'brak' && s.protocol && !s.clientName.trim()) e.clientName = 'Do protokołu podaj imię i nazwisko albo nazwę firmy';
+    else if (!s.email.trim()) e.email = s.invoice !== 'brak' ? 'Do faktury potrzebny jest e-mail' : 'Do protokołu potrzebny jest e-mail';
+    if (s.invoice === 'brak' && s.protocol && !s.clientName.trim()) e.clientName = 'Do protokołu podaj imię i nazwisko';
     if (s.invoice === 'vat') {
       if (!s.invoiceName.trim()) e.invoiceName = 'Podaj nazwę firmy';
       if (!s.nip.trim()) e.nip = 'Podaj NIP';
@@ -673,6 +672,115 @@ function HerePosition(props: { set: (patch: Partial<FormState>) => void }) {
   );
 }
 
+/**
+ * Krok 1: telefon klienta. Duże pole numeru z „Wklej” (bez podpowiedzi przeglądarki z własnym numerem), opcjonalnie
+ * do kogo ten numer. Drugi telefon dopiero po dotknięciu „+ Drugi telefon”. Stały klient: od razu jego dane i adres.
+ */
+function PhoneStep(props: { state: FormState; set: (patch: Partial<FormState>) => void; errors: Errors; editId?: string }) {
+  const { state: s, set, errors } = props;
+  const [second, setSecond] = useState(Boolean(s.phone2.trim()));
+  return (
+    <div className="form">
+      <div className={errors.phone1 ? 'phone-card phone-card-error' : 'phone-card'}>
+        <span className="field-label-row">
+          <span className="field-label">Numer klienta</span>
+          <PasteButton onPaste={(t) => set({ phone1: formatPhoneInput(t) })} />
+        </span>
+        <input
+          className="phone-input"
+          type="text"
+          inputMode="tel"
+          name="ddd-numer-klienta"
+          autoComplete="off"
+          aria-label="Numer klienta"
+          value={s.phone1}
+          placeholder="500 600 700"
+          onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })}
+        />
+        {errors.phone1 ? <span className="field-message">{errors.phone1}</span> : <span className="field-hint">Stały klient: aplikacja sama podpowie jego dane i adres.</span>}
+        <input
+          className="phone-who"
+          name="ddd-do-kogo"
+          autoComplete="off"
+          aria-label="Do kogo ten numer"
+          value={s.phone1Label}
+          placeholder="Do kogo? (np. pani Anna)"
+          onChange={(e) => set({ phone1Label: e.target.value })}
+        />
+      </div>
+      <ReturningClient
+        phone={s.phone1}
+        currentId={props.editId}
+        withAddress={!props.editId}
+        onFill={(o) => {
+          const client = { clientName: o.clientName, email: o.email, nip: o.nip, invoiceName: o.invoiceName ?? '', invoiceAddress: o.invoiceAddress, pink: o.pink || s.pink, pinkNote: o.pinkNote || s.pinkNote };
+          if (props.editId) {
+            set(client);
+            return;
+          }
+          const old = fromOrder(o);
+          set({
+            ...client,
+            building: old.building,
+            street: old.street,
+            houseNo: old.houseNo,
+            flatNo: old.flatNo,
+            floor: old.floor,
+            staircase: old.staircase,
+            postalCode: old.postalCode,
+            city: old.city,
+            access: old.access,
+            mapsLink: old.mapsLink,
+          });
+        }}
+      />
+      {second ? (
+        <div className={errors.phone2 ? 'phone-card phone-card-2 phone-card-error' : 'phone-card phone-card-2'}>
+          <span className="field-label-row">
+            <span className="field-label">Drugi telefon</span>
+            <PasteButton onPaste={(t) => set({ phone2: formatPhoneInput(t) })} />
+          </span>
+          <input
+            className="phone-input"
+            type="text"
+            inputMode="tel"
+            name="ddd-drugi-numer"
+            autoComplete="off"
+            aria-label="Drugi telefon"
+            value={s.phone2}
+            placeholder="500 600 700"
+            onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })}
+          />
+          {errors.phone2 && <span className="field-message">{errors.phone2}</span>}
+          <input
+            className="phone-who"
+            name="ddd-do-kogo-2"
+            autoComplete="off"
+            aria-label="Do kogo drugi numer"
+            value={s.phone2Label}
+            placeholder="Do kogo? (np. tata)"
+            onChange={(e) => set({ phone2Label: e.target.value })}
+          />
+          <button
+            type="button"
+            className="link"
+            onClick={() => {
+              set({ phone2: '', phone2Label: '' });
+              setSecond(false);
+            }}
+          >
+            Usuń drugi telefon
+          </button>
+        </div>
+      ) : (
+        <button type="button" className="btn btn-block btn-dashed" onClick={() => setSecond(true)}>
+          <Icon name="plus" /> Drugi telefon (np. do kogoś z rodziny)
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => void; step: StepId; errors: Errors; vatRate: number; editId?: string }) {
   const { state: s, set, errors } = props;
   const price = priceRange(
@@ -835,82 +943,38 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               {price.gross && <span>{price.gross}</span>}
             </div>
           )}
+          {/* Dane klienta tylko do faktury albo protokołu: rozwijają się tutaj po wyborze, bez osobnego kroku. */}
+          {needsDocuments(s) && (
+            <div className="docs-box">
+              <span className="docs-box-title">{s.invoice !== 'brak' ? (s.protocol ? 'Dane do faktury i protokołu' : 'Dane do faktury') : 'Dane do protokołu'}</span>
+              {s.invoice === 'vat' ? (
+                <>
+                  <Field label="Nazwa firmy" error={errors.invoiceName} action={<PasteButton onPaste={(t) => set({ invoiceName: t })} />}>
+                    <input value={s.invoiceName} name="ddd-firma" placeholder="Np. Apt Production sp. z o.o." onChange={(e) => set({ invoiceName: e.target.value })} autoComplete="off" />
+                  </Field>
+                  <Field label="NIP" error={errors.nip} action={<PasteButton onPaste={(t) => set({ nip: t.replace(/[^\d]/g, '') })} />}>
+                    <input inputMode="numeric" name="ddd-nip" value={s.nip} onChange={(e) => set({ nip: e.target.value })} autoComplete="off" />
+                  </Field>
+                </>
+              ) : (
+                <Field label="Imię i nazwisko" error={errors.clientName} action={<PasteButton onPaste={(t) => set({ clientName: t })} />}>
+                  <input value={s.clientName} name="ddd-klient" onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
+                </Field>
+              )}
+              <Field label="E-mail" error={errors.email} action={<PasteButton onPaste={(t) => set({ email: t })} />}>
+                <input type="text" inputMode="email" name="ddd-email" autoCapitalize="none" value={s.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" />
+              </Field>
+              {s.invoice !== 'brak' && (
+                <Field label="Adres do faktury" hint="Puste: adres zlecenia." action={<PasteButton onPaste={(t) => set({ invoiceAddress: t })} />}>
+                  <input value={s.invoiceAddress} name="ddd-adres-faktury" onChange={(e) => set({ invoiceAddress: e.target.value })} autoComplete="off" />
+                </Field>
+              )}
+            </div>
+          )}
         </div>
       );
     case 'telefon':
-      return (
-        <div className="form">
-          <Field label="Telefon" error={errors.phone1} hint="Stały klient: aplikacja podpowie jego dane i adres.">
-            <input type="tel" inputMode="tel" value={s.phone1} placeholder="+48 500 600 700" onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })} autoComplete="off" />
-          </Field>
-          <Field label="Do kogo (nieobowiązkowe)" hint="Np. pani Anna, właściciel, administrator">
-            <input value={s.phone1Label} onChange={(e) => set({ phone1Label: e.target.value })} autoComplete="off" />
-          </Field>
-          <div className="form-row">
-            <Field label="Drugi telefon (nieobowiązkowe)" error={errors.phone2}>
-              <input type="tel" inputMode="tel" value={s.phone2} placeholder="+48 500 600 700" onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })} autoComplete="off" />
-            </Field>
-            <Field label="Do kogo" hint="Np. tata, tutaj dzwonić">
-              <input value={s.phone2Label} onChange={(e) => set({ phone2Label: e.target.value })} autoComplete="off" />
-            </Field>
-          </div>
-          <ReturningClient
-            phone={s.phone1}
-            currentId={props.editId}
-            withAddress={!props.editId}
-            onFill={(o) => {
-              const client = { clientName: o.clientName, email: o.email, nip: o.nip, invoiceName: o.invoiceName ?? '', invoiceAddress: o.invoiceAddress, pink: o.pink || s.pink, pinkNote: o.pinkNote || s.pinkNote };
-              if (props.editId) {
-                set(client);
-                return;
-              }
-              const old = fromOrder(o);
-              set({
-                ...client,
-                building: old.building,
-                street: old.street,
-                houseNo: old.houseNo,
-                flatNo: old.flatNo,
-                floor: old.floor,
-                staircase: old.staircase,
-                postalCode: old.postalCode,
-                city: old.city,
-                access: old.access,
-                mapsLink: old.mapsLink,
-              });
-            }}
-          />
-        </div>
-      );
-    case 'klient':
-      return (
-        <div className="form">
-          <Field label={needsDocuments(s) ? 'Imię i nazwisko albo nazwa firmy' : 'Imię i nazwisko albo nazwa firmy (nieobowiązkowe)'} error={errors.clientName}>
-            <input value={s.clientName} onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
-          </Field>
-          {/* Bez faktury i protokołu nie ma pola na dane do nich (e-mail). */}
-          {needsDocuments(s) && (
-          <Field label={s.invoice !== 'brak' ? 'E-mail (do faktury)' : 'E-mail (do protokołu)'} error={errors.email}>
-            <input type="email" inputMode="email" autoCapitalize="none" value={s.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" />
-          </Field>
-          )}
-          {s.invoice === 'vat' && (
-            <>
-              <Field label="Nazwa firmy" error={errors.invoiceName}>
-                <input value={s.invoiceName} placeholder="Np. Apt Production sp. z o.o." onChange={(e) => set({ invoiceName: e.target.value })} autoComplete="off" />
-              </Field>
-              <Field label="NIP" error={errors.nip}>
-                <input inputMode="numeric" value={s.nip} onChange={(e) => set({ nip: e.target.value })} autoComplete="off" />
-              </Field>
-            </>
-          )}
-          {s.invoice !== 'brak' && (
-            <Field label="Adres do faktury" hint="Puste: adres zlecenia.">
-              <input value={s.invoiceAddress} onChange={(e) => set({ invoiceAddress: e.target.value })} autoComplete="off" />
-            </Field>
-          )}
-        </div>
-      );
+      return <PhoneStep state={s} set={set} errors={errors} editId={props.editId} />;
     case 'podsumowanie': {
       const draft = toDraft(s);
       return (
@@ -1106,6 +1170,7 @@ export function OrderEditPage() {
   const [errors, setErrors] = useState<Errors>({});
   // Numer zlecenia do poprawienia (np. przepisany z kartki); pusty to bez zmiany.
   const [numberText, setNumberText] = useState('');
+  const [duplicating, setDuplicating] = useState(false);
   const editKey = `ddd-edycja-zlecenia-${id}`;
 
   // Niezapisane zmiany są w pamięci przeglądarki: przejście do Google Maps albo zamknięcie aplikacji ich nie gubi.
@@ -1136,7 +1201,7 @@ export function OrderEditPage() {
       }
       return next;
     });
-  const sections: StepId[] = ['telefon', 'adres', 'problem', 'cena', 'klient'];
+  const sections: StepId[] = ['telefon', 'adres', 'problem', 'cena'];
 
   const current = loaded.order;
   const newNumber = numberText.trim() ? Number(numberText) : current.number;
@@ -1223,6 +1288,58 @@ export function OrderEditPage() {
       <button type="button" className="btn btn-primary btn-block" onClick={() => void save()}>
         Zapisz zmiany
       </button>
+      <button type="button" className="btn btn-block" onClick={() => setDuplicating(true)}>
+        <Icon name="copy" /> Powiel zlecenie na inny termin (np. sąsiednie mieszkanie)
+      </button>
+      {duplicating && <DuplicateOrderSheet order={loaded.order} open durationMin={60} onClose={() => setDuplicating(false)} />}
     </Page>
+  );
+}
+
+/**
+ * „Powiel zlecenie”: te same dane (klient, adres, opis, cena, faktura) na inny termin, np. dwa sąsiednie mieszkania
+ * tego samego właściciela. Wybierasz datę, godzinę i numer mieszkania; nowe zlecenie dostaje kolejny numer.
+ */
+export function DuplicateOrderSheet(props: { order: Order; open: boolean; durationMin: number; start?: string | null; onClose: () => void }) {
+  const navigate = useNavigate();
+  const { run, toast } = useFeedback();
+  const [date, setDate] = useState(props.start?.slice(0, 10) || todayWarsaw());
+  const [time, setTime] = useState(props.start ? addMinutes(props.start, props.durationMin || 60).slice(11, 16) : '10:00');
+  const [flatNo, setFlatNo] = useState('');
+  return (
+    <Sheet open={props.open} title={`Powiel zlecenie ${orderCode(props.order)}`} onClose={props.onClose}>
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!date || !time) return;
+          void run(async () => {
+            const copy = await duplicateOrder(props.order.id, { start: `${date}T${time}`, durationMin: props.durationMin || 60, flatNo });
+            props.onClose();
+            toast(`Nowe zlecenie ${orderCode(copy)}: ${formatDate(date)}, ${time}`);
+            navigate(`/zlecenia/${copy.id}`);
+          });
+        }}
+      >
+        <p className="sheet-text">
+          Nowe zlecenie z tymi samymi danymi: {orderAddress(props.order)}, {props.order.clientName || props.order.phones[0]?.number || 'ten sam klient'}. Np. drugie
+          mieszkanie obok, od tego samego właściciela.
+        </p>
+        <div className="form-row">
+          <Field label="Data">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          </Field>
+          <Field label="Godzina">
+            <TimeSelect value={time} onChange={setTime} />
+          </Field>
+        </div>
+        <Field label="Numer mieszkania" hint={props.order.flatNo ? `Teraz: ${props.order.flatNo}. Puste: bez numeru lokalu.` : 'Puste: bez numeru lokalu.'}>
+          <input value={flatNo} autoComplete="off" onChange={(e) => setFlatNo(e.target.value)} />
+        </Field>
+        <button type="submit" className="btn btn-primary btn-block" disabled={!date || !time}>
+          <Icon name="copy" /> Powiel zlecenie
+        </button>
+      </form>
+    </Sheet>
   );
 }

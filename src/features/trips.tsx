@@ -3,10 +3,11 @@ import { fillGap, odometerGaps } from '../data/day-trip';
 import { normalizeCity } from '../data/cities';
 import { useEffect, useState } from 'react';
 import { restoreRecord } from '../data/domain';
-import { driverSummary, mileageSheets, normalizePlate, routeText, suggestRoutes, homeBase } from '../data/mileage';
+import { driverSummary, mileageSheets, normalizePlate, routeText, suggestRoutes } from '../data/mileage';
 import { lastOdometer, tripKm } from '../data/orders';
 import { trips, orders, visits } from '../data/repo';
-import { COMPANY_NAME, getCompany, getProfile, getSyncState, getVehicle, ownedBy, saveVehicle, type VehicleSettings } from '../data/settings';
+import { COMPANY_NAME, DEFAULT_BASE, getCompany, getProfile, getSyncState, getVehicle, ownedBy, saveVehicle, type VehicleSettings } from '../data/settings';
+import { DayCard } from './day-card';
 import type { CompanySettings, Trip, TripKind } from '../data/types';
 import { formatDate, formatMonth, monthOf, nowWarsaw, shiftMonth, todayWarsaw } from '../lib/dates';
 import { mileageDocument } from '../pdf/documents';
@@ -40,11 +41,13 @@ function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileN
   const { run, toast } = useFeedback();
   const [plate, setPlate] = useState(props.vehicle.plate);
   const [driver, setDriver] = useState(props.vehicle.driver);
+  const [base, setBase] = useState(props.vehicle.base);
 
   useEffect(() => {
     if (props.open) {
       setPlate(props.vehicle.plate);
       setDriver(props.vehicle.driver || props.profileName);
+      setBase(props.vehicle.base);
     }
   }, [props.open, props.vehicle, props.profileName]);
 
@@ -55,7 +58,7 @@ function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileN
         onSubmit={(e) => {
           e.preventDefault();
           void run(async () => {
-            await saveVehicle({ plate: plate.trim().toUpperCase().replace(/\s+/g, ' '), driver: driver.trim() });
+            await saveVehicle({ plate: plate.trim().toUpperCase().replace(/\s+/g, ' '), driver: driver.trim(), base: normalizeCity(base) || DEFAULT_BASE });
             toast('Zapisano auto. Obowiązuje do następnej zmiany.');
             props.onClose();
           });
@@ -65,7 +68,10 @@ function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileN
           <input value={plate} autoCapitalize="characters" autoComplete="off" placeholder="Np. WE 1KR10" onChange={(e) => setPlate(e.target.value.toUpperCase())} />
         </Field>
         <Field label="Imię i nazwisko kierowcy" hint="Trafia do kolumny „osoba kierująca pojazdem” w ewidencji.">
-          <input value={driver} autoComplete="name" onChange={(e) => setDriver(e.target.value)} />
+          <input value={driver} autoComplete="off" onChange={(e) => setDriver(e.target.value)} />
+        </Field>
+        <Field label="Start i koniec każdej trasy" hint={`Każdy dzień zaczyna się i kończy tutaj. Puste: ${DEFAULT_BASE}.`}>
+          <input value={base} autoComplete="off" placeholder={DEFAULT_BASE} onChange={(e) => setBase(e.target.value)} />
         </Field>
         <button type="submit" className="btn btn-primary btn-block" disabled={normalizePlate(plate).length < 4 || !driver.trim()}>
           Zapisz
@@ -97,26 +103,20 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
     if (last?.value != null) setStart(String(last.value));
   }, [last?.value]);
 
-  // Propozycje tras: z bazy przez miejscowości dzisiejszych zabiegów i z powrotem, potem ostatnie trasy.
+  // Propozycja trasy tylko z zabiegów wybranego dnia: z bazy przez ich miejscowości i z powrotem do bazy.
   const routes = useLiveQuery(async () => {
     const me = (await getProfile()).userId;
-    const mine = (await trips.all()).filter((t) => !me || !t.ownerId || t.ownerId === me).sort((a, b) => b.date.localeCompare(a.date) || b.timeFrom.localeCompare(a.timeFrom));
     const byOrder = new Map((await orders.all()).map((o) => [o.id, o]));
     const dayVisits = (await visits.all())
       .filter((v) => v.status !== 'odwolany' && (v.doneOn === date || v.start?.slice(0, 10) === date) && (!me || !v.technicianId || v.technicianId === me))
       .sort((a, b) => (a.startedAt ?? a.start ?? '').localeCompare(b.startedAt ?? b.start ?? ''));
     const visitCities = dayVisits.map((v) => byOrder.get(v.orderId)?.city ?? '').filter(Boolean);
-    // Ostatnie miejsce: „Dokąd” z ostatniego przejazdu (służbowego albo prywatnego).
-    const lastPlace = mine.find((t) => t.to.trim())?.to.trim() ?? '';
-    return {
-      lastPlace,
-      list: suggestRoutes({ base: lastPlace || homeBase(mine.slice(0, 30)), visitCities, recent: mine.slice(0, 15) }),
-    };
-  }, [date]);
-  // „Skąd” wypełnia się samo ostatnim miejscem; można je zmienić.
+    return { list: suggestRoutes({ base: vehicle.base, visitCities }) };
+  }, [date, vehicle.base]);
+  // „Skąd” to baza (domyślnie Gdańsk); można ją zmienić.
   useEffect(() => {
-    if (routes?.lastPlace) setFrom((current) => current || routes.lastPlace);
-  }, [routes?.lastPlace]);
+    setFrom((current) => current || vehicle.base);
+  }, [vehicle.base]);
   const applyRoute = (points: string[]) => {
     setFrom(points[0] ?? '');
     setTo(points[points.length - 1] ?? '');
@@ -129,7 +129,9 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
   const endKm = Number(end);
   const km = effectiveStart && end ? endKm - startKm : null;
   const error = km !== null && km < 0 ? 'Licznik po przejeździe jest mniejszy niż przed' : undefined;
-  const ready = /^\d+$/.test(effectiveStart) && /^\d+$/.test(end) && !error && from.trim() && to.trim();
+  // Puste „Dokąd”: jazda lokalna (w obrębie miejscowości startu).
+  const destination = to.trim() || from.trim();
+  const ready = /^\d+$/.test(effectiveStart) && /^\d+$/.test(end) && !error && from.trim();
 
   return (
     <form
@@ -148,7 +150,7 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
             // Miejscowości z poprawioną pisownią; trasa „Gdańsk - Gdańsk” w ewidencji to jeden „Gdańsk”.
             from: normalizeCity(from),
             via: via.split(',').map(normalizeCity).filter(Boolean).join(', '),
-            to: normalizeCity(to),
+            to: normalizeCity(destination),
             purpose: '',
             vehicle: vehicle.plate,
             driver: vehicle.driver || profile.name,
@@ -156,7 +158,7 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
             odometerEnd: endKm,
           });
           toast(`Zapisano przejazd: ${km} km`);
-          setFrom(to.trim());
+          setFrom(vehicle.base);
           setVia('');
           setTo('');
           setStart(String(endKm));
@@ -197,7 +199,7 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
       )}
       {kind === 'sluzbowy' && routes && routes.list.length > 0 && (
         <div className="field">
-          <span className="field-label">Proponowane trasy</span>
+          <span className="field-label">Trasa po zleceniach z tego dnia</span>
           <div className="chips chips-wrap">
             {routes.list.map((r) => (
               <button key={r.join('|')} type="button" className="chip" onClick={() => applyRoute(r)}>
@@ -208,17 +210,22 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
         </div>
       )}
       <div className="form-row">
-        <Field label="Skąd" hint={routes?.lastPlace && from === routes.lastPlace ? 'Ostatnie miejsce z poprzedniego przejazdu.' : undefined}>
-          <input value={from} placeholder="Np. Łódź" onChange={(e) => setFrom(e.target.value)} />
+        <Field label="Skąd">
+          <input value={from} placeholder={vehicle.base} onChange={(e) => setFrom(e.target.value)} />
         </Field>
-        <Field label="Dokąd">
-          <input value={to} placeholder="Np. Łódź" onChange={(e) => setTo(e.target.value)} />
+        <Field label="Dokąd" hint="Puste: jazda lokalna.">
+          <input value={to} placeholder="lokalnie" onChange={(e) => setTo(e.target.value)} />
         </Field>
       </div>
       <Field label="Przez (opcjonalnie)" hint="Miejscowości po drodze po przecinku, np. Kutno, Kłodawa.">
         <input value={via} onChange={(e) => setVia(e.target.value)} />
       </Field>
-      {(from.trim() || to.trim()) && <p className="field-hint">Trasa w ewidencji: {routeText([from, ...via.split(','), to]) || '—'}</p>}
+      {from.trim() && (
+        <p className="field-hint">
+          Trasa w ewidencji: {routeText([from, ...via.split(','), destination]) || '—'}
+          {!to.trim() && !via.trim() ? ' (jazda lokalna)' : ''}
+        </p>
+      )}
       <div className="form-row">
         <Field label="Licznik przed (km)" hint={last?.value != null ? `Puste: ${last.value} km z poprzedniej jazdy.` : undefined}>
           <input inputMode="numeric" value={start} placeholder={last?.value != null ? String(last.value) : ''} onChange={(e) => setStart(e.target.value.replace(/\D/g, ''))} />
@@ -248,6 +255,7 @@ export function TripsPage() {
   const [filter, setFilter] = useState<TripKind | 'wszystkie'>('wszystkie');
   const [who, setWho] = useState('moje');
   const [vehicleOpen, setVehicleOpen] = useState(false);
+  const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
   const data = useLiveQuery(async () => {
     const profile = await getProfile();
@@ -306,7 +314,9 @@ export function TripsPage() {
         <Icon name="car" size={22} />
         <span className="vehicle-main">
           {vehicle.plate ? <strong className="plate">{vehicle.plate}</strong> : <strong>Auto: nie ustawiono</strong>}
-          <span className="row-sub">Kierowca: {myName || 'nie ustawiono'}</span>
+          <span className="row-sub">
+            Kierowca: {myName || 'nie ustawiono'} · trasy z {vehicle.base}
+          </span>
         </span>
         <span className="link">Zmień</span>
       </button>
@@ -317,7 +327,14 @@ export function TripsPage() {
         </div>
       )}
 
-      <TripForm vehicle={vehicle} onSaved={() => setMonth(monthOf(todayWarsaw()))} />
+      <DayCard always />
+      {manual ? (
+        <TripForm vehicle={vehicle} onSaved={() => setMonth(monthOf(todayWarsaw()))} />
+      ) : (
+        <button type="button" className="btn btn-block" onClick={() => setManual(true)}>
+          <Icon name="plus" /> Dopisz przejazd ręcznie (np. z innego dnia)
+        </button>
+      )}
 
       {data.owner && (
         <label className="inline-select">

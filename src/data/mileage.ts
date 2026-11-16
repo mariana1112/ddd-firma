@@ -41,19 +41,15 @@ export function routePoints(points: string[]): string[] {
 }
 
 /**
- * Proponowane trasy przejazdu służbowego: z bazy przez miejscowości zabiegów danego dnia (po kolei) i z powrotem
- * („Gdańsk - Gdynia - Gdańsk”; same zabiegi w Gdańsku: „Gdańsk”), a dalej ostatnio jeżdżone trasy. Bez powtórzeń.
+ * Proponowana trasa przejazdu służbowego: tylko z zabiegów tego dnia. Z bazy (domyślnie Gdańsk) przez miejscowości
+ * zabiegów po kolei według godzin i z powrotem do bazy („Gdańsk - Gdynia - Gdańsk”; same zabiegi w Gdańsku: „Gdańsk”).
+ * Bez zabiegów tego dnia nie ma propozycji.
  */
-export function suggestRoutes(input: { base: string; visitCities: string[]; recent: Array<Pick<Trip, 'from' | 'via' | 'to'>> }): string[][] {
-  const out: string[][] = [];
-  const add = (points: string[]) => {
-    const route = routePoints(points);
-    if (route.length && !out.some((r) => r.join('|') === route.join('|'))) out.push(route);
-  };
+export function suggestRoutes(input: { base: string; visitCities: string[] }): string[][] {
+  if (!input.visitCities.length) return [];
   const base = normalizeCity(input.base) || normalizeCity(input.visitCities[0] ?? '');
-  if (input.visitCities.length) add([base, ...input.visitCities, base]);
-  for (const t of input.recent) add([t.from, ...(t.via ?? '').split(','), t.to]);
-  return out.slice(0, 4);
+  const route = routePoints([base, ...input.visitCities, base]);
+  return route.length ? [route] : [];
 }
 
 /** Baza technika: miejscowość, z której najczęściej wyjeżdża (ostatnie przejazdy). */

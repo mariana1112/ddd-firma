@@ -1,4 +1,7 @@
 import { orderCode, roman, visitCode } from '../data/codes';
+import { DuplicateOrderSheet } from './order-form';
+import { nextVisitDays, previousVisitDay } from '../data/geo';
+import { NextDates } from './next-dates';
 import { withCountryCode } from '../lib/validators';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
@@ -18,14 +21,14 @@ import {
   pestName,
   priceRange,
   workSummary,
-  bookedBy, firstName, orderText, centralExport } from '../data/texts';
+  bookedBy, firstName, orderText, centralExport, orderAddress, telUrl } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { TomorrowReminders } from './reminders';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
-import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect, goBack } from '../ui/kit';
+import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect, goBack, PasteButton } from '../ui/kit';
 import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
 import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, recommendationsFor, SEALING_OPTIONS, methodNames } from '../data/methods';
 import { Photos } from './photos';
@@ -155,9 +158,14 @@ function OrderField(props: { label: string; value: string; missing: boolean; err
   const [value, setValue] = useState(props.value);
   useEffect(() => setValue(props.value), [props.value]);
   return (
-    <Field label={props.label} error={props.error ?? (props.missing ? `Uzupełnij: ${props.label}` : undefined)}>
+    <Field
+      label={props.label}
+      error={props.error ?? (props.missing ? `Uzupełnij: ${props.label}` : undefined)}
+      action={<PasteButton onPaste={(t) => { setValue(t); if (t !== props.value) props.onSave(t); }} />}
+    >
       <input
         value={value}
+        autoComplete="off"
         inputMode={props.inputMode}
         autoCapitalize={props.inputMode === 'email' ? 'none' : undefined}
         placeholder={props.placeholder}
@@ -385,9 +393,11 @@ function FinishSheet(props: {
   const [mode, setMode] = useState<NextVisit['mode']>(later ? (later.start ? 'umowiony' : 'technik') : visit.seq === 1 ? 'technik' : 'brak');
   const [date, setDate] = useState(later?.start?.slice(0, 10) ?? '');
   const [time, setTime] = useState(later?.start?.slice(11, 16) ?? visit.start?.slice(11, 16) ?? '10:00');
+  // Bez wybranej daty: pierwszy proponowany dzień (8–12 dni po wykonaniu).
+  const pickedDate = date || nextVisitDays(doneOn)[0] || '';
   const [busy, setBusy] = useState(false);
   const nextSeq = visit.seq + 1;
-  const ready = mode !== 'umowiony' || Boolean(date && time);
+  const ready = mode !== 'umowiony' || Boolean(pickedDate && time);
 
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
@@ -438,9 +448,21 @@ function FinishSheet(props: {
           </div>
         </div>
         {mode === 'umowiony' && (
+          <NextDates
+            after={doneOn}
+            durationMin={visit.durationMin || 60}
+            date={pickedDate}
+            time={time}
+            onPick={(d, t) => {
+              setDate(d);
+              setTime(t);
+            }}
+          />
+        )}
+        {mode === 'umowiony' && (
           <div className="form-row">
             <Field label="Data">
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <input type="date" value={pickedDate} onChange={(e) => setDate(e.target.value)} />
             </Field>
             <Field label="Godzina">
               <TimeSelect value={time} onChange={setTime} />
@@ -455,7 +477,7 @@ function FinishSheet(props: {
             setBusy(true);
             const t = props.initialTerms;
             const next: NextVisit =
-              mode === 'umowiony' ? { mode, start: `${date}T${time}`, durationMin: visit.durationMin, terms: t } : mode === 'technik' ? { mode, terms: t } : { mode };
+              mode === 'umowiony' ? { mode, start: `${pickedDate}T${time}`, durationMin: visit.durationMin, terms: t } : mode === 'technik' ? { mode, terms: t } : { mode };
             await props.onFinish({ recommendations, next, doneOn });
             setBusy(false);
           }}
@@ -464,6 +486,48 @@ function FinishSheet(props: {
         </button>
       </div>
     </Sheet>
+  );
+}
+
+/** Kroki zabiegu w trakcie (jak kroki tworzenia zlecenia). */
+const WORK_STEPS = ['Wywiad', 'Co wykonano', 'Zdjęcia i protokół', 'Płatność i zakończenie'];
+
+/**
+ * Nagłówek zabiegu w trakcie: tylko to, co potrzebne na miejscu. Adres, telefon i opis od przyjmującego (np. szefa);
+ * pozostałe dane zlecenia są na karcie zabiegu przed rozpoczęciem i po zakończeniu.
+ */
+function WorkHeader({ order, visit }: { order: Order; visit: Visit }) {
+  const phone = order.phones[0];
+  return (
+    <div className="work-head">
+      <div className="work-head-top">
+        <span>
+          <strong>{orderAddress(order)}</strong>
+          <span className="row-sub">
+            {pestName(order)} · {visitWhen(visit)}
+          </span>
+        </span>
+        {phone && (
+          <a className="btn btn-sm" href={telUrl(phone.number)}>
+            <Icon name="phone" /> Zadzwoń
+          </a>
+        )}
+      </div>
+      {order.description.trim() ? (
+        <div className="order-note">
+          <span className="order-note-label">Opis{order.ownerName ? ` od ${firstName(order.ownerName)}` : ''}</span>
+          <p>{order.description.trim()}</p>
+        </div>
+      ) : (
+        <p className="row-sub">Bez opisu przy zleceniu.</p>
+      )}
+      {order.pink && (
+        <div className="notice notice-pink">
+          <Icon name="alert" />
+          <span>Kod pink{order.pinkNote ? `: ${order.pinkNote}` : ''}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -476,12 +540,18 @@ export function VisitPage() {
   const [editingPlanned, setEditingPlanned] = useState(false);
   const [leavingStarted, setLeavingStarted] = useState(false);
   const [planningNext, setPlanningNext] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [editingTerms, setEditingTerms] = useState(false);
   // Próba zakończenia bez płatności: sekcja płatności świeci na czerwono, ekran przewija się do niej.
   const [payAlert, setPayAlert] = useState(false);
   // Faktura bez potrzebnych danych (NIP, firma, imię i nazwisko, e-mail): pola świecą na czerwono.
   const [invoiceAlert, setInvoiceAlert] = useState(false);
   const payRef = useRef<HTMLDivElement>(null);
+  const [workStep, setWorkStep] = useState(0);
+  const goStep = (i: number) => {
+    setWorkStep(Math.max(0, Math.min(WORK_STEPS.length - 1, i)));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   // Pole opisu kodu pink dostaje kursor tylko zaraz po zaznaczeniu, a nie przy każdym wejściu na ekran.
   const [pinkJustOn, setPinkJustOn] = useState(false);
   // Wykonany zabieg pokazuje podsumowanie; formularz otwiera „Edytuj zabieg” albo link z ?edycja=1.
@@ -522,7 +592,10 @@ export function VisitPage() {
   const summary = visit.status === 'wykonany' && !editing;
   const active = visit.status === 'w_trakcie' || (visit.status === 'wykonany' && editing);
 
-  const scrollToPay = () => setTimeout(() => payRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  const scrollToPay = () => {
+    setWorkStep(WORK_STEPS.length - 1);
+    setTimeout(() => payRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+  };
 
   /**
    * „Zakończ zabieg”: forma płatności i kwota są wymagane. Gdy ich brakuje, płatność świeci na czerwono i ekran
@@ -606,7 +679,7 @@ export function VisitPage() {
     // Klucz: przejście do innego zabiegu tworzy pola od nowa, żeby nie zostały w nich wartości poprzedniego.
     <Page
       key={visit.id}
-      title={visitCode(order, visit.seq)}
+      title={active ? `Zabieg ${visitCode(order, visit.seq)}` : visitCode(order, visit.seq)}
       back="/zlecenia"
       onBack={visit.status === 'w_trakcie' ? () => setLeavingStarted(true) : undefined}
     >
@@ -651,64 +724,71 @@ export function VisitPage() {
           </button>
         </div>
       </Sheet>
-      <div className="job-hero">
-        <div className="hero-badges">
-          <VisitBadge visit={visit} />
-          {order.pink && <PinkBadge />}
+      {active ? (
+        <WorkHeader order={order} visit={visit} />
+      ) : (
+        <>
+        <div className="job-hero">
+          <div className="hero-badges">
+            <VisitBadge visit={visit} />
+            {order.pink && <PinkBadge />}
+          </div>
+          <ClientHeading order={order} />
+          <AddressBlock order={order} />
+          <p>
+            {pestName(order)} · {visitWhen(visit)}
+          </p>
+          {bookedBy(visit, order) && <p className="visit-booked">Umówione przez: {firstName(bookedBy(visit, order))}</p>}
         </div>
-        <ClientHeading order={order} />
-        <AddressBlock order={order} />
-        <p>
-          {pestName(order)} · {visitWhen(visit)}
-        </p>
-        {bookedBy(visit, order) && <p className="visit-booked">Umówione przez: {firstName(bookedBy(visit, order))}</p>}
-      </div>
 
-      <ContactBar
-        order={order}
-        visit={visit}
-      />
-      {params.has('nowe') && visit.start && (
-        <div className="notice notice-info calendar-offer">
-          <Icon name="calendar" />
-          <span>
-            <strong>Zlecenie zapisane.</strong> Dodać termin {formatTerm(visit.start)} do Kalendarza Google?
-          </span>
-          <span className="notice-actions">
-            <a className="btn btn-sm btn-primary" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer" onClick={() => setParams({}, { replace: true })}>
-              Dodaj do kalendarza
-            </a>
-            <button type="button" className="btn btn-sm" onClick={() => setParams({}, { replace: true })}>
-              Nie teraz
+        <ContactBar
+          order={order}
+          visit={visit}
+        />
+        {params.has('nowe') && visit.start && (
+          <div className="notice notice-info calendar-offer">
+            <Icon name="calendar" />
+            <span>
+              <strong>Zlecenie zapisane.</strong> Dodać termin {formatTerm(visit.start)} do Kalendarza Google?
+            </span>
+            <span className="notice-actions">
+              <a className="btn btn-sm btn-primary" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer" onClick={() => setParams({}, { replace: true })}>
+                Dodaj do kalendarza
+              </a>
+              <button type="button" className="btn btn-sm" onClick={() => setParams({}, { replace: true })}>
+                Nie teraz
+              </button>
+            </span>
+          </div>
+        )}
+        <OrderInfo order={order} visits={list} vatRate={settings.vatRate} />
+
+        {order.access && (
+          <div className="notice notice-info">
+            <Icon name="pin" />
+            <span>{order.access}</span>
+          </div>
+        )}
+        {order.pink && (
+          <div className="notice notice-pink">
+            <Icon name="alert" />
+            <span>Kod pink{order.pinkNote ? `: ${order.pinkNote}` : ''}</span>
+          </div>
+        )}
+
+        {!summary && !active && (
+          <div className="terms-bar">
+            <span>
+              <span className="terms-label">Co pryskamy i cena</span>
+              {termsText(terms, order.invoice, settings.vatRate)}
+            </span>
+            <button type="button" className="btn btn-sm" onClick={() => setEditingTerms(true)}>
+              <Icon name="edit" /> Zmień
             </button>
-          </span>
-        </div>
-      )}
-      <OrderInfo order={order} visits={list} vatRate={settings.vatRate} />
+          </div>
+        )}
 
-      {order.access && (
-        <div className="notice notice-info">
-          <Icon name="pin" />
-          <span>{order.access}</span>
-        </div>
-      )}
-      {order.pink && (
-        <div className="notice notice-pink">
-          <Icon name="alert" />
-          <span>Kod pink{order.pinkNote ? `: ${order.pinkNote}` : ''}</span>
-        </div>
-      )}
-
-      {!summary && (
-        <div className="terms-bar">
-          <span>
-            <span className="terms-label">Co pryskamy i cena</span>
-            {termsText(terms, order.invoice, settings.vatRate)}
-          </span>
-          <button type="button" className="btn btn-sm" onClick={() => setEditingTerms(true)}>
-            <Icon name="edit" /> Zmień
-          </button>
-        </div>
+        </>
       )}
 
       {visit.status === 'zaplanowany' && (
@@ -733,24 +813,33 @@ export function VisitPage() {
             <button type="button" className="btn" onClick={() => setEditingPlanned(true)}>
               <Icon name="edit" /> {visit.start ? 'Edytuj zabieg (termin, czas, zakres, cena)' : 'Umów termin i edytuj zabieg'}
             </button>
-            {visit.start && (
-              <a className="btn" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer">
-                <Icon name="calendar" /> Dodaj do Kalendarza Google
-              </a>
-            )}
-            {later?.start ? (
-              <button type="button" className="btn" onClick={() => navigate(`/zabieg/${later.id}`)}>
-                <Icon name="calendar" /> Kolejny zabieg {roman(later.seq)}: {formatTerm(later.start)}
-              </button>
-            ) : (
-              <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
-                <Icon name="calendar" /> Umów kolejny zabieg
-              </button>
-            )}
-            <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
-              <Icon name="close" /> Odwołaj zabieg
-            </button>
           </div>
+          <details className="more-actions">
+            <summary>Więcej opcji</summary>
+            <div className="btn-stack">
+              {visit.start && (
+                <a className="btn" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer">
+                  <Icon name="calendar" /> Dodaj do Kalendarza Google
+                </a>
+              )}
+              {later?.start ? (
+                <button type="button" className="btn" onClick={() => navigate(`/zabieg/${later.id}`)}>
+                  <Icon name="calendar" /> Kolejny zabieg {roman(later.seq)}: {formatTerm(later.start)}
+                </button>
+              ) : (
+                <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
+                  <Icon name="calendar" /> Umów kolejny zabieg
+                </button>
+              )}
+              <button type="button" className="btn" onClick={() => setDuplicating(true)}>
+                <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
+              </button>
+              <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
+                <Icon name="close" /> Odwołaj zabieg
+              </button>
+            </div>
+          </details>
+          {duplicating && <DuplicateOrderSheet order={order} open durationMin={visit.durationMin || 60} start={visit.start} onClose={() => setDuplicating(false)} />}
         </>
       )}
 
@@ -813,6 +902,7 @@ export function VisitPage() {
         {planningNext && (
           <ScheduleNext
             durationMin={visit.durationMin || 60}
+            after={previousVisitDay(list, later?.seq ?? Math.max(...list.map((v) => v.seq)) + 1) ?? visit.doneOn ?? visit.start?.slice(0, 10) ?? todayWarsaw()}
             initial={proposeTerms(list, order)}
             invoice={order.invoice}
             onSave={(start, durationMin, nextTerms) =>
@@ -829,173 +919,224 @@ export function VisitPage() {
 
       {active && (
         <>
-          <Group title="Wywiad" plain>
-            <AutoText
-              label="Opis"
-              placeholder="Co się dzieje, gdzie, od kiedy"
-              rows={4}
-              value={interview.situation}
-              onSave={(v) => saveInterview('situation', v)}
-            />
-            {order.pest !== 'karaluchy' && <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />}
-            <YesNoField label="Czy widziano owady?" value={interview.seen} onChange={(v) => saveInterview('seen', v)} />
-            {interview.seen === 'tak' && (
-              <AutoText label="Ile owadów?" placeholder="Np. kilka, ok. 20" rows={1} value={interview.seenCount} onSave={(v) => saveInterview('seenCount', v)} />
-            )}
-            <YesNoField label="Czy klient używał środków na własną rękę?" value={interview.selfTreatment} onChange={(v) => saveInterview('selfTreatment', v)} />
-          </Group>
-
-          <Group title="Wykonane" plain>
-            <ToggleChips
-              options={[...new Set([...Object.values(METHOD_LABEL).filter((l) => l !== METHOD_LABEL.inne), ...methodNames(order), ...EXTRA_TREATMENTS, ...settings.treatments.filter((t) => !methodOf(t))])]}
-              selected={visit.treatments}
-              addLabel="Inny zabieg"
-              onChange={(treatments) => save({ treatments })}
-            />
-            <span className="field-label">Miejsca wykonywania oprysku/żelowania</span>
-            <ToggleChips options={settings.places} selected={visit.places} addLabel="Inne miejsce" onChange={(places) => save({ places })} />
-            {workSummary(visit) && <p className="field-hint">Do wiadomości: {workSummary(visit)}</p>}
-          </Group>
-
-          <Group title="Czy trzeba uszczelnić?" plain>
-            <p className="field-hint">Zaznacz, co klient powinien uszczelnić. Trafi do zaleceń w SMS-ie po zabiegu.</p>
-            <ToggleChips options={SEALING_OPTIONS} selected={visit.sealing ?? []} addLabel="Inne miejsce do uszczelnienia" onChange={(sealing) => save({ sealing })} />
-          </Group>
-
-          <Group title="Zdjęcia" plain>
-            <Photos visitId={visit.id} />
-          </Group>
-
-          <Group title="Protokół" plain>
-            <label className="check">
-              <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
-              Klient chce protokół z zabiegu
-            </label>
-          </Group>
-
-          <div className={order.pink ? 'pink-box active' : 'pink-box'}>
-            <label className="check check-pink">
-              <input
-                type="checkbox"
-                checked={order.pink}
-                onChange={(e) => {
-                  setPinkJustOn(e.target.checked);
-                  void run(() => orders.update(order.id, { pink: e.target.checked }));
-                }}
-              />
-              Kod pink: trudny klient lub problematyczne mieszkanie
-            </label>
-            {order.pink && (
-              <AutoText
-                label="Co i jak?"
-                placeholder={PINK_PLACEHOLDER}
-                rows={3}
-                autoFocus={pinkJustOn}
-                value={order.pinkNote}
-                onSave={(pinkNote) => void run(() => orders.update(order.id, { pinkNote }))}
-              />
-            )}
+          {/* Zabieg krok po kroku, jak tworzenie zlecenia: wywiad, wykonane, zdjęcia i protokół, płatność. */}
+          <div className="wizard-progress" aria-label={`Krok ${workStep + 1} z ${WORK_STEPS.length}`}>
+            {WORK_STEPS.map((title, i) => (
+              <button key={title} type="button" className={i <= workStep ? 'done' : ''} aria-label={title} onClick={() => goStep(i)} />
+            ))}
           </div>
-
-          <div ref={payRef} className={payAlert && (!visit.payMethod || !visit.amount) ? 'pay-group pay-alert' : 'pay-group'}>
-          <Group title="Płatność (wymagana)" plain>
-            {payAlert && (!visit.payMethod || !visit.amount) && (
-              <p className="pay-alert-text">
-                <Icon name="alert" size={16} /> {!visit.payMethod ? 'Wybierz formę płatności' : 'Wpisz kwotę pobraną od klienta'}
-              </p>
-            )}
-            <div className="pay-choice">
-              {(['gotowka', 'blik', 'przelew'] as PayMethod[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={`pay-option pay-opt-${m}${visit.payMethod === m ? ' active' : ''}${payAlert && !visit.payMethod ? ' missing' : ''}`}
-                  aria-pressed={visit.payMethod === m}
-                  onClick={() => save({ payMethod: visit.payMethod === m ? null : m })}
-                >
-                  {PAY_NAMES[m]}
-                </button>
-              ))}
-            </div>
-            {visit.payMethod === 'przelew' && company.bankAccount.trim() && (
-              <div className="pay-details">
-                <CopyRow label="Numer konta do przelewu" value={formatAccount(company.bankAccount)} copyValue={company.bankAccount.replace(/\s/g, '')} />
-              </div>
-            )}
-            {visit.payMethod === 'blik' && company.blikPhone?.trim() && (
-              <div className="pay-details">
-                <CopyRow label="BLIK na telefon" value={company.blikPhone.trim()} copyValue={company.blikPhone.replace(/\s/g, '')} />
-              </div>
-            )}
-            <AmountField value={visit.amount} missing={payAlert && !visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
-            <div className="choice">
-              {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={order.invoice === value ? 'choice-item active' : 'choice-item'}
-                  onClick={() => void run(() => orders.update(order.id, { invoice: value }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <InvoiceData order={order} alert={invoiceAlert} onSave={(patch) => void run(() => orders.update(order.id, patch))} />
-          </Group>
-          </div>
-
-          {visit.status === 'w_trakcie' ? (
+          <h2 className="wizard-title">
+            {workStep + 1}. {WORK_STEPS[workStep]}
+          </h2>
+          {workStep === 0 && (
             <>
-              {later?.start ? (
-                <p className="notice notice-info">
-                  <Icon name="calendar" />
-                  <span>
-                    Kolejny zabieg {roman(later.seq)} umówiony: <strong>{formatTerm(later.start)}</strong>
-                  </span>
-                </p>
-              ) : (
-                <button type="button" className="btn btn-block" onClick={() => setPlanningNext(true)}>
-                  <Icon name="calendar" /> Umów od razu kolejny zabieg
-                </button>
+              <Group plain>
+              <AutoText
+                label="Opis"
+                placeholder="Co się dzieje, gdzie, od kiedy"
+                rows={4}
+                value={interview.situation}
+                onSave={(v) => saveInterview('situation', v)}
+              />
+              {order.pest !== 'karaluchy' && <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />}
+              <YesNoField label="Czy widziano owady?" value={interview.seen} onChange={(v) => saveInterview('seen', v)} />
+              {interview.seen === 'tak' && (
+                <AutoText label="Ile owadów?" placeholder="Np. kilka, ok. 20" rows={1} value={interview.seenCount} onSave={(v) => saveInterview('seenCount', v)} />
               )}
-              <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void requestFinish()}>
-                <Icon name="check" /> Zakończ zabieg
-              </button>
-              <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void cancel()}>
-                <Icon name="close" /> Odwołaj zabieg
-              </button>
-            </>
-          ) : (
-            <Group title="Po zabiegu" plain>
-              {/* Dzień wykonania decyduje o raporcie: można go poprawić, gdy zabieg zamknięto później. */}
-              <Field label="Data wykonania" hint="Zabieg liczy się do raportu z tego dnia.">
-                <input
-                  type="date"
-                  value={visit.doneOn ?? ''}
-                  max={todayWarsaw()}
-                  onChange={(e) => e.target.value && void run(async () => { await visits.update(visit.id, { doneOn: e.target.value }); toast(`Data wykonania: ${formatDate(e.target.value)}`); })}
-                />
-              </Field>
-              {visit.bonus > 0 && <Badge tone="ok">Premia {moneyToInput(visit.bonus)} zł</Badge>}
-              {later && (
-                <p className="field-hint">
-                  Zabieg {roman(later.seq)}: {later.start ? formatTerm(later.start) : 'klient umówi się później'}
-                </p>
-              )}
-              <div className="btn-stack">
-                <button type="button" className="btn btn-primary" onClick={() => { setEditingId(null); if (params.has('edycja')) navigate(`/zabieg/${visit.id}`, { replace: true }); }}>
-                  <Icon name="check" /> Zapisz i wyjdź
-                </button>
-                <button type="button" className="btn" onClick={() => setFinishing(true)}>
-                  Zmień zalecenia lub kolejny zabieg
-                </button>
-              </div>
+              <YesNoField label="Czy klient używał środków na własną rękę?" value={interview.selfTreatment} onChange={(v) => saveInterview('selfTreatment', v)} />
             </Group>
+
+            </>
+          )}
+          {workStep === 1 && (
+            <>
+            <Group title="Wykonane" plain>
+              <ToggleChips
+                options={[...new Set([...Object.values(METHOD_LABEL).filter((l) => l !== METHOD_LABEL.inne), ...methodNames(order), ...EXTRA_TREATMENTS, ...settings.treatments.filter((t) => !methodOf(t))])]}
+                selected={visit.treatments}
+                addLabel="Inny zabieg"
+                onChange={(treatments) => save({ treatments })}
+              />
+              <span className="field-label">Miejsca wykonywania oprysku/żelowania</span>
+              <ToggleChips options={settings.places} selected={visit.places} addLabel="Inne miejsce" onChange={(places) => save({ places })} />
+              {workSummary(visit) && <p className="field-hint">Do wiadomości: {workSummary(visit)}</p>}
+            </Group>
+
+            <Group title="Czy trzeba uszczelnić?" plain>
+              <p className="field-hint">Zaznacz, co klient powinien uszczelnić. Trafi do zaleceń w SMS-ie po zabiegu.</p>
+              <ToggleChips options={SEALING_OPTIONS} selected={visit.sealing ?? []} addLabel="Inne miejsce do uszczelnienia" onChange={(sealing) => save({ sealing })} />
+            </Group>
+
+            </>
+          )}
+          {workStep === 2 && (
+            <>
+            <Group title="Zdjęcia" plain>
+              <Photos visitId={visit.id} />
+            </Group>
+
+            <Group title="Protokół" plain>
+              <label className="check">
+                <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
+                Klient chce protokół z zabiegu
+              </label>
+            </Group>
+
+            <div className={order.pink ? 'pink-box active' : 'pink-box'}>
+              <label className="check check-pink">
+                <input
+                  type="checkbox"
+                  checked={order.pink}
+                  onChange={(e) => {
+                    setPinkJustOn(e.target.checked);
+                    void run(() => orders.update(order.id, { pink: e.target.checked }));
+                  }}
+                />
+                Kod pink: trudny klient lub problematyczne mieszkanie
+              </label>
+              {order.pink && (
+                <AutoText
+                  label="Co i jak?"
+                  placeholder={PINK_PLACEHOLDER}
+                  rows={3}
+                  autoFocus={pinkJustOn}
+                  value={order.pinkNote}
+                  onSave={(pinkNote) => void run(() => orders.update(order.id, { pinkNote }))}
+                />
+              )}
+            </div>
+
+            </>
+          )}
+          {workStep === 3 && (
+            <>
+            <div className="terms-bar">
+              <span>
+                <span className="terms-label">Co pryskamy i cena</span>
+                {termsText(terms, order.invoice, settings.vatRate)}
+              </span>
+              <button type="button" className="btn btn-sm" onClick={() => setEditingTerms(true)}>
+                <Icon name="edit" /> Zmień
+              </button>
+            </div>
+            <div ref={payRef} className={payAlert && (!visit.payMethod || !visit.amount) ? 'pay-group pay-alert' : 'pay-group'}>
+            <Group title="Płatność (wymagana)" plain>
+              {payAlert && (!visit.payMethod || !visit.amount) && (
+                <p className="pay-alert-text">
+                  <Icon name="alert" size={16} /> {!visit.payMethod ? 'Wybierz formę płatności' : 'Wpisz kwotę pobraną od klienta'}
+                </p>
+              )}
+              <div className="pay-choice">
+                {(['gotowka', 'blik', 'przelew'] as PayMethod[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`pay-option pay-opt-${m}${visit.payMethod === m ? ' active' : ''}${payAlert && !visit.payMethod ? ' missing' : ''}`}
+                    aria-pressed={visit.payMethod === m}
+                    onClick={() => save({ payMethod: visit.payMethod === m ? null : m })}
+                  >
+                    {PAY_NAMES[m]}
+                  </button>
+                ))}
+              </div>
+              {visit.payMethod === 'przelew' && company.bankAccount.trim() && (
+                <div className="pay-details">
+                  <CopyRow label="Numer konta do przelewu" value={formatAccount(company.bankAccount)} copyValue={company.bankAccount.replace(/\s/g, '')} />
+                </div>
+              )}
+              {visit.payMethod === 'blik' && company.blikPhone?.trim() && (
+                <div className="pay-details">
+                  <CopyRow label="BLIK na telefon" value={company.blikPhone.trim()} copyValue={company.blikPhone.replace(/\s/g, '')} />
+                </div>
+              )}
+              <AmountField value={visit.amount} missing={payAlert && !visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
+              <div className="choice">
+                {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={order.invoice === value ? 'choice-item active' : 'choice-item'}
+                    onClick={() => void run(() => orders.update(order.id, { invoice: value }))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <InvoiceData order={order} alert={invoiceAlert} onSave={(patch) => void run(() => orders.update(order.id, patch))} />
+            </Group>
+            </div>
+
+            {visit.status === 'w_trakcie' ? (
+              <>
+                {later?.start ? (
+                  <p className="notice notice-info">
+                    <Icon name="calendar" />
+                    <span>
+                      Kolejny zabieg {roman(later.seq)} umówiony: <strong>{formatTerm(later.start)}</strong>
+                    </span>
+                  </p>
+                ) : (
+                  <button type="button" className="btn btn-block" onClick={() => setPlanningNext(true)}>
+                    <Icon name="calendar" /> Umów od razu kolejny zabieg
+                  </button>
+                )}
+                <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void requestFinish()}>
+                  <Icon name="check" /> Zakończ zabieg
+                </button>
+                <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void cancel()}>
+                  <Icon name="close" /> Odwołaj zabieg
+                </button>
+              </>
+            ) : (
+              <Group title="Po zabiegu" plain>
+                {/* Dzień wykonania decyduje o raporcie: można go poprawić, gdy zabieg zamknięto później. */}
+                <Field label="Data wykonania" hint="Zabieg liczy się do raportu z tego dnia.">
+                  <input
+                    type="date"
+                    value={visit.doneOn ?? ''}
+                    max={todayWarsaw()}
+                    onChange={(e) => e.target.value && void run(async () => { await visits.update(visit.id, { doneOn: e.target.value }); toast(`Data wykonania: ${formatDate(e.target.value)}`); })}
+                  />
+                </Field>
+                {visit.bonus > 0 && <Badge tone="ok">Premia {moneyToInput(visit.bonus)} zł</Badge>}
+                {later && (
+                  <p className="field-hint">
+                    Zabieg {roman(later.seq)}: {later.start ? formatTerm(later.start) : 'klient umówi się później'}
+                  </p>
+                )}
+                <div className="btn-stack">
+                  <button type="button" className="btn btn-primary" onClick={() => { setEditingId(null); if (params.has('edycja')) navigate(`/zabieg/${visit.id}`, { replace: true }); }}>
+                    <Icon name="check" /> Zapisz i wyjdź
+                  </button>
+                  <button type="button" className="btn" onClick={() => setFinishing(true)}>
+                    Zmień zalecenia lub kolejny zabieg
+                  </button>
+                </div>
+              </Group>
+            )}
+            </>
+          )}
+          {workStep < WORK_STEPS.length - 1 && (
+            <div className="wizard-nav">
+              {workStep > 0 && (
+                <button type="button" className="btn" onClick={() => goStep(workStep - 1)}>
+                  Wstecz
+                </button>
+              )}
+              <button type="button" className="btn btn-primary" onClick={() => goStep(workStep + 1)}>
+                Dalej
+              </button>
+            </div>
+          )}
+          {workStep === WORK_STEPS.length - 1 && (
+            <button type="button" className="btn btn-block" onClick={() => goStep(workStep - 1)}>
+              Wstecz
+            </button>
           )}
         </>
       )}
 
-      <History list={list} current={visit} order={order} vatRate={settings.vatRate} />
+      {!active && <History list={list} current={visit} order={order} vatRate={settings.vatRate} />}
 
       {finishing && (
         <FinishSheet
@@ -1029,6 +1170,7 @@ export function VisitPage() {
         {editingPlanned && (
           <EditPlanned
             visit={visit}
+            after={previousVisitDay(list, visit.seq)}
             terms={terms}
             invoice={order.invoice}
             orderId={order.id}
@@ -1060,6 +1202,8 @@ function EditPlanned(props: {
   terms: VisitTerms;
   invoice: Order['invoice'];
   orderId: string;
+  /** Dzień poprzedniego zabiegu (dla II, III…): propozycje terminów 8–12 dni później. */
+  after?: string | null;
   onSave: (patch: Pick<Visit, 'start' | 'durationMin' | 'scope' | 'priceMin' | 'priceMax'>) => void;
 }) {
   const [date, setDate] = useState(props.visit.start?.slice(0, 10) ?? '');
@@ -1077,6 +1221,18 @@ function EditPlanned(props: {
         props.onSave({ start: date ? `${date}T${time}` : null, durationMin: duration, scope: parsed.scope, priceMin: parsed.priceMin, priceMax: parsed.priceMax });
       }}
     >
+      {props.after && props.visit.seq > 1 && (
+        <NextDates
+          after={props.after}
+          durationMin={duration}
+          date={date}
+          time={time}
+          onPick={(d, t) => {
+            setDate(d);
+            setTime(t);
+          }}
+        />
+      )}
       <div className="form-row">
         <Field label="Data" hint="Puste: termin do umówienia.">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />

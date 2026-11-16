@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { dayPurpose, dayRoute, dayVisits, fillGap, finishDay, getDayStart, odometerGaps, startDay } from './day-trip';
+import { dayPurpose, dayRoute, dayVisits, endPrivate, fillGap, finishDay, getDayStart, odometerGaps, startDay, startPrivate } from './day-trip';
 import { db } from './db';
 import { buildReport, periodOf } from './reports';
 import { trips } from './repo';
@@ -69,5 +69,19 @@ describe('kilometrówka „Dzień w trasie”', () => {
     expect(gaps).toEqual([{ vehicle: 'GD12345', date: '2026-11-14', from: 120500, to: 120512, km: 12 }]);
     await fillGap(gaps[0], 'Gdańsk', 'me', 'Maurycy');
     expect(odometerGaps(await trips.all())).toEqual([]);
+  });
+});
+
+describe('jazda prywatna w trakcie dnia', () => {
+  it('„Jadę prywatnie” i „Koniec”: kilometry odcinka dochodzą do prywatnych z dnia', async () => {
+    await startDay({ date: '2026-11-16', odometer: 1000, vehicle: 'GD 1', from: 'Gdańsk', startedAt: '2026-11-16T08:00' });
+    await expect(startPrivate(990)).rejects.toThrow();
+    await startPrivate(1040);
+    await expect(endPrivate(1030)).rejects.toThrow();
+    expect(await endPrivate(1052)).toBe(12);
+    await startPrivate(1100);
+    expect(await endPrivate(1105)).toBe(5);
+    expect(await getDayStart()).toMatchObject({ privateKm: 17 });
+    expect((await getDayStart())?.privateFrom).toBeUndefined();
   });
 });

@@ -16,8 +16,36 @@ export interface DayStart {
   vehicle: string;
   from: string;
   startedAt: string;
-  /** Przystanki bez zabiegu (stacja, hurtownia), dopisane w ciągu dnia. */
+  /** Przystanki bez zabiegu (stacja, hurtownia), dopisane w ciągu dnia (starsze wersje). */
   stops?: string[];
+  /** Kilometry prywatne zebrane w ciągu dnia („Jadę prywatnie” → „Koniec jazdy prywatnej”). */
+  privateKm?: number;
+  /** Licznik na początku trwającej jazdy prywatnej. */
+  privateFrom?: number;
+}
+
+/** „Jadę prywatnie”: zapamiętuje licznik na początku prywatnego odcinka w trakcie dnia. */
+export async function startPrivate(odometer: number): Promise<void> {
+  const start = await getDayStart();
+  if (!start) throw new DomainError('Najpierw „Jadę”: prywatny odcinek liczy się w trakcie dnia.');
+  if (!Number.isInteger(odometer) || odometer < start.odometer) {
+    throw new DomainError(`Licznik nie może być mniejszy niż rano (${start.odometer.toLocaleString('pl-PL')} km).`);
+  }
+  await startDay({ ...start, privateFrom: odometer });
+}
+
+/** „Koniec jazdy prywatnej”: kilometry odcinka dopisują się do prywatnych z tego dnia. */
+export async function endPrivate(odometer: number): Promise<number> {
+  const start = await getDayStart();
+  if (!start || start.privateFrom === undefined) return 0;
+  if (!Number.isInteger(odometer) || odometer < start.privateFrom) {
+    throw new DomainError(`Licznik nie może być mniejszy niż na początku jazdy prywatnej (${start.privateFrom.toLocaleString('pl-PL')} km).`);
+  }
+  const km = odometer - start.privateFrom;
+  const { privateFrom: _closed, ...rest } = start;
+  void _closed;
+  await startDay({ ...rest, privateKm: (start.privateKm ?? 0) + km });
+  return km;
 }
 
 /** Klucz w pamięci tego telefonu (bez synchronizacji): start dnia dotyczy tylko tego urządzenia. */

@@ -13,11 +13,10 @@ describe('trasy przejazdów', () => {
       { from: 'Gdańsk', via: 'Gdynia', to: 'Gdańsk' },
     ];
     expect(homeBase(recent)).toBe('Gdańsk');
-    expect(suggestRoutes({ base: 'Gdańsk', visitCities: ['Gdynia', 'Gdynia'], recent })).toEqual([
-      ['Gdańsk', 'Gdynia', 'Gdańsk'],
-      ['Gdańsk', 'Sopot'],
-    ]);
-    // Same zabiegi w bazie: jedna miejscowość.
-    expect(suggestRoutes({ base: 'Gdańsk', visitCities: ['Gdańsk'], recent: [] })).toEqual([['Gdańsk']]);
+    // Tylko trasa po zleceniach dnia: z bazy i z powrotem do bazy.
+    expect(suggestRoutes({ base: 'Gdańsk', visitCities: ['Gdynia', 'Gdynia'] })).toEqual([['Gdańsk', 'Gdynia', 'Gdańsk']]);
+    // Same zabiegi w bazie: jedna miejscowość; bez zabiegów brak propozycji.
+    expect(suggestRoutes({ base: 'Gdańsk', visitCities: ['Gdańsk'] })).toEqual([['Gdańsk']]);
+    expect(suggestRoutes({ base: 'Gdańsk', visitCities: [] })).toEqual([]);
   });
 });

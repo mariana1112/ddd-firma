@@ -8,7 +8,9 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
-import { getLastBackupAt, getProfile, getSyncState } from '../data/settings';
+import { getLastBackupAt, getProfile, getSyncState, ownedBy } from '../data/settings';
+import { getReportChecks, pendingReportChecks, setReportChecked, type ReportCheck } from '../data/report-checks';
+import { useFeedback } from '../ui/feedback';
 import { orderAddress, pestName, firstName } from '../data/texts';
 import type { Order, Visit } from '../data/types';
 import { addDays, formatDate, formatDateLong, formatTime, todayWarsaw } from '../lib/dates';
@@ -92,6 +94,36 @@ function readSeen(): string[] {
   }
 }
 
+/**
+ * Raporty do odhaczenia: dzień albo tydzień z wykonanymi zabiegami się skończył, raport jest gotowy. Przypomnienie wisi,
+ * dopóki technik go nie odhaczy (np. po wysłaniu szefowi i rozliczeniu gotówki).
+ */
+function ReportChecks({ list }: { list: ReportCheck[] }) {
+  const { run, toast } = useFeedback();
+  if (!list.length) return null;
+  return (
+    <Group title={`Raporty do odhaczenia (${list.length})`}>
+      {list.map((r) => (
+        <div key={r.id} className="row-with-action">
+          <Row to={r.link} icon="chart" title={r.title} sub={r.text} />
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() =>
+              void run(async () => {
+                await setReportChecked(r.id, true);
+                toast('Odhaczono raport', { action: { label: 'Cofnij', onClick: () => void run(() => setReportChecked(r.id, false)) } });
+              })
+            }
+          >
+            <Icon name="check" /> Odhacz
+          </button>
+        </div>
+      ))}
+    </Group>
+  );
+}
+
 export function DashboardPage() {
   // Szkice są w pamięci przeglądarki, której baza nie obserwuje: po porzuceniu szkicu odświeżamy ręcznie.
   const [, refresh] = useState(0);
@@ -112,6 +144,7 @@ export function DashboardPage() {
     profile: await getProfile(),
     lastBackup: await getLastBackupAt(),
     synced: Boolean(await getSyncState()),
+    checked: await getReportChecks(),
   }));
 
   if (!data) {
@@ -194,6 +227,7 @@ export function DashboardPage() {
 
       <QuickSearch />
 
+
       <div className="tiles">
         <Link to="/zlecenia/nowe" className="tile tile-primary">
           <Icon name="plus" size={26} />
@@ -202,10 +236,6 @@ export function DashboardPage() {
         <Link to="/koszty" className="tile">
           <Icon name="receipt" size={26} />
           <span>Dodaj koszt</span>
-        </Link>
-        <Link to="/kilometry" className="tile">
-          <Icon name="car" size={26} />
-          <span>Przejazd</span>
         </Link>
         <Link to="/wizytowka" className="tile">
           <Icon name="wallet" size={26} />
@@ -257,15 +287,21 @@ export function DashboardPage() {
         </Group>
       )}
 
-      <DayCard />
-      <TomorrowReminders />
-
       <Group title={`Dzisiaj${todayList.length ? ` (${todayList.length})` : ''}`}>
         {todayList.length === 0 && <Empty title="Brak zabiegów na dziś" />}
         {todayList.map(({ visit, order }) => (
           <VisitRow key={visit.id} visit={visit} order={order} timeOnly />
         ))}
       </Group>
+
+      <DayCard />
+
+      <ReportChecks
+        list={pendingReportChecks({ visits: data.visits, mine: (v) => ownedBy(v.technicianId, data.profile.userId, true), today, checked: data.checked })}
+      />
+
+      <TomorrowReminders />
+
 
       <Group title={`Jutro${tomorrowList.length ? ` (${tomorrowList.length})` : ''}`}>
         {tomorrowList.length === 0 && <Empty title="Brak zabiegów na jutro" />}

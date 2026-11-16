@@ -18,10 +18,15 @@ import { PayBadge, useContactActions } from './common';
 export function ReportsPage() {
   const { deliverFile, run } = useFeedback();
   const { share, copy } = useContactActions();
-  const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
-  const [busy, setBusy] = useState(false);
   // Szef otwiera raport technika z listy oddziałów; domyślnie raport jest własny.
   const [params] = useSearchParams();
+  // Link z przypomnienia „Raport do odhaczenia” otwiera ten dzień albo tydzień.
+  const [period, setPeriod] = useState<Period>(() => {
+    const kind = params.get('okres');
+    const date = params.get('data');
+    return kind === 'dzien' || kind === 'tydzien' ? periodOf(kind, date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayWarsaw()) : periodOf('tydzien', todayWarsaw());
+  });
+  const [busy, setBusy] = useState(false);
   const otherId = params.get('technik');
   // Admin widzi domyślnie zabiegi wszystkich techników (w panelu: wybranego regionu albo firmy); technik tylko swoje.
   const inPanel = useContext(ScopeBannerContext) !== null;

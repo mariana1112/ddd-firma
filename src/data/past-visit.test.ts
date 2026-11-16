@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from './db';
-import { addPastVisit, orderVisits } from './orders';
+import { addPastVisit, duplicateOrder, orderVisits } from './orders';
 import { buildReport, periodOf } from './reports';
 import { orders, visits } from './repo';
 
@@ -45,5 +45,16 @@ describe('stare zlecenie dopisane do raportów', () => {
       [1, '2026-11-02', 30000],
       [2, '2026-11-09', 25000],
     ]);
+  });
+});
+
+describe('powielenie zlecenia', () => {
+  it('te same dane na inny termin: nowy numer, inny lokal, zabieg I umówiony', async () => {
+    const { order } = await addPastVisit({ phone: '500600700', doneOn: '2026-11-09', amount: 30000, payMethod: 'gotowka', seq: 1, technician: { id: 'u1', name: 'Ania' }, street: 'Długa', houseNo: '5', city: 'Gdańsk', pest: 'pluskwy' });
+    const copy = await duplicateOrder(order.id, { start: '2026-11-20T12:00', durationMin: 60, flatNo: '7' });
+    expect(copy.number).toBe(order.number + 1);
+    expect(copy).toMatchObject({ street: 'Długa', houseNo: '5', flatNo: '7', city: 'Gdańsk', pest: 'pluskwy', closed: false });
+    expect(copy.phones).toEqual(order.phones);
+    expect((await orderVisits(copy.id)).map((v) => [v.seq, v.status, v.start])).toEqual([[1, 'zaplanowany', '2026-11-20T12:00']]);
   });
 });

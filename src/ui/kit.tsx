@@ -171,7 +171,7 @@ export function Info({ label, children }: { label: string; children: ReactNode }
  * Pole formularza: nazwa, pole, błąd albo podpowiedź. Nazwa i podpowiedź są jawnie powiązane z polem, więc iPhone
  * (autouzupełnianie, VoiceOver) zawsze wie, co to za pole, a dotknięcie nazwy ustawia kursor.
  */
-export function Field(props: { label: string; error?: string; hint?: ReactNode; children: ReactNode }) {
+export function Field(props: { label: string; error?: string; hint?: ReactNode; children: ReactNode; action?: ReactNode }) {
   const id = useId();
   const described = props.error || props.hint ? `${id}-opis` : undefined;
   const child = isValidElement(props.children)
@@ -183,9 +183,18 @@ export function Field(props: { label: string; error?: string; hint?: ReactNode; 
     : props.children;
   return (
     <label className={props.error ? 'field field-error' : 'field'}>
-      <span className="field-label" id={`${id}-nazwa`}>
-        {props.label}
-      </span>
+      {props.action ? (
+        <span className="field-label-row">
+          <span className="field-label" id={`${id}-nazwa`}>
+            {props.label}
+          </span>
+          {props.action}
+        </span>
+      ) : (
+        <span className="field-label" id={`${id}-nazwa`}>
+          {props.label}
+        </span>
+      )}
       {child}
       {props.error && (
         <span className="field-message" id={described}>
@@ -362,5 +371,32 @@ export function TimeSelect(props: { value: string; onChange: (value: string) => 
         ))}
       </select>
     </span>
+  );
+}
+
+/**
+ * „Wklej” przy polu: wkleja numer, imię i nazwisko albo dane firmy ze schowka (np. skopiowane z SMS-a czy maila)
+ * zamiast podpowiedzi przeglądarki, która proponuje własny numer telefonu.
+ */
+export function PasteButton(props: { onPaste: (text: string) => void; label?: string }) {
+  const [note, setNote] = useState('');
+  return (
+    <button
+      type="button"
+      className="paste-btn"
+      title={note || undefined}
+      onClick={async (e) => {
+        e.preventDefault();
+        try {
+          const text = (await navigator.clipboard.readText()).trim();
+          if (text) props.onPaste(text);
+          setNote(text ? '' : 'Schowek jest pusty');
+        } catch {
+          setNote('Przytrzymaj pole i wybierz „Wklej”');
+        }
+      }}
+    >
+      <Icon name="clipboard" size={15} /> {note || props.label || 'Wklej'}
+    </button>
   );
 }

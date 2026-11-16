@@ -449,3 +449,47 @@ export async function addPastVisit(input: PastVisitInput): Promise<{ order: Orde
     return { order, visit, created };
   });
 }
+
+/**
+ * „Powiel zlecenie”: nowe zlecenie z tymi samymi danymi klienta, adresem, opisem, ceną i fakturą, na inny termin
+ * (np. dwa sąsiednie mieszkania tego samego właściciela naraz). Dostaje kolejny numer regionu i własny zabieg I.
+ */
+export async function duplicateOrder(orderId: string, input: { start: string; durationMin: number; flatNo: string }): Promise<Order> {
+  const src = await orders.get(orderId);
+  if (!src || src.deletedAt) throw new DomainError('Nie ma takiego zlecenia.');
+  const first = (await orderVisits(orderId)).find((v) => v.status !== 'odwolany');
+  const draft: OrderDraft = {
+    building: src.building,
+    street: src.street,
+    houseNo: src.houseNo,
+    flatNo: input.flatNo.trim(),
+    floor: src.floor,
+    staircase: src.staircase,
+    postalCode: src.postalCode,
+    city: src.city,
+    access: src.access,
+    pest: src.pest,
+    pestOther: src.pestOther,
+    description: src.description,
+    areaM2: src.areaM2,
+    priceMin: src.priceMin,
+    priceMax: src.priceMax,
+    invoice: src.invoice,
+    clientName: src.clientName,
+    email: src.email,
+    nip: src.nip,
+    invoiceAddress: src.invoiceAddress,
+    invoiceName: src.invoiceName,
+    phones: src.phones.map((p) => ({ ...p })),
+    pink: src.pink,
+    pinkNote: src.pinkNote,
+    // Inny lokal: link do punktu na mapie zostaje (ten sam budynek).
+    mapsLink: src.mapsLink,
+    methods: src.methods ? [...src.methods] : [],
+    methodOther: src.methodOther,
+    protocol: src.protocol,
+  };
+  const terms: VisitTerms | undefined = first?.scope ? { scope: first.scope, priceMin: first.priceMin ?? src.priceMin, priceMax: first.priceMax ?? src.priceMax } : undefined;
+  const { order } = await createOrder(draft, { start: input.start, durationMin: input.durationMin, terms }, null);
+  return order;
+}

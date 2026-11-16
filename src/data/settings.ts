@@ -302,10 +302,16 @@ export interface VehicleSettings {
   plate: string;
   /** Imię i nazwisko do kolumny „osoba kierująca pojazdem”. Puste: imię z profilu. */
   driver: string;
+  /** Gdzie zaczyna się i kończy każda trasa (baza), domyślnie Gdańsk. */
+  base: string;
 }
 
+/** Domyślna baza tras: każdy dzień zaczyna się i kończy w Gdańsku, chyba że technik ustawi inaczej. */
+export const DEFAULT_BASE = 'Gdańsk';
+
 export async function getVehicle(): Promise<VehicleSettings> {
-  return { plate: '', driver: '', ...(await getMeta<Partial<VehicleSettings>>('vehicle')) };
+  const saved = { plate: '', driver: '', base: '', ...(await getMeta<Partial<VehicleSettings>>('vehicle')) };
+  return { ...saved, base: saved.base.trim() || DEFAULT_BASE };
 }
 
 export async function saveVehicle(vehicle: VehicleSettings): Promise<void> {

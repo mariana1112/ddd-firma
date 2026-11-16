@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { getReportChecks, pendingReportChecks, setReportChecked } from '../data/report-checks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { chatChannels, chatPeople, insertMention, lastMessage, markRead, markReadForOthers, mentionQuery, mentionsIn, readersOf, readMap, realMessages, sendMessage, splitMentions, unread, type Person } from '../data/chat';
@@ -7,7 +8,7 @@ import { buildNotifications, type AppNotification } from '../data/notifications'
 import { decideOrderDeletion } from '../data/orders';
 import { clockInWarsaw, dayInWarsaw, firstName } from '../data/texts';
 import { messages, orders, visits } from '../data/repo';
-import { getProfile, getRegions, getSyncState } from '../data/settings';
+import { getProfile, getRegions, getSyncState, ownedBy } from '../data/settings';
 import { formatDate, todayWarsaw } from '../lib/dates';
 import type { Message } from '../data/types';
 import { useFeedback } from '../ui/feedback';
@@ -49,6 +50,7 @@ function useNotifications(): { list: AppNotification[]; unseen: AppNotification[
       visits: await visits.all(),
       messages: await messages.allRegions(),
       regions: await getRegions(),
+      checked: await getReportChecks(),
     };
   }, []);
   return useMemo(() => {
@@ -65,10 +67,12 @@ function useNotifications(): { list: AppNotification[]; unseen: AppNotification[
       owner: data.state?.role === 'owner',
       read,
       today: todayWarsaw(),
+      reports: pendingReportChecks({ visits: data.visits, mine: (v) => ownedBy(v.technicianId, data.me, true), today: todayWarsaw(), checked: data.checked }),
     }).filter((x) => x.kind !== 'czat');
     const seen = new Set(readSeen());
     // Prośby o usunięcie i czat liczą się, dopóki admin nie zdecyduje albo kanał nie zostanie przeczytany.
-    const unseen = list.filter((n) => n.kind === 'usuniecie' || n.kind === 'oznaczenie' || !seen.has(n.id));
+    // Raporty do odhaczenia liczą się, dopóki nie zostaną odhaczone.
+    const unseen = list.filter((n) => n.kind === 'usuniecie' || n.kind === 'oznaczenie' || n.kind === 'raport' || !seen.has(n.id));
     return { list, unseen, refresh: () => setTick((t) => t + 1) };
   }, [data, tick]);
 }
@@ -109,6 +113,7 @@ const KIND_LABEL: Record<AppNotification['kind'], string> = {
   czat: 'Czat',
   oznaczenie: 'Oznaczenie',
   nowe: 'Nowe zlecenie',
+  raport: 'Raport do odhaczenia',
 };
 
 /** Lista powiadomień z pełną treścią; prośby o usunięcie admin zatwierdza albo odrzuca od razu tutaj. */
@@ -150,6 +155,23 @@ export function NotificationsPage() {
               <strong>{item.title}</strong>
               <span>{item.text}</span>
             </button>
+            {item.kind === 'raport' && item.reportId && (
+              <div className="notification-actions">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() =>
+                    void run(async () => {
+                      await setReportChecked(item.reportId!, true);
+                      n.refresh();
+                      toast('Odhaczono raport');
+                    })
+                  }
+                >
+                  <Icon name="check" /> Odhacz
+                </button>
+              </div>
+            )}
             {item.kind === 'usuniecie' && (
               <div className="notification-actions">
                 <button type="button" className="btn btn-sm btn-danger" onClick={() => void decide(item, true)}>

@@ -3224,3 +3224,220 @@ body {
   flex: 1;
   min-width: 0;
 }
+
+/* Jazda prywatna w trakcie dnia (kilometrówka) */
+.private-run {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.private-run strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Zabieg w trakcie: osobny ekran krokowy z krótkim nagłówkiem i opisem */
+.work-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.work-head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.work-head-top > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.work-head .order-note {
+  border: 0;
+  border-radius: 10px;
+}
+
+.wizard-progress button {
+  height: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+
+.wizard-progress button.done {
+  background: var(--primary);
+}
+
+/* Wklejanie ze schowka przy polach (zamiast podpowiedzi przeglądarki) */
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.paste-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.paste-btn:active {
+  background: var(--primary-soft);
+}
+
+/* Krok 1 kreatora: telefon klienta jako czytelna karta */
+.phone-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 3%);
+}
+
+.phone-card-error {
+  border-color: var(--danger);
+}
+
+.phone-card .phone-input {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 12px 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.phone-card-2 .phone-input {
+  font-size: 1.3rem;
+}
+
+.phone-card .phone-who {
+  font-size: 0.95rem;
+}
+
+.btn-dashed {
+  border-style: dashed;
+  background: transparent;
+}
+
+/* Dane do faktury / protokołu rozwinięte w kroku „Cena i faktura” */
+.docs-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+}
+
+.docs-box-title {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* Kalendarz: w bloczku zabiegu miejsce, co robimy i numer zlecenia */
+.calendar .cal-block-place {
+  overflow: hidden;
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.calendar .cal-block-what,
+.calendar .cal-block-city {
+  overflow: hidden;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  opacity: 0.9;
+}
+
+.calendar .cal-block-list {
+  white-space: normal;
+  gap: 1px;
+}
+
+.calendar .cal-block-list .cal-block-number {
+  font-size: 0.95rem;
+}
+
+.calendar .cal-block-list .cal-block-place {
+  font-size: 0.92rem;
+}
+
+.calendar .cal-block-list .cal-block-what {
+  font-size: 0.85rem;
+}
+
+/* Pulpit: trzy kafelki, „Nowe zlecenie” na całą szerokość */
+.tiles .tile-primary {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  min-height: 64px;
+  font-size: 1.05rem;
+}
+
+@media (min-width: 900px) {
+  .tiles .tile-primary {
+    grid-column: auto;
+    flex-direction: column;
+  }
+}
+
+/* Rzadziej używane opcje zabiegu schowane pod „Więcej opcji” */
+.more-actions {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.more-actions > summary {
+  padding: 12px 14px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.more-actions > summary::-webkit-details-marker {
+  display: none;
+}
+
+.more-actions > summary::after {
+  content: ' ▾';
+}
+
+.more-actions[open] > summary::after {
+  content: ' ▴';
+}
+
+.more-actions > .btn-stack {
+  padding: 0 12px 12px;
+}

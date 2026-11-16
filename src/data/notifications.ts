@@ -3,6 +3,7 @@ import { orderCode, visitCode } from './codes';
 import { orderAddress, firstName } from './texts';
 import type { Message, Order, Visit } from './types';
 import { addDays, formatTime } from '../lib/dates';
+import type { ReportCheck } from './report-checks';
 
 /**
  * Powiadomienia pod dzwoneczkiem. Liczą się na telefonie z danych, które i tak są zsynchronizowane:
@@ -11,7 +12,7 @@ import { addDays, formatTime } from '../lib/dates';
  * - nowe wiadomości na czacie i oznaczenia mnie (@Imię) w nieprzeczytanych wiadomościach,
  * - nowe zlecenia na dziś i jutro dodane przez kogoś innego.
  */
-export type NotificationKind = 'usuniecie' | 'decyzja' | 'czat' | 'oznaczenie' | 'nowe';
+export type NotificationKind = 'usuniecie' | 'decyzja' | 'czat' | 'oznaczenie' | 'nowe' | 'raport';
 
 export interface AppNotification {
   id: string;
@@ -22,6 +23,8 @@ export interface AppNotification {
   to: string;
   /** Prośba o usunięcie: zlecenie do zatwierdzenia albo odrzucenia. */
   orderId?: string;
+  /** Raport do odhaczenia: identyfikator odhaczenia. */
+  reportId?: string;
 }
 
 export function buildNotifications(input: {
@@ -35,8 +38,13 @@ export function buildNotifications(input: {
   owner: boolean;
   read: Record<string, string>;
   today: string;
+  /** Raporty gotowe do odhaczenia (pendingReportChecks). */
+  reports?: ReportCheck[];
 }): AppNotification[] {
   const out: AppNotification[] = [];
+  for (const r of input.reports ?? []) {
+    out.push({ id: `raport:${r.id}`, kind: 'raport', title: r.title, text: r.text, at: `${r.to}T23:59:00`, to: r.link, reportId: r.id });
+  }
   const { me } = input;
 
   if (input.owner) {

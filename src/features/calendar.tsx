@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
 import { pestName } from '../data/texts';
+import { methodNames } from '../data/methods';
 import type { VisitStatus } from '../data/types';
 import { addMinutes, formatTerm, nowWarsaw } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
@@ -72,15 +73,20 @@ export default function CalendarPage() {
       .map((v) => {
         const order = orderById.get(v.orderId)!;
         const phone = mainPhone(order);
+        // Czytelnie: gdzie (ulica i miejscowość), co (szkodnik, metoda) i numer zlecenia.
+        const street = [order.street, order.houseNo].filter(Boolean).join(' ');
+        const place = [street, order.city].filter(Boolean).join(', ') || '—';
+        const methods = methodNames(order);
+        const what = [pestName(order), methods[0]].filter(Boolean).join(' · ');
         return {
           id: v.id,
-          title: `${visitCode(order, v.seq)} ${pestName(order)}, ${order.city}${phone ? ` · tel. ${phone}` : ''}${order.pink ? ' · PINK' : ''}`,
+          title: `${visitCode(order, v.seq)} · ${place} · ${what}${order.pink ? ' · PINK' : ''}`,
           start: v.start!,
           end: addMinutes(v.start!, v.durationMin),
           color: STATUS_COLOR[v.status],
           textColor: v.status === 'zaplanowany' ? '#ffffff' : 'var(--surface)',
           editable: v.status === 'zaplanowany',
-          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, label: `${pestName(order)}, ${order.city}`, phone },
+          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, place, city: order.city, what, phone },
         };
       });
   }, [rows]);
@@ -123,24 +129,40 @@ export default function CalendarPage() {
           moreLinkContent={(arg) => `…+${arg.num}`}
           moreLinkHint={(num) => `Jeszcze ${num}: otwórz dzień`}
           eventContent={(arg) => {
-            if (arg.view.type !== 'dayGridMonth') return true;
-            const { number, digits, seq, pink, label, phone } = arg.event.extendedProps as {
+            const { number, digits, seq, pink, place, city, what } = arg.event.extendedProps as {
               number: string;
               digits: string;
               seq: number;
               pink: boolean;
-              label: string;
-              phone: string;
+              place: string;
+              city: string;
+              what: string;
             };
-            return (
-              <span className={pink ? 'cal-block cal-block-pink' : 'cal-block'} title={arg.event.title}>
-                <span className="cal-block-time">{arg.event.start ? stripZone(arg.event.start).slice(11, 16) : ''}</span>
-                <span className="cal-block-number">
-                  {narrow ? digits : number}
-                  {!narrow && <span className="cal-block-label"> {label}</span>}
+            const time = arg.event.start ? stripZone(arg.event.start).slice(11, 16) : '';
+            const month = arg.view.type === 'dayGridMonth';
+            // Miesiąc na telefonie (dzień ok. 50 px): godzina, cztery cyfry numeru i miejscowość.
+            if (month && narrow) {
+              return (
+                <span className={pink ? 'cal-block cal-block-pink' : 'cal-block'} title={arg.event.title}>
+                  <span className="cal-block-time">{time}</span>
+                  <span className="cal-block-number">
+                    {digits}
+                  </span>
+                  <span className="cal-block-city">
+                    {seq > 1 ? `${roman(seq)} · ` : ''}
+                    {city}
+                  </span>
                 </span>
-                {narrow && seq > 1 && <span className="cal-block-seq">{roman(seq)}</span>}
-                {!narrow && phone && <span className="cal-block-phone">tel. {phone}</span>}
+              );
+            }
+            return (
+              <span className={`cal-block${pink ? ' cal-block-pink' : ''}${arg.view.type.startsWith('list') ? ' cal-block-list' : ''}`} title={arg.event.title}>
+                <span className="cal-block-number">
+                  {`${time} `}
+                  {number}
+                </span>
+                <span className="cal-block-place">{place}</span>
+                <span className="cal-block-what">{what}</span>
               </span>
             );
           }}

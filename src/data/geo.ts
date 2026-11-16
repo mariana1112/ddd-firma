@@ -212,3 +212,14 @@ export function freeSlots(stops: DayStop[], target: LatLng | null, durationMin: 
   }
   return out;
 }
+
+/** Dni na kolejny zabieg: 8–12 dni po poprzednim (zabieg II po I, III po II), bez niedziel. */
+export function nextVisitDays(after: string): string[] {
+  return [8, 9, 10, 11, 12].map((n) => addDays(after, n)).filter((d) => new Date(`${d}T12:00:00Z`).getUTCDay() !== 0);
+}
+
+/** Dzień poprzedniego zabiegu, od którego liczą się propozycje kolejnego: wykonany albo umówiony termin. */
+export function previousVisitDay(list: Visit[], seq: number): string | null {
+  const prev = list.filter((v) => v.seq < seq && v.status !== 'odwolany').sort((a, b) => b.seq - a.seq)[0];
+  return prev ? (prev.doneOn ?? prev.start?.slice(0, 10) ?? null) : null;
+}

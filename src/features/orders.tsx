@@ -1,4 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { nextVisitDays, previousVisitDay } from '../data/geo';
+import { NextDates } from './next-dates';
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { mainPhone, orderMatches } from '../data/order-search';
@@ -409,9 +411,11 @@ export function ScheduleNext(props: {
   durationMin: number;
   initial: VisitTerms;
   invoice: InvoiceType;
+  /** Dzień poprzedniego zabiegu: propozycje terminów 8–12 dni później. */
+  after?: string | null;
   onSave: (start: string, durationMin: number, terms: VisitTerms) => void;
 }) {
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(() => (props.after ? (nextVisitDays(props.after)[0] ?? '') : ''));
   const [time, setTime] = useState('10:00');
   const [duration, setDuration] = useState(String(props.durationMin));
   const [terms, setTerms] = useState(() => termsDraft(props.initial));
@@ -426,6 +430,18 @@ export function ScheduleNext(props: {
         if (valid) props.onSave(`${date}T${time}`, minutes, parsed!);
       }}
     >
+      {props.after && (
+        <NextDates
+          after={props.after}
+          durationMin={minutes || 60}
+          date={date}
+          time={time}
+          onPick={(d, t) => {
+            setDate(d);
+            setTime(t);
+          }}
+        />
+      )}
       <div className="form-row">
         <Field label="Data">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -435,7 +451,7 @@ export function ScheduleNext(props: {
         </Field>
       </div>
       <Field label="Czas trwania (min)">
-        <input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/D/g, ''))} />
+        <input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/\D/g, ''))} />
       </Field>
       <TermsFields value={terms} onChange={setTerms} invoice={props.invoice} proposedFrom="Podpowiedź: zakres i cena z poprzedniego zabiegu. Zmień, jeśli klient chce inaczej." />
       <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>
@@ -643,6 +659,7 @@ export function OrderDetailPage() {
         {scheduling && (
           <ScheduleNext
             durationMin={current?.durationMin ?? 60}
+            after={previousVisitDay(data.visits, nextSeq)}
             initial={proposeTerms(data.visits, order)}
             invoice={order.invoice}
             onSave={(start, durationMin, terms) =>
