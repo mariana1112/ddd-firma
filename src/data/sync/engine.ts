@@ -58,10 +58,12 @@ export type Account = Pick<SyncState, 'orgId' | 'orgName' | 'userId' | 'email' |
 
 const PUSH_BATCH = 200;
 const PULL_PAGE = 500;
-const NUMBER_BLOCK = 20;
+/** Pula numerów zleceń na urządzenie: mała, żeby numery z różnych telefonów nie robiły dużych przeskoków. */
+const NUMBER_BLOCK = 5;
 /** Ile ostatnich zmian pobierać ponownie przy każdej synchronizacji (zob. pullAll). */
 const PULL_OVERLAP = 100;
-const NUMBER_LOW_WATER = 5;
+/** Dobieramy nową pulę, gdy zostały mniej niż 2 numery (zapas na pracę bez internetu). */
+const NUMBER_LOW_WATER = 2;
 
 const recordTables = () => SYNC_TABLES.map((t) => db.table(t));
 
