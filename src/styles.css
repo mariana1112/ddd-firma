@@ -4005,3 +4005,8 @@ body {
 .agenda-event .agenda-time {
   font-size: 0.85rem;
 }
+
+/* Kod pink: grubsza ramka (w wąskim tygodniu bez narożnika, żeby było widać numer zabiegu) */
+.calendar .cal-event-pink {
+  box-shadow: 0 0 0 3px var(--pink);
+}

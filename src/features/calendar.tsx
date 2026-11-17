@@ -480,9 +480,8 @@ export default function CalendarPage() {
             // Tydzień na telefonie (kolumna ok. 45 px): numer i ulica w kolorowym bloczku.
             if (arg.view.type === 'timeGridWeek' && narrow) {
               return (
+                // Wąska kolumna: kod pink to sama różowa ramka (narożnik zasłaniałby numer zabiegu).
                 <span className="cal-gblock" title={arg.event.title}>
-                  {pink && <span className="cal-pink-flag" aria-label="Kod pink" />}
-                {marks}
                   {marks}
                   <b>{label}</b>
                   <span>{short}</span>
