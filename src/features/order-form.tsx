@@ -681,33 +681,25 @@ function PhoneStep(props: { state: FormState; set: (patch: Partial<FormState>) =
   const [second, setSecond] = useState(Boolean(s.phone2.trim()));
   return (
     <div className="form">
-      <div className={errors.phone1 ? 'phone-card phone-card-error' : 'phone-card'}>
-        <span className="field-label-row">
-          <span className="field-label">Numer klienta</span>
-          <PasteButton onPaste={(t) => set({ phone1: formatPhoneInput(t) })} />
-        </span>
+      <Field
+        label="Telefon klienta"
+        error={errors.phone1}
+        hint="Stały klient: aplikacja sama podpowie jego dane i adres."
+        action={<PasteButton onPaste={(t) => set({ phone1: formatPhoneInput(t) })} />}
+      >
         <input
-          className="phone-input"
           type="text"
           inputMode="tel"
           name="ddd-numer-klienta"
           autoComplete="off"
-          aria-label="Numer klienta"
           value={s.phone1}
           placeholder="500 600 700"
           onChange={(e) => set({ phone1: formatPhoneInput(e.target.value) })}
         />
-        {errors.phone1 ? <span className="field-message">{errors.phone1}</span> : <span className="field-hint">Stały klient: aplikacja sama podpowie jego dane i adres.</span>}
-        <input
-          className="phone-who"
-          name="ddd-do-kogo"
-          autoComplete="off"
-          aria-label="Do kogo ten numer"
-          value={s.phone1Label}
-          placeholder="Do kogo? (np. pani Anna)"
-          onChange={(e) => set({ phone1Label: e.target.value })}
-        />
-      </div>
+      </Field>
+      <Field label="Do kogo? (opcjonalnie)">
+        <input name="ddd-do-kogo" autoComplete="off" value={s.phone1Label} placeholder="Np. pani Anna" onChange={(e) => set({ phone1Label: e.target.value })} />
+      </Field>
       <ReturningClient
         phone={s.phone1}
         currentId={props.editId}
@@ -735,35 +727,24 @@ function PhoneStep(props: { state: FormState; set: (patch: Partial<FormState>) =
         }}
       />
       {second ? (
-        <div className={errors.phone2 ? 'phone-card phone-card-2 phone-card-error' : 'phone-card phone-card-2'}>
-          <span className="field-label-row">
-            <span className="field-label">Drugi telefon</span>
-            <PasteButton onPaste={(t) => set({ phone2: formatPhoneInput(t) })} />
-          </span>
-          <input
-            className="phone-input"
-            type="text"
-            inputMode="tel"
-            name="ddd-drugi-numer"
-            autoComplete="off"
-            aria-label="Drugi telefon"
-            value={s.phone2}
-            placeholder="500 600 700"
-            onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })}
-          />
-          {errors.phone2 && <span className="field-message">{errors.phone2}</span>}
-          <input
-            className="phone-who"
-            name="ddd-do-kogo-2"
-            autoComplete="off"
-            aria-label="Do kogo drugi numer"
-            value={s.phone2Label}
-            placeholder="Do kogo? (np. tata)"
-            onChange={(e) => set({ phone2Label: e.target.value })}
-          />
+        <>
+          <Field label="Drugi telefon" error={errors.phone2} action={<PasteButton onPaste={(t) => set({ phone2: formatPhoneInput(t) })} />}>
+            <input
+              type="text"
+              inputMode="tel"
+              name="ddd-drugi-numer"
+              autoComplete="off"
+              value={s.phone2}
+              placeholder="500 600 700"
+              onChange={(e) => set({ phone2: formatPhoneInput(e.target.value) })}
+            />
+          </Field>
+          <Field label="Do kogo drugi numer? (opcjonalnie)">
+            <input name="ddd-do-kogo-2" autoComplete="off" value={s.phone2Label} placeholder="Np. tata" onChange={(e) => set({ phone2Label: e.target.value })} />
+          </Field>
           <button
             type="button"
-            className="link"
+            className="link link-danger"
             onClick={() => {
               set({ phone2: '', phone2Label: '' });
               setSecond(false);
@@ -771,7 +752,7 @@ function PhoneStep(props: { state: FormState; set: (patch: Partial<FormState>) =
           >
             Usuń drugi telefon
           </button>
-        </div>
+        </>
       ) : (
         <button type="button" className="btn btn-block btn-dashed" onClick={() => setSecond(true)}>
           <Icon name="plus" /> Drugi telefon (np. do kogoś z rodziny)
