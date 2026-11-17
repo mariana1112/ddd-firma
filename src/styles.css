@@ -3960,3 +3960,10 @@ body {
 .agenda-tags .agenda-tag {
   margin-left: 0;
 }
+
+/* Kalendarz: powrót do miesiąca po wejściu w dzień */
+.cal-back {
+  margin-bottom: 8px;
+  color: var(--primary);
+  font-weight: 600;
+}

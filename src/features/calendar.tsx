@@ -26,6 +26,7 @@ import { AddLink, Page } from '../ui/kit';
 const VIEW_KEY = 'ddd-kalendarz-widok';
 /** Oglądany dzień: po wejściu w zabieg i powrocie kalendarz jest tam, gdzie był (do zamknięcia aplikacji). */
 const DATE_KEY = 'ddd-kalendarz-data';
+const FROM_MONTH_KEY = 'ddd-kalendarz-z-miesiaca';
 
 const WEEKDAYS = ['pon', 'wt', 'śr', 'czw', 'pt', 'sob', 'nd'];
 const MONTHS_GEN = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'];
@@ -170,6 +171,24 @@ export default function CalendarPage() {
   const narrow = useNarrow();
   const calendar = useRef<CalendarRef>(null);
   const api = () => calendar.current?.getApi();
+  // Wejście w dzień z miesiąca (dotknięcie dnia albo „+N”): przycisk „Wróć do miesiąca”.
+  // Pamiętane do zamknięcia aplikacji: po wejściu w zabieg i powrocie przycisk dalej jest.
+  const [fromMonth, setFromMonthState] = useState(() => {
+    try {
+      return sessionStorage.getItem(FROM_MONTH_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setFromMonth = (on: boolean) => {
+    setFromMonthState(on);
+    try {
+      if (on) sessionStorage.setItem(FROM_MONTH_KEY, '1');
+      else sessionStorage.removeItem(FROM_MONTH_KEY);
+    } catch {
+      // Zapamiętanie to tylko wygoda.
+    }
+  };
   const [head, setHead] = useState<{ title: string; view: string; hasToday: boolean; date: string; from: string; to: string }>({ title: '', view, hasToday: true, date: '', from: '', to: '' });
   // Przesunięcie palcem w lewo / w prawo: następny / poprzedni dzień, tydzień albo miesiąc.
   const touch = useRef<{ x: number; y: number; at: number } | null>(null);
@@ -243,10 +262,26 @@ export default function CalendarPage() {
           <Icon name="chevron" />
         </button>
       </div>
+      {fromMonth && head.view === 'timeGridDay' && (
+        <button
+          type="button"
+          className="btn btn-block cal-back"
+          onClick={() => {
+            const day = api()?.getDate();
+            setFromMonth(false);
+            api()?.changeView('dayGridMonth', day);
+          }}
+        >
+          <Icon name="back" /> Wróć do miesiąca
+        </button>
+      )}
       <div className="cal-bar">
         <div className="cal-views" role="group" aria-label="Widok kalendarza">
           {VIEWS.map(([type, label]) => (
-            <button key={type} type="button" className={head.view === type ? 'chip active' : 'chip'} aria-pressed={head.view === type} onClick={() => api()?.changeView(type)}>
+            <button key={type} type="button" className={head.view === type ? 'chip active' : 'chip'} aria-pressed={head.view === type} onClick={() => {
+                setFromMonth(false);
+                api()?.changeView(type);
+              }}>
               {label}
             </button>
           ))}
@@ -306,7 +341,10 @@ export default function CalendarPage() {
           }
           dayCellTopClass="cal-day-top"
           moreLinkClass="cal-more"
-          moreLinkClick="timeGridDay"
+          moreLinkClick={() => {
+            setFromMonth(true);
+            return 'timeGridDay';
+          }}
           moreLinkContent={(arg) => `+${arg.num}`}
           moreLinkHint={(num) => `Jeszcze ${num}: otwórz dzień`}
           eventContent={(arg) => {
@@ -396,6 +434,7 @@ export default function CalendarPage() {
             const date = info.dateStr.slice(0, 10);
             // Miesiąc: dotknięcie dnia otwiera ten dzień (nowe zlecenie dodaje się przyciskiem +).
             if (info.view.type === 'dayGridMonth') {
+              setFromMonth(true);
               api()?.changeView('timeGridDay', date);
               return;
             }
