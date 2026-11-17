@@ -67,7 +67,7 @@ export function telUrl(phone: string): string {
 }
 
 const zl = (grosze: number) =>
-  new Intl.NumberFormat('pl-PL', { useGrouping: 'always', maximumFractionDigits: 2 }).format(grosze / 100).replace(/ /g, ' ');
+  new Intl.NumberFormat('pl-PL', { useGrouping: 'always', minimumFractionDigits: grosze % 100 === 0 ? 0 : 2, maximumFractionDigits: 2 }).format(grosze / 100).replace(/ /g, ' ');
 
 /** Widełki: "100–150 zł", a przy fakturze VAT dodatkowo kwoty brutto. */
 export function priceRange(order: Pick<Order, 'priceMin' | 'priceMax' | 'invoice'>, vatRate: number): { net: string; gross: string | null } | null {

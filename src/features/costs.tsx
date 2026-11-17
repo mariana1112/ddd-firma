@@ -62,7 +62,7 @@ export function CostsPage() {
         <Field label="Koszt" hint="Wpisz, co to za koszt, albo wybierz poniżej. Każdy koszt pomniejsza gotówkę dla szefa.">
           <input value={category} placeholder="Np. Paliwo, Zaliczka, Myjnia" onChange={(e) => setCategory(e.target.value)} />
         </Field>
-        <div className="chips" role="group" aria-label="Podpowiedzi kosztów">
+        <div className="chips chips-wrap" role="group" aria-label="Podpowiedzi kosztów">
           {suggestions.map((c) => (
             <button
               key={c}

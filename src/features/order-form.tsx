@@ -962,15 +962,16 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
       return (
         <Group>
           <Info label="Adres">{`${orderAddress(draft)}${draft.postalCode ? `, ${draft.postalCode}` : ''} (${BUILDINGS[draft.building].toLowerCase()})`}</Info>
-          <Info label="Co robimy">{s.methods.map((m) => METHOD_LABEL[m]).join(', ')}</Info>
+          <Info label="Co robimy">{s.methods.map((m) => (m === 'inne' ? s.methodOther.trim() || METHOD_LABEL[m] : METHOD_LABEL[m])).join(', ')}</Info>
           <Info label="Szkodnik">{draft.pest === 'inne' ? draft.pestOther : PESTS[draft.pest]}</Info>
+          {draft.description.trim() && <Info label="Opis">{draft.description.trim()}</Info>}
           <Info label="Termin">{formatTerm(`${s.date}T${s.time}`)}</Info>
           <Info label="Co pryskamy">{scopeText(formTerms(s).scope)}</Info>
           {price && <Info label="Widełki">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
           <Info label="Faktura">{INVOICES[draft.invoice]}</Info>
           {draft.invoice === 'vat' && <Info label="Do faktury">{`${draft.invoiceName}\nNIP ${draft.nip}`}</Info>}
           <Info label="Protokół">{s.protocol ? 'Tak' : 'Nie'}</Info>
-          <Info label="Klient">{`${draft.clientName}\n${draft.phones.map((p) => (p.label ? `${p.number} (${p.label})` : p.number)).join('\n')}`}</Info>
+          <Info label="Klient">{[draft.clientName.trim(), ...draft.phones.map((p) => (p.label ? `${p.number} (${p.label})` : p.number))].filter(Boolean).join('\n')}</Info>
           {draft.pink && <Info label="Kod pink">{draft.pinkNote || 'Tak'}</Info>}
         </Group>
       );
@@ -1002,6 +1003,20 @@ export function OrderNewPage() {
     void (async () => {
       const source = await orders.get(copyFrom);
       if (!source || source.deletedAt) return;
+      const current = loadDraft();
+      const started = JSON.stringify(current) !== JSON.stringify({ ...EMPTY, date: current.date });
+      if (started) {
+        const ok = await confirm({
+          title: 'Zastąpić rozpoczęte nowe zlecenie?',
+          message: 'Masz niedokończone nowe zlecenie. Powielenie wpisze w formularz dane powielanego zlecenia, a wpisane dane znikną.',
+          confirmLabel: 'Powiel mimo to',
+          cancelLabel: 'Zostaw rozpoczęte',
+        });
+        if (!ok) {
+          setCopied(copyFrom);
+          return;
+        }
+      }
       const list = await orderVisits(copyFrom);
       const visit = list.find((v) => v.id === copyVisit) ?? list.find((v) => v.start) ?? list[0];
       const duration = visit?.durationMin || 60;
@@ -1204,7 +1219,7 @@ export function OrderEditPage() {
   const [errors, setErrors] = useState<Errors>({});
   // Numer zlecenia do poprawienia (np. przepisany z kartki); pusty to bez zmiany.
   const [numberText, setNumberText] = useState('');
-  const editKey = `ddd-edycja-zlecenia-${id}`;
+  const editKey = `ddd-edycja-zlecenia-${id}${visitId ? `-${visitId}` : ''}`;
 
   // Niezapisane zmiany są w pamięci przeglądarki: przejście do Google Maps albo zamknięcie aplikacji ich nie gubi.
   useEffect(() => {

@@ -160,7 +160,7 @@ describe('teksty', () => {
   it('przy fakturze VAT widełki mają też kwoty brutto', () => {
     expect(priceRange({ priceMin: 10000, priceMax: 15000, invoice: 'vat' }, 23)).toEqual({
       net: '100–150 zł netto',
-      gross: '123–184,5 zł brutto',
+      gross: '123–184,50 zł brutto',
     });
     expect(priceRange({ priceMin: 10000, priceMax: 15000, invoice: 'brak' }, 23)).toEqual({ net: '100–150 zł', gross: null });
     expect(priceRange({ priceMin: null, priceMax: null, invoice: 'vat' }, 23)).toBeNull();

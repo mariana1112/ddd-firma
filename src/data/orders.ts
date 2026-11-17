@@ -262,6 +262,11 @@ export async function cancelVisit(id: string): Promise<{ archived: boolean }> {
     // Do zrobienia zostaje tylko zabieg w trakcie albo z umówionym terminem. Pusty „jeszcze nieumówiony” zabieg
     // (np. II po zabiegu I) nie trzyma zlecenia poza archiwum: odwołujemy go razem z tym zabiegiem.
     const pending = rest.filter((v) => v.status === 'w_trakcie' || (v.status === 'zaplanowany' && v.start));
+    // Zlecenie z wykonanym zabiegiem nie trafia do archiwum: wykonany zabieg zostaje w „Zakończonych”.
+    if (rest.some((v) => v.status === 'wykonany')) {
+      for (const v of rest) if (v.status === 'zaplanowany' && !v.start) await visits.update(v.id, { status: 'odwolany' });
+      return { archived: false };
+    }
     if (pending.length === 0) {
       for (const v of rest) if (v.status === 'zaplanowany') await visits.update(v.id, { status: 'odwolany' });
       await orders.update(visit.orderId, { archived: true, closed: true });

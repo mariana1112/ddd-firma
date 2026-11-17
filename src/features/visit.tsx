@@ -13,6 +13,7 @@ import { orders, visits } from '../data/repo';
 import { getAppSettings, getCompany, type AppSettings } from '../data/settings';
 import { formatAccount } from '../data/card';
 import { formatPln } from '../data/reports';
+import { VAT_RATE } from '../data/settings';
 import type { CompanySettings } from '../data/types';
 import { CopyRow } from './card';
 import {
@@ -214,6 +215,9 @@ function InvoiceData({ order, alert, onSave }: { order: Order; alert: boolean; o
  * Płatność w każdej chwili zabiegu: klient często płaci od razu. Karta na górze rozpoczętego zabiegu pokazuje, czy
  * płatność jest przyjęta, i otwiera arkusz z kwotą, formą, protokołem i fakturą.
  */
+/** „gotówka”, „BLIK”, „przelew” w zdaniu. */
+const payWord = (m: PayMethod) => (m === 'blik' ? 'BLIK' : PAY_NAMES[m].toLowerCase());
+
 function PayCard({ visit, order, onOpen }: { visit: Visit; order: Order; onOpen: () => void }) {
   const paid = Boolean(visit.payMethod && visit.amount);
   const docs = [order.invoice !== 'brak' && INVOICES[order.invoice], order.protocol && 'Protokół'].filter(Boolean).join(', ');
@@ -221,7 +225,7 @@ function PayCard({ visit, order, onOpen }: { visit: Visit; order: Order; onOpen:
     <button type="button" className={paid ? 'pay-card pay-card-paid' : 'pay-card'} onClick={onOpen}>
       <Icon name={paid ? 'check' : 'wallet'} size={22} />
       <span className="pay-card-text">
-        <strong>{paid ? `Zapłacono ${formatPln(visit.amount!)}, ${PAY_NAMES[visit.payMethod!].toLowerCase()}` : 'Klient płaci od razu?'}</strong>
+        <strong>{paid ? `Zapłacono ${formatPln(visit.amount!)}, ${payWord(visit.payMethod!)}` : 'Klient płaci od razu?'}</strong>
         <span>{paid ? docs || 'Bez faktury i protokołu' : 'Kwota, forma płatności, protokół, faktura'}</span>
       </span>
       <span className={paid ? 'btn btn-sm' : 'btn btn-sm btn-primary'}>{paid ? 'Zmień' : 'Przyjmij'}</span>
@@ -233,7 +237,9 @@ function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings;
   const { visit, order, company } = props;
   const { run, toast } = useFeedback();
   const agreed = visitPrice(visit, order);
-  const options = [...new Set([agreed.priceMin, agreed.priceMax].filter((x): x is number => typeof x === 'number' && x > 0))];
+  // Klient płaci brutto: przy fakturze VAT podpowiedzi to ustalona cena z VAT.
+  const vat = order.invoice === 'vat';
+  const options = [...new Set([agreed.priceMin, agreed.priceMax].filter((x): x is number => typeof x === 'number' && x > 0).map((x) => (vat ? Math.round((x * (100 + VAT_RATE)) / 100) : x)))];
   const toText = (grosze: number) => moneyToInput(grosze).replace(/,00$/, '');
   const [text, setText] = useState(() => (visit.amount ? toText(visit.amount) : options.length === 1 ? toText(options[0]) : ''));
   const [method, setMethod] = useState<PayMethod | null>(visit.payMethod);
@@ -245,12 +251,12 @@ function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings;
       setTried(true);
       if (!method || !value || value > MAX_VISIT_AMOUNT) return;
       await visits.update(visit.id, { payMethod: method, amount: value });
-      toast(`Płatność zapisana: ${formatPln(value)}, ${PAY_NAMES[method].toLowerCase()}`);
+      toast(`Płatność zapisana: ${formatPln(value)}, ${payWord(method)}`);
       props.onClose();
     });
   return (
     <div className="form">
-      <Field label="Kwota (zł)" error={amountError}>
+      <Field label={vat ? 'Kwota (zł brutto, z VAT)' : 'Kwota (zł)'} error={amountError}>
         <input className="pay-amount" inputMode="decimal" autoComplete="off" value={text} placeholder="0" onChange={(e) => setText(e.target.value)} />
       </Field>
       {options.length > 1 && (
