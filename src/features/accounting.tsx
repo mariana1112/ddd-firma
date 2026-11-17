@@ -2,7 +2,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { accountingState, accountingTasks, bankPayments, doneVisits, invoiceAmount, paymentUnchecked, pendingInvoices, readyToClose, TASK_LABEL, taskDone, visitInvoiced } from '../data/accounting';
-import { getProfile } from '../data/settings';
+import { getProfile, VAT_RATE } from '../data/settings';
+import { methodNames } from '../data/methods';
+import { normalizeInterview } from '../data/interview';
+import { VisitSummary } from './visit-summary';
 import { PayBadge } from './common';
 import { orderCode, roman, visitCode } from '../data/codes';
 import { deleteExpense } from '../data/domain';
@@ -10,7 +13,7 @@ import { orderMatches } from '../data/order-search';
 import { costName, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getRegions } from '../data/settings';
-import { INVOICES, orderAddress, PAY_NAMES, workSummary } from '../data/texts';
+import { firstName, INVOICES, orderAddress, PAY_NAMES, pestName, workSummary } from '../data/texts';
 import type { Order, PayMethod, Visit } from '../data/types';
 import { formatDate, todayWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
@@ -208,6 +211,19 @@ export function AccountingOrderPage() {
         </div>
       )}
 
+      <Group title="O zleceniu">
+        <Info label="Adres">{`${orderAddress(order)}${order.postalCode ? `, ${order.postalCode}` : ''}`}</Info>
+        <Info label="Szkodnik">{pestName(order)}</Info>
+        {methodNames(order).length > 0 && <Info label="Co robimy">{methodNames(order).join(', ')}</Info>}
+        {order.description.trim() && (
+          <div className="order-note">
+            <span className="order-note-label">Opis{order.ownerName ? ` od ${firstName(order.ownerName)}` : ''}</span>
+            <p>{order.description.trim()}</p>
+          </div>
+        )}
+        {order.ownerName && <Info label="Przyjął">{`${order.ownerName}, ${formatDate(order.createdAt)}`}</Info>}
+      </Group>
+
       <Group title="Klient i dane do faktury">
         <Info label="Klient">{order.clientName || '—'}</Info>
         <Info label="Faktura">{INVOICES[order.invoice]}</Info>
@@ -235,6 +251,16 @@ export function AccountingOrderPage() {
             <span className="row-sub">
               {[v.payMethod && PAY_NAMES[v.payMethod], workSummary(v), v.technicianName && `technik: ${v.technicianName}`].filter(Boolean).join(' · ')}
             </span>
+            {normalizeInterview(v.interview).situation.trim() && (
+              <p className="accounting-situation">
+                <strong>Sytuacja: </strong>
+                {normalizeInterview(v.interview).situation.trim()}
+              </p>
+            )}
+            <details className="accounting-details">
+              <summary>Szczegóły zabiegu</summary>
+              <VisitSummary order={order} visit={v} vatRate={VAT_RATE} short />
+            </details>
             {wantsInvoice && (
               <>
                 <label className="check">

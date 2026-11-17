@@ -3631,3 +3631,20 @@ body {
 .settings-section > .admin-duty {
   padding: 0 14px 14px;
 }
+
+/* Panel księgowej: opis sytuacji i szczegóły zabiegu przy fakturze */
+.accounting-situation {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.accounting-details > summary {
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.accounting-details[open] > summary {
+  margin-bottom: 8px;
+}
