@@ -3984,3 +3984,24 @@ body {
   background: #d93025;
   box-shadow: 0 0 0 1.5px var(--surface);
 }
+
+/* Wydarzenia w kalendarzu (wolne, urlop, serwis…) */
+.event-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: 0;
+}
+
+.calendar .cal-chip-event {
+  font-weight: 600;
+}
+
+.calendar .cal-gblock-event b {
+  white-space: normal;
+}
+
+.agenda-event .agenda-time {
+  font-size: 0.85rem;
+}

@@ -19,9 +19,13 @@ import { methodNames } from '../data/methods';
 import { URGENT_LABEL, visitUrgent } from '../data/order-list';
 import type { VisitStatus } from '../data/types';
 import { addDays, addMinutes, formatTerm, nowWarsaw, todayWarsaw } from '../lib/dates';
+import { getProfile } from '../data/settings';
 import { Icon } from '../ui/icons';
 import { useFeedback } from '../ui/feedback';
-import { AddLink, Page } from '../ui/kit';
+import { Page } from '../ui/kit';
+import { eventOnDay, eventType, listEvents, type CalendarEvent } from '../data/events';
+import { AddChooser, EventSheet, type CalendarSpot } from './calendar-events';
+import { clockInWarsaw, firstName } from '../data/texts';
 
 const VIEW_KEY = 'ddd-kalendarz-widok';
 /** Oglądany dzień: po wejściu w zabieg i powrocie kalendarz jest tam, gdzie był (do zamknięcia aplikacji). */
@@ -51,7 +55,7 @@ interface AgendaEvent {
  * Lista: cały tydzień po dniach. Zabieg w jednej linii: godzina i czas trwania, kolor statusu, numer i ulica, pod spodem
  * miejscowość, szkodnik i metoda. Dni bez zabiegów to jedna cienka linia „wolne”.
  */
-function WeekAgenda(props: { events: AgendaEvent[]; from: string; to: string; onOpen: (id: string) => void }) {
+function WeekAgenda(props: { events: AgendaEvent[]; custom: CalendarEvent[]; me: string | null; from: string; to: string; onOpen: (id: string) => void; onEvent: (e: CalendarEvent) => void }) {
   const today = todayWarsaw();
   const days: string[] = [];
   for (let d = props.from; d < props.to; d = addDays(d, 1)) days.push(d);
@@ -59,9 +63,26 @@ function WeekAgenda(props: { events: AgendaEvent[]; from: string; to: string; on
     <div className="agenda">
       {days.map((day) => {
         const list = props.events.filter((e) => e.start.slice(0, 10) === day).sort((a, b) => a.start.localeCompare(b.start));
+        const extra = props.custom.filter((e) => eventOnDay(e, day)).sort((a, b) => Number(b.allDay) - Number(a.allDay) || (a.start ?? '').localeCompare(b.start ?? ''));
+        const extraRows = extra.map((e) => (
+          <button key={e.id} type="button" className="agenda-row agenda-event" onClick={() => props.onEvent(e)}>
+            <span className="agenda-time">
+              {e.allDay ? 'cały' : e.date === day ? e.start : '…'}
+              <small>{e.allDay ? 'dzień' : e.endDate === day ? `do ${e.end}` : ''}</small>
+            </span>
+            <span className="agenda-bar" style={{ background: eventType(e.type).color }} />
+            <span className="agenda-text">
+              <span>
+                <b>{e.name}</b>
+                {e.ownerId !== props.me && e.ownerName ? ` · ${firstName(e.ownerName)}` : ''}
+              </span>
+              {(e.note || eventType(e.type).label !== e.name) && <small>{e.note || eventType(e.type).label}</small>}
+            </span>
+          </button>
+        ));
         const wd = (new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7;
         const name = `${day === today ? 'Dziś · ' : ''}${WEEKDAY_NAMES[wd]} ${Number(day.slice(8, 10))}`;
-        if (!list.length) {
+        if (!list.length && !extra.length) {
           return (
             <div key={day} className={day === today ? 'agenda-day agenda-free today' : 'agenda-day agenda-free'}>
               <span>{name}</span>
@@ -73,8 +94,9 @@ function WeekAgenda(props: { events: AgendaEvent[]; from: string; to: string; on
           <section key={day}>
             <div className={day === today ? 'agenda-day today' : 'agenda-day'}>
               <span>{name}</span>
-              <span>{list.length}</span>
+              <span>{list.length || ''}</span>
             </div>
+            {extraRows}
             {list.map((e) => {
               const x = e.extendedProps;
               const dur = x.durationMin >= 60 ? `${String(x.durationMin / 60).replace('.', ',')} h` : `${x.durationMin} min`;
@@ -207,7 +229,10 @@ export default function CalendarPage() {
     if (dx < 0) api()?.next();
     else api()?.prev();
   };
-  const rows = useLiveQuery(async () => ({ visits: await visits.all(), orders: await orders.all() }));
+  const rows = useLiveQuery(async () => ({ visits: await visits.all(), orders: await orders.all(), custom: await listEvents(), me: (await getProfile()).userId }));
+  // „+” i dotknięcie godziny: wybór „zlecenie / wydarzenie”; dotknięcie wydarzenia: jego edycja.
+  const [adding, setAdding] = useState<CalendarSpot | null>(null);
+  const [eventSource, setEventSource] = useState<CalendarEvent | CalendarSpot | null>(null);
 
   const events = useMemo(() => {
     if (!rows) return [];
@@ -228,12 +253,17 @@ export default function CalendarPage() {
         const reason = visitUrgent(order, v, today);
         const urgent = reason ? URGENT_LABEL[reason] : null;
         const problem = order.accountingProblem ? order.accountingNote?.trim() || '' : null;
+        // Wykonany innego dnia niż umówiony (np. wcześniej): w kalendarzu w dniu wykonania, o godzinie rozpoczęcia.
+        const at =
+          v.status === 'wykonany' && v.doneOn && v.doneOn !== v.start!.slice(0, 10)
+            ? `${v.doneOn}T${v.startedAt ? clockInWarsaw(v.startedAt) : v.start!.slice(11, 16)}`
+            : v.start!;
         const short = (order.street || order.city || '').replace(/^(ul\.|al\.|os\.|pl\.)\s*/i, '').split(/\s+/)[0] ?? '';
         return {
           id: v.id,
           title: `${visitCode(order, v.seq)} · ${place} · ${what}${order.pink ? ' · PINK' : ''}${urgent ? ` · ${urgent}` : ''}${problem !== null ? ' · problem u księgowej' : ''}`,
-          start: v.start!,
-          end: addMinutes(v.start!, v.durationMin),
+          start: at,
+          end: addMinutes(at, v.durationMin),
           color: STATUS_COLOR[v.status],
           textColor: v.status === 'zaplanowany' ? '#ffffff' : 'var(--surface)',
           editable: v.status === 'zaplanowany',
@@ -241,6 +271,25 @@ export default function CalendarPage() {
         };
       });
   }, [rows]);
+  // Wydarzenia (wolne, serwis…) jako osobne bloczki: cały dzień u góry dnia, z godzinami w siatce.
+  const customEvents = useMemo(() => {
+    if (!rows) return [];
+    return rows.custom.map((e) => {
+      const who = e.ownerId !== rows.me && e.ownerName ? `${firstName(e.ownerName)}: ` : '';
+      return {
+        id: `ev:${e.id}`,
+        title: `${who}${e.name}`,
+        start: e.allDay ? e.date : `${e.date}T${e.start}`,
+        end: e.allDay ? addDays(e.endDate, 1) : `${e.endDate}T${e.end}`,
+        allDay: e.allDay,
+        color: eventType(e.type).color,
+        textColor: '#ffffff',
+        editable: false,
+        extendedProps: { custom: true, eventId: e.id },
+      };
+    });
+  }, [rows]);
+  const allEvents = useMemo(() => [...events, ...customEvents], [events, customEvents]);
   // Dni z zabiegiem pilnym albo z problemem u księgowej: czerwona kropka przy numerze dnia w miesiącu.
   const alertDays = useMemo(() => {
     const set = new Set<string>();
@@ -249,7 +298,24 @@ export default function CalendarPage() {
   }, [events]);
 
   return (
-    <Page title="Kalendarz" actions={<AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
+    <Page
+      title="Kalendarz"
+      actions={
+        <button type="button" className="icon-btn icon-btn-primary" aria-label="Dodaj zlecenie albo wydarzenie" title="Dodaj" onClick={() => setAdding({ date: head.date || todayWarsaw(), time: null })}>
+          <Icon name="plus" size={24} />
+        </button>
+      }
+    >
+      <AddChooser
+        spot={adding}
+        onClose={() => setAdding(null)}
+        onOrder={(spot) => navigate(`/zlecenia/nowe?data=${spot.date}${spot.time ? `&czas=${spot.time}` : ''}`)}
+        onEvent={(spot) => {
+          setAdding(null);
+          setEventSource(spot);
+        }}
+      />
+      <EventSheet source={eventSource} onClose={() => setEventSource(null)} />
       <div className="cal-head">
         <button type="button" className="cal-nav cal-nav-prev" aria-label="Wcześniej" onClick={() => api()?.prev()}>
           <Icon name="chevron" />
@@ -298,7 +364,7 @@ export default function CalendarPage() {
         </button>
       </div>
       <div className={head.view === 'listWeek' ? 'calendar calendar-agenda' : 'calendar'} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-        {head.view === 'listWeek' && head.from && <WeekAgenda events={events} from={head.from} to={head.to} onOpen={(id) => navigate(`/zabieg/${id}`)} />}
+        {head.view === 'listWeek' && head.from && <WeekAgenda events={events} custom={rows?.custom ?? []} me={rows?.me ?? null} from={head.from} to={head.to} onOpen={(id) => navigate(`/zabieg/${id}`)} onEvent={setEventSource} />}
         <div className={head.view === 'listWeek' ? 'cal-hidden' : undefined}>
         <FullCalendar
           ref={calendar}
@@ -312,7 +378,9 @@ export default function CalendarPage() {
           footerToolbar={false}
           height="auto"
           nowIndicator
-          allDaySlot={false}
+          // Wiersz „cały dzień” na wydarzenia jak wolne czy urlop.
+          allDaySlot
+          allDayText="cały dzień"
           slotMinTime="06:00:00"
           slotMaxTime="22:00:00"
           scrollTime="07:00:00"
@@ -323,7 +391,10 @@ export default function CalendarPage() {
           // Na komputerze bloczek ma pełny kod, szkodnika i miejscowość. Na telefonie (dzień ok. 50 px) mieszczą się tylko
           // cztery cyfry, a numer kolejnego zabiegu (II, III) jest w osobnej, małej linii.
           eventDisplay="block"
-          eventClass={(arg) => ((arg.event.extendedProps as { pink?: boolean }).pink ? 'cal-event cal-event-pink' : 'cal-event')}
+          eventClass={(arg) => {
+            const x = arg.event.extendedProps as { pink?: boolean; custom?: boolean };
+            return x.custom ? 'cal-event cal-event-custom' : x.pink ? 'cal-event cal-event-pink' : 'cal-event';
+          }}
           dayCellClass="cal-day"
           views={{
             dayGridMonth: { dayMaxEvents: 3 },
@@ -361,6 +432,20 @@ export default function CalendarPage() {
           moreLinkContent={(arg) => `+${arg.num}`}
           moreLinkHint={(num) => `Jeszcze ${num}: otwórz dzień`}
           eventContent={(arg) => {
+            if ((arg.event.extendedProps as { custom?: boolean }).custom) {
+              const time = arg.event.allDay || !arg.event.start ? '' : stripZone(arg.event.start).slice(11, 16);
+              return arg.view.type === 'dayGridMonth' || arg.event.allDay ? (
+                <span className="cal-chip cal-chip-event" title={arg.event.title}>
+                  {time ? `${time} ` : ''}
+                  {arg.event.title}
+                </span>
+              ) : (
+                <span className="cal-gblock cal-gblock-event" title={arg.event.title}>
+                  <b>{arg.event.title}</b>
+                  <span>{time}</span>
+                </span>
+              );
+            }
             const { number, digits, seq, pink, place, what } = arg.event.extendedProps as {
               number: string;
               digits: string;
@@ -420,7 +505,7 @@ export default function CalendarPage() {
           noEventsText="Brak zabiegów w tym okresie"
           listItemEventTimeClass="cal-list-time"
           listItemEventTitleClass="cal-list-title"
-          events={events}
+          events={allEvents}
           editable
           // Przeciąganie zabiegu przesuwa termin co 10 minut.
           snapDuration="00:10:00"
@@ -451,10 +536,18 @@ export default function CalendarPage() {
               api()?.changeView('timeGridDay', date);
               return;
             }
-            const time = info.allDay ? '' : `&czas=${info.dateStr.slice(11, 16)}`;
-            navigate(`/zlecenia/nowe?data=${date}${time}`);
+            // Dzień i tydzień: dotknięcie godziny pyta, czy to zlecenie, czy wydarzenie (np. serwis auta).
+            setAdding({ date, time: info.allDay ? null : info.dateStr.slice(11, 16) });
           }}
-          eventClick={(info) => navigate(`/zabieg/${info.event.id}`)}
+          eventClick={(info) => {
+            const x = info.event.extendedProps as { custom?: boolean; eventId?: string };
+            if (x.custom) {
+              const found = rows?.custom.find((e) => e.id === x.eventId);
+              if (found) setEventSource(found);
+              return;
+            }
+            navigate(`/zabieg/${info.event.id}`);
+          }}
           eventDrop={(info) => {
             const { id, start: newStart } = info.event;
             if (!newStart) return;
