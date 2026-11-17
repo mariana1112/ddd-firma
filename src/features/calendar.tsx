@@ -1,4 +1,4 @@
-import FullCalendar from '@fullcalendar/react';
+import FullCalendar, { type CalendarRef } from '@fullcalendar/react';
 import classicTheme from '@fullcalendar/react/themes/classic';
 import dayGridPlugin from '@fullcalendar/react/daygrid';
 import interactionPlugin from '@fullcalendar/react/interaction';
@@ -11,17 +11,35 @@ import '@fullcalendar/react/themes/classic/palette.css';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { roman, visitCode } from '../data/codes';
 import { mainPhone } from '../data/order-search';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
 import { pestName } from '../data/texts';
 import { methodNames } from '../data/methods';
 import type { VisitStatus } from '../data/types';
-import { addMinutes, formatTerm, nowWarsaw } from '../lib/dates';
+import { addMinutes, formatTerm, nowWarsaw, todayWarsaw } from '../lib/dates';
+import { Icon } from '../ui/icons';
 import { useFeedback } from '../ui/feedback';
 import { AddLink, Page } from '../ui/kit';
 
 const VIEW_KEY = 'ddd-kalendarz-widok';
+/** Oglądany dzień: po wejściu w zabieg i powrocie kalendarz jest tam, gdzie był (do zamknięcia aplikacji). */
+const DATE_KEY = 'ddd-kalendarz-data';
+
+const VIEWS: Array<[string, string]> = [
+  ['listWeek', 'Lista'],
+  ['timeGridDay', 'Dzień'],
+  ['timeGridWeek', 'Tydzień'],
+  ['dayGridMonth', 'Miesiąc'],
+];
+
+function initialDate(): string | undefined {
+  try {
+    return sessionStorage.getItem(DATE_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const STATUS_COLOR: Record<VisitStatus, string> = {
   // Umówione wyraźnie na niebiesko, odróżniają się od wykonanych (zielone).
@@ -62,7 +80,28 @@ export default function CalendarPage() {
   const navigate = useNavigate();
   const { run, toast } = useFeedback();
   const [view] = useState(initialView);
+  const [startDate] = useState(initialDate);
   const narrow = useNarrow();
+  const calendar = useRef<CalendarRef>(null);
+  const api = () => calendar.current?.getApi();
+  const [head, setHead] = useState<{ title: string; view: string; hasToday: boolean; date: string }>({ title: '', view, hasToday: true, date: '' });
+  // Przesunięcie palcem w lewo / w prawo: następny / poprzedni dzień, tydzień albo miesiąc.
+  const touch = useRef<{ x: number; y: number; at: number } | null>(null);
+  const onTouchStart = (e: TouchEvent) => {
+    const t = e.touches[0];
+    touch.current = e.touches.length === 1 ? { x: t.clientX, y: t.clientY, at: Date.now() } : null;
+  };
+  const onTouchEnd = (e: TouchEvent) => {
+    const start = touch.current;
+    touch.current = null;
+    if (!start || document.querySelector('.fc-event-dragging, .fc-event-mirror')) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Date.now() - start.at > 700 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx < 0) api()?.next();
+    else api()?.prev();
+  };
   const rows = useLiveQuery(async () => ({ visits: await visits.all(), orders: await orders.all() }));
 
   const events = useMemo(() => {
@@ -93,22 +132,48 @@ export default function CalendarPage() {
 
   return (
     <Page title="Kalendarz" actions={<AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
-      <div className="calendar">
+      <div className="cal-head">
+        <button type="button" className="cal-nav cal-nav-prev" aria-label="Wcześniej" onClick={() => api()?.prev()}>
+          <Icon name="chevron" />
+        </button>
+        {/* Dotknięcie tytułu otwiera wybór daty: szybki skok do dowolnego dnia. */}
+        <label className="cal-title">
+          <span>{head.title}</span>
+          <input
+            type="date"
+            aria-label="Przejdź do dnia"
+            value={head.date}
+            onChange={(e) => e.target.value && api()?.gotoDate(e.target.value)}
+          />
+        </label>
+        <button type="button" className="cal-nav" aria-label="Później" onClick={() => api()?.next()}>
+          <Icon name="chevron" />
+        </button>
+      </div>
+      <div className="cal-bar">
+        <div className="cal-views" role="group" aria-label="Widok kalendarza">
+          {VIEWS.map(([type, label]) => (
+            <button key={type} type="button" className={head.view === type ? 'chip active' : 'chip'} aria-pressed={head.view === type} onClick={() => api()?.changeView(type)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* „Dziś” zawsze w tym samym miejscu; wyróżniony, gdy oglądasz inny okres. */}
+        <button type="button" className={head.hasToday ? "btn btn-sm" : "btn btn-sm btn-primary"} disabled={head.hasToday} onClick={() => api()?.today()}>
+          Dziś
+        </button>
+      </div>
+      <div className="calendar" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <FullCalendar
+          ref={calendar}
           plugins={[classicTheme, dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           locale={plLocale}
           timeZone="UTC"
           now={() => `${nowWarsaw()}:00Z`}
           initialView={view}
-          headerToolbar={{ start: 'title', end: 'prev,today,next' }}
-          footerToolbar={{ center: 'listWeek,timeGridDay,timeGridWeek,dayGridMonth' }}
-          buttons={{
-            today: { text: 'Dziś' },
-            listWeek: { text: 'Lista' },
-            timeGridDay: { text: 'Dzień' },
-            timeGridWeek: { text: 'Tydzień' },
-            dayGridMonth: { text: 'Miesiąc' },
-          }}
+          initialDate={startDate}
+          headerToolbar={false}
+          footerToolbar={false}
           height="auto"
           nowIndicator
           allDaySlot={false}
@@ -176,14 +241,26 @@ export default function CalendarPage() {
           eventDurationEditable={false}
           longPressDelay={350}
           datesSet={(info) => {
+            const today = todayWarsaw();
+            const from = stripZone(info.view.currentStart).slice(0, 10);
+            const to = stripZone(info.view.currentEnd).slice(0, 10);
+            // Oglądany dzień: dziś, gdy jest w widoku, inaczej początek okresu.
+            const date = today >= from && today < to ? today : from;
+            setHead({ title: info.view.title, view: info.view.type, hasToday: today >= from && today < to, date });
             try {
               localStorage.setItem(VIEW_KEY, info.view.type);
+              sessionStorage.setItem(DATE_KEY, date);
             } catch {
-              // Zapamiętanie widoku to tylko wygoda.
+              // Zapamiętanie widoku i dnia to tylko wygoda.
             }
           }}
           dateClick={(info) => {
             const date = info.dateStr.slice(0, 10);
+            // Miesiąc: dotknięcie dnia otwiera ten dzień (nowe zlecenie dodaje się przyciskiem +).
+            if (info.view.type === 'dayGridMonth') {
+              api()?.changeView('timeGridDay', date);
+              return;
+            }
             const time = info.allDay ? '' : `&czas=${info.dateStr.slice(11, 16)}`;
             navigate(`/zlecenia/nowe?data=${date}${time}`);
           }}
