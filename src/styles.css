@@ -3441,3 +3441,54 @@ body {
 .more-actions > .btn-stack {
   padding: 0 12px 12px;
 }
+
+/* Ustawienia: sekcje zwinięte, rozwijane dotknięciem */
+.settings-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.settings-section > summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 40px 14px 14px;
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-section > summary::after {
+  content: '▾';
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--primary);
+}
+
+.settings-section[open] > summary::after {
+  content: '▴';
+}
+
+.settings-section > summary > span {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.settings-section > fieldset {
+  margin: 0;
+  padding: 0 14px 14px;
+  border: 0;
+}
+
+.install-help > summary {
+  margin-top: 10px;
+  color: var(--primary);
+  cursor: pointer;
+}

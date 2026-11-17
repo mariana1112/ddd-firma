@@ -21,7 +21,7 @@ import {
   pestName,
   priceRange,
   workSummary,
-  bookedBy, firstName, orderText, centralExport, orderAddress, telUrl } from '../data/texts';
+  bookedBy, firstName, centralExport, orderAddress, telUrl } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { TomorrowReminders } from './reminders';
@@ -285,27 +285,16 @@ function History({ list, current, order, vatRate }: { list: Visit[]; current: Vi
 
 /**
  * Wszystko, co wpisano przy przyjęciu zlecenia, do spokojnego przeczytania na karcie zabiegu: opis (co napisał
- * przyjmujący, np. szef), co robimy, szkodnik, cena, faktura, protokół, klient i telefony. Pod spodem opcje zlecenia.
+ * przyjmujący, np. szef), co robimy, szkodnik, zakres i cena, faktura, protokół i telefony. Same informacje: opcje
+ * zlecenia (PDF, edycja danych, wszystkie zabiegi) są pod „Więcej opcji”.
  */
-function OrderInfo(props: { order: Order; visits: Visit[]; vatRate: number }) {
+function OrderInfo(props: { order: Order; vatRate: number; terms?: string }) {
   const { order } = props;
-  const { deliverFile, run, toast } = useFeedback();
   const price = priceRange({ priceMin: order.priceMin, priceMax: order.priceMax, invoice: order.invoice }, props.vatRate);
   const methods = methodNames(order);
   const invoiceData = order.invoice === 'vat' ? [order.invoiceName, order.nip && `NIP ${order.nip}`, order.invoiceAddress].filter(Boolean).join(', ') : order.invoice === 'imienna' ? order.invoiceAddress : '';
   return (
-    <Group
-      title={`Zlecenie ${orderCode(order)}`}
-      action={
-        <button
-          type="button"
-          className="link"
-          onClick={() => void copyText(orderText(order, props.visits, props.vatRate)).then((ok) => toast(ok ? 'Skopiowano dane zlecenia' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
-        >
-          <Icon name="copy" /> Kopiuj dane
-        </button>
-      }
-    >
+    <Group title={`Zlecenie ${orderCode(order)}`}>
       {order.description.trim() && (
         <div className="order-note">
           <span className="order-note-label">Opis{order.ownerName ? ` od ${firstName(order.ownerName)}` : ''}</span>
@@ -315,11 +304,10 @@ function OrderInfo(props: { order: Order; visits: Visit[]; vatRate: number }) {
       {methods.length > 0 && <Info label="Co robimy">{methods.join(', ')}</Info>}
       <Info label="Szkodnik">{pestName(order)}</Info>
       {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
-      {price && <Info label="Cena">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
+      {props.terms ? <Info label="Zakres i cena">{props.terms}</Info> : price && <Info label="Cena">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
       <Info label="Faktura">{INVOICES[order.invoice]}</Info>
       {invoiceData && <Info label="Dane do faktury">{invoiceData}</Info>}
       {order.protocol && <Info label="Protokół">Tak</Info>}
-      {order.clientName.trim() && <Info label="Klient">{order.clientName}</Info>}
       {order.phones.map((p, i) => (
         <Info key={i} label={i === 0 ? 'Telefon' : 'Drugi telefon'}>
           {withCountryCode(p.number)}
@@ -327,29 +315,36 @@ function OrderInfo(props: { order: Order; visits: Visit[]; vatRate: number }) {
         </Info>
       ))}
       {order.email && <Info label="E-mail">{order.email}</Info>}
-      {order.pink && <Info label="Kod pink">{order.pinkNote || 'Tak'}</Info>}
       {order.ownerName && <Info label="Przyjął">{`${order.ownerName}, ${formatDate(order.createdAt)}`}</Info>}
-      <div className="order-actions">
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={() =>
-            void run(async () => {
-              const [{ orderDocument }, { renderPdf }] = await Promise.all([import('../pdf/documents'), import('../pdf/render')]);
-              deliverFile(await renderPdf(orderDocument(order, props.visits, { vatRate: props.vatRate })), `zlecenie-${orderCode(order).replace(/[^\w-]+/g, '-')}.pdf`);
-            })
-          }
-        >
-          <Icon name="file" /> PDF zlecenia
-        </button>
-        <Link className="btn btn-sm" to={`/zlecenia/${order.id}/edycja`}>
-          <Icon name="edit" /> Edytuj zlecenie
-        </Link>
-        <Link className="btn btn-sm" to={`/zlecenia/${order.id}?pelna=1`}>
-          Wszystkie zabiegi i archiwum
-        </Link>
-      </div>
     </Group>
+  );
+}
+
+/** Rzadziej potrzebne opcje zlecenia: edycja danych klienta i adresu, PDF, wszystkie zabiegi zlecenia. */
+function OrderOptions(props: { order: Order; visits: Visit[]; vatRate: number }) {
+  const { order } = props;
+  const { deliverFile, run } = useFeedback();
+  return (
+    <>
+      <Link className="btn" to={`/zlecenia/${order.id}/edycja`}>
+        <Icon name="edit" /> Edytuj dane zlecenia (klient, adres, opis)
+      </Link>
+      <button
+        type="button"
+        className="btn"
+        onClick={() =>
+          void run(async () => {
+            const [{ orderDocument }, { renderPdf }] = await Promise.all([import('../pdf/documents'), import('../pdf/render')]);
+            deliverFile(await renderPdf(orderDocument(order, props.visits, { vatRate: props.vatRate })), `zlecenie-${orderCode(order).replace(/[^\w-]+/g, '-')}.pdf`);
+          })
+        }
+      >
+        <Icon name="file" /> PDF zlecenia
+      </button>
+      <Link className="btn" to={`/zlecenia/${order.id}?pelna=1`}>
+        <Icon name="clipboard" /> Wszystkie zabiegi zlecenia
+      </Link>
+    </>
   );
 }
 
@@ -761,8 +756,6 @@ export function VisitPage() {
             </span>
           </div>
         )}
-        <OrderInfo order={order} visits={list} vatRate={settings.vatRate} />
-
         {order.access && (
           <div className="notice notice-info">
             <Icon name="pin" />
@@ -776,47 +769,40 @@ export function VisitPage() {
           </div>
         )}
 
-        {!summary && !active && (
-          <div className="terms-bar">
-            <span>
-              <span className="terms-label">Co pryskamy i cena</span>
-              {termsText(terms, order.invoice, settings.vatRate)}
-            </span>
-            <button type="button" className="btn btn-sm" onClick={() => setEditingTerms(true)}>
-              <Icon name="edit" /> Zmień
+        {visit.status === 'zaplanowany' && (
+          <>
+            {/* Kolejny zabieg (II, III…) można zacząć dopiero po umówieniu terminu z klientem. */}
+            {visit.seq > 1 && !visit.start && (
+              <p className="notice notice-warn">
+                <Icon name="alert" />
+                <span>Zabieg {roman(visit.seq)} nie jest umówiony. Najpierw umów termin z klientem, potem go rozpoczniesz.</span>
+              </p>
+            )}
+            <button
+              type="button"
+              className="btn btn-primary btn-block btn-big"
+              disabled={visit.seq > 1 && !visit.start}
+              onClick={() => void run(() => startVisit(visit.id))}
+            >
+              <Icon name="play" /> Rozpocznij zabieg
             </button>
-          </div>
+            <div className="btn-stack">
+              {/* Jedno miejsce na zmiany umówionego zabiegu: termin, czas, zakres i cena; dane klienta w edycji zlecenia. */}
+              <button type="button" className="btn" onClick={() => setEditingPlanned(true)}>
+                <Icon name="edit" /> {visit.start ? 'Edytuj zabieg (termin, czas, zakres, cena)' : 'Umów termin i edytuj zabieg'}
+              </button>
+            </div>
+            {duplicating && <DuplicateOrderSheet order={order} open durationMin={visit.durationMin || 60} start={visit.start} onClose={() => setDuplicating(false)} />}
+          </>
         )}
+        <OrderInfo order={order} vatRate={settings.vatRate} terms={summary ? undefined : termsText(terms, order.invoice, settings.vatRate)} />
 
-        </>
-      )}
-
-      {visit.status === 'zaplanowany' && (
-        <>
-          {/* Kolejny zabieg (II, III…) można zacząć dopiero po umówieniu terminu z klientem. */}
-          {visit.seq > 1 && !visit.start && (
-            <p className="notice notice-warn">
-              <Icon name="alert" />
-              <span>Zabieg {roman(visit.seq)} nie jest umówiony. Najpierw umów termin z klientem, potem go rozpoczniesz.</span>
-            </p>
-          )}
-          <button
-            type="button"
-            className="btn btn-primary btn-block btn-big"
-            disabled={visit.seq > 1 && !visit.start}
-            onClick={() => void run(() => startVisit(visit.id))}
-          >
-            <Icon name="play" /> Rozpocznij zabieg
-          </button>
-          <div className="btn-stack">
-            {/* Jedno miejsce na zmiany umówionego zabiegu: termin, czas, zakres i cena; dane klienta w edycji zlecenia. */}
-            <button type="button" className="btn" onClick={() => setEditingPlanned(true)}>
-              <Icon name="edit" /> {visit.start ? 'Edytuj zabieg (termin, czas, zakres, cena)' : 'Umów termin i edytuj zabieg'}
-            </button>
-          </div>
+        {visit.status === 'zaplanowany' && (
+          <>
           <details className="more-actions">
             <summary>Więcej opcji</summary>
             <div className="btn-stack">
+              <OrderOptions order={order} visits={list} vatRate={settings.vatRate} />
               {visit.start && (
                 <a className="btn" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer">
                   <Icon name="calendar" /> Dodaj do Kalendarza Google
@@ -839,7 +825,9 @@ export function VisitPage() {
               </button>
             </div>
           </details>
-          {duplicating && <DuplicateOrderSheet order={order} open durationMin={visit.durationMin || 60} start={visit.start} onClose={() => setDuplicating(false)} />}
+          </>
+        )}
+
         </>
       )}
 
@@ -886,15 +874,21 @@ export function VisitPage() {
             >
               <Icon name="copy" /> Kopiuj wszystkie dane
             </button>
-            <button type="button" className="btn" onClick={() => setEditingId(visit.id)}>
-              <Icon name="edit" /> Edytuj zabieg
-            </button>
             {!later?.start && (
-              <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
+              <button type="button" className="btn btn-primary" onClick={() => setPlanningNext(true)}>
                 <Icon name="calendar" /> Umów kolejny zabieg
               </button>
             )}
           </div>
+          <details className="more-actions">
+            <summary>Więcej opcji</summary>
+            <div className="btn-stack">
+              <button type="button" className="btn" onClick={() => setEditingId(visit.id)}>
+                <Icon name="edit" /> Edytuj zabieg
+              </button>
+              <OrderOptions order={order} visits={list} vatRate={settings.vatRate} />
+            </div>
+          </details>
         </>
       )}
 

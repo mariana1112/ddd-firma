@@ -29,19 +29,8 @@ import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen, 
 type StatusFilter = ListFilter;
 type PayFilter = 'wszystkie' | PayMethod;
 
-/** Widok listy: każdy zabieg osobno (domyślnie) albo zabiegi połączone w zlecenia. */
-type ListMode = 'zabiegi' | 'zlecenia';
-const MODE_KEY = 'ddd:lista-zlecen';
-const readMode = (): ListMode => {
-  try {
-    return localStorage.getItem(MODE_KEY) === 'zlecenia' ? 'zlecenia' : 'zabiegi';
-  } catch {
-    return 'zabiegi';
-  }
-};
-
-/** Domyślna kolejność: do zrobienia od najbliższego terminu, zakończone od ostatniego. */
-const defaultSort = (status: StatusFilter): OrderSort => (status === 'aktywne' ? 'najwczesniej' : 'najpozniej');
+/** Kolejność wynika z filtra: zakończone od ostatniego, reszta od dziś (dziś, jutro, kolejne dni). */
+const sortFor = (status: StatusFilter): OrderSort => (status === 'wykonane' || status === 'archiwum' ? 'najpozniej' : 'od_dzis');
 
 /** „1 zlecenie”, „3 zlecenia”, „5 zleceń”. */
 const ordersCount = (n: number) => {
@@ -69,8 +58,8 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
   const [params] = useSearchParams();
   const [query, setQuery] = useState(() => params.get('q') ?? '');
   const [status, setStatus] = useState<StatusFilter>(archive ? 'archiwum' : 'wszystkie');
-  const [savedMode, setModeState] = useState<ListMode>(readMode);
-  const mode: ListMode = archive ? 'zlecenia' : savedMode;
+  // Archiwum: całe zlecenia; lista: każdy zabieg osobno.
+  const mode: 'zabiegi' | 'zlecenia' = archive ? 'zlecenia' : 'zabiegi';
   const [moreFilters, setMoreFilters] = useState(false);
   const { confirm, run, toast } = useFeedback();
   const role = useLiveQuery(async () => (await getSyncState())?.role ?? null);
@@ -89,14 +78,6 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
       toast(`Usunięto: ${ordersCount(ids.length)} (w koszu)`);
     });
   };
-  const setMode = (next: ListMode) => {
-    setModeState(next);
-    try {
-      localStorage.setItem(MODE_KEY, next);
-    } catch {
-      // Wybór widoku po prostu nie zostanie zapamiętany.
-    }
-  };
   const searching = query.trim().length > 0;
   const today = todayWarsaw();
   // Pilne: niedokończone zabiegi, brak płatności i zaległe terminy, poza archiwum.
@@ -110,12 +91,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
   }, [data, today, mode]);
   const [pay, setPay] = useState<PayFilter>('wszystkie');
   const [invoicesOnly, setInvoicesOnly] = useState(false);
-  // Zlecenia od dziś rosnąco (dziś, jutro, kolejne dni); archiwum od najnowszych.
-  const [sort, setSort] = useState<OrderSort>(archive ? 'najpozniej' : 'od_dzis');
-  const changeStatus = (next: StatusFilter) => {
-    setStatus(next);
-    setSort(defaultSort(next));
-  };
+  const sort = sortFor(status);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -184,7 +160,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
           <Chips
             wrap
             value={status}
-            onChange={changeStatus}
+            onChange={setStatus}
             options={[
               { value: 'wszystkie', label: 'Wszystkie' },
               { value: 'aktywne', label: 'Do zrobienia' },
@@ -193,18 +169,10 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
             ]}
           />
           <button type="button" className="link" onClick={() => setMoreFilters(!moreFilters)}>
-            {moreFilters ? 'Ukryj filtry' : `Więcej filtrów${mode === 'zlecenia' || pay !== 'wszystkie' || invoicesOnly ? ' (włączone)' : ''}`}
+            {moreFilters ? 'Ukryj filtry' : `Płatność i faktury${pay !== 'wszystkie' || invoicesOnly ? ' (włączone)' : ''}`}
           </button>
           {moreFilters && (
           <>
-          <div className="chips" role="group" aria-label="Widok listy">
-            <button type="button" className={mode === 'zabiegi' ? 'chip active' : 'chip'} aria-pressed={mode === 'zabiegi'} onClick={() => setMode('zabiegi')}>
-              Każdy zabieg osobno
-            </button>
-            <button type="button" className={mode === 'zlecenia' ? 'chip active' : 'chip'} aria-pressed={mode === 'zlecenia'} onClick={() => setMode('zlecenia')}>
-              Połącz w zlecenia
-            </button>
-          </div>
           <div className="chips" role="group" aria-label="Forma płatności">
             {(['wszystkie', 'gotowka', 'blik', 'przelew'] as PayFilter[]).map((m) => (
               <button
@@ -220,21 +188,6 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
             <button type="button" className={invoicesOnly ? 'chip active' : 'chip'} aria-pressed={invoicesOnly} onClick={() => setInvoicesOnly(!invoicesOnly)}>
               Tylko faktury
             </button>
-          </div>
-          <div className="chips sort-chips" role="group" aria-label="Sortowanie">
-            <span className="chips-label">Sortuj:</span>
-            {(
-              [
-                ...(archive ? [] : ([['od_dzis', 'Od dziś']] as Array<[OrderSort, string]>)),
-                ['najwczesniej', 'Najwcześniejsze'],
-                ['najpozniej', 'Najpóźniejsze'],
-                ['numer', 'Numer'],
-              ] as Array<[OrderSort, string]>
-            ).map(([value, label]) => (
-              <button key={value} type="button" className={sort === value ? 'chip active' : 'chip'} aria-pressed={sort === value} onClick={() => setSort(value)}>
-                {label}
-              </button>
-            ))}
           </div>
           </>
           )}
@@ -314,11 +267,10 @@ export function VisitListRow({ order, visit, today }: { order: Order; visit: Vis
           <span className="order-number">{visitCode(order, visit.seq)}</span> {order.clientName}
         </>
       }
-      sub={[orderAddress(order), pestName(order), mainPhone(order) && `tel. ${mainPhone(order)}`].filter(Boolean).join(' · ')}
+      sub={[orderAddress(order), pestName(order)].filter(Boolean).join(' · ')}
       meta={
         <>
           {date ? <strong className="row-when">{formatDate(date)}{visit.start && visit.status !== 'wykonany' ? `, godz. ${visit.start.slice(11, 16)}` : ''}</strong> : 'termin do umówienia'}
-          {` · zabieg ${roman(visit.seq)}`}
           <span className="row-tags">
             {urgent && urgent !== 'w_trakcie' && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
             {visit.payMethod && <PayBadge method={visit.payMethod} />}

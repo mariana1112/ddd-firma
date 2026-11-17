@@ -118,6 +118,11 @@ function UpdatesGroup() {
     <Group title="Aktualizacje">
       <Info label="Wersja">{built ? `${APP_VERSION}, z ${built}` : APP_VERSION}</Info>
       <div className="group-pad">
+        <button type="button" className="btn btn-block" disabled={checking} onClick={() => void check()}>
+          <Icon name="refresh" /> {checking ? 'Sprawdzam…' : 'Sprawdź aktualizacje'}
+        </button>
+        <details className="install-help">
+          <summary>Jak zainstalować i aktualizować</summary>
         <p className="field-hint">
           Zainstalowana aplikacja sama pobiera nowe wersje z GitHuba, bez ponownej instalacji i bez utraty danych. Sprawdza je przy
           uruchomieniu, co 15 minut i po powrocie do aplikacji. Gdy nowa wersja jest gotowa, na dole ekranu pojawia się „Odśwież”.
@@ -126,9 +131,7 @@ function UpdatesGroup() {
           Instalacja: na iPhonie w Safari „Udostępnij” → „Do ekranu początkowego”; na Androidzie w Chrome menu ⋮ → „Zainstaluj aplikację”;
           na komputerze w Chrome lub Edge ikona instalacji na końcu paska adresu.
         </p>
-        <button type="button" className="btn btn-block" disabled={checking} onClick={() => void check()}>
-          <Icon name="refresh" /> {checking ? 'Sprawdzam…' : 'Sprawdź aktualizacje'}
-        </button>
+        </details>
       </div>
     </Group>
   );
@@ -337,10 +340,14 @@ function SettingsForm(props: {
     <form className="form" onSubmit={(e) => e.preventDefault()}>
       <p className="notice notice-info">
         <Icon name="check" />
-        <span>Zmiany zapisują się same. Po zapisie na dole ekranu pojawia się „Zapisano automatycznie”.</span>
+        <span>Dotknij sekcji, żeby ją rozwinąć. Zmiany zapisują się same.</span>
       </p>
+      <details className="settings-section">
+        <summary>
+          <strong>Mój telefon i region</strong>
+          <span>Twój numer, prefiks kodów zleceń</span>
+        </summary>
       <fieldset>
-        <legend>Region i kody zleceń</legend>
         <Field label="Mój numer telefonu" hint="Numer, na którym teraz jesteś. Pokazuje się na wizytówce. Ustawienie tego urządzenia.">
           <input type="tel" inputMode="tel" placeholder="+48 500 600 700" value={myPhone} onChange={(e) => setMyPhone(formatPhoneInput(e.target.value))} />
         </Field>
@@ -359,9 +366,14 @@ function SettingsForm(props: {
           </Field>
         )}
       </fieldset>
+      </details>
 
+      <details className="settings-section" open={bonusValue === null || undefined}>
+        <summary>
+          <strong>Rozliczenie</strong>
+          <span>Z kim rozliczasz gotówkę, VAT, numeracja</span>
+        </summary>
       <fieldset>
-        <legend>Rozliczenie</legend>
         {/* Przy koncie firmy imię pochodzi z konta, więc tu go nie ma. */}
         {!props.synced && (
           <Field label="Twoje imię" hint="Pojawia się w raportach i danych dla centrali.">
@@ -388,10 +400,15 @@ function SettingsForm(props: {
           </Field>
         )}
       </fieldset>
+      </details>
 
       {!props.readOnly && (
+      <details className="settings-section" open={Boolean(nipError || accountError) || undefined}>
+        <summary>
+          <strong>Dane firmy</strong>
+          <span>Do kilometrówki, przelewów i BLIK-a</span>
+        </summary>
       <fieldset>
-        <legend>Dane firmy: kilometrówka i płatności</legend>
         <p className="field-hint">Nagłówek „Dane podatnika” w ewidencji przebiegu pojazdu dla celów VAT oraz dane do przelewu i BLIK-a na wizytówce.</p>
         <Field label="Nazwa podatnika" hint="Np. P.H.U. Nazwa Imię Nazwisko. Gdy puste, na wydruku jest Pogromcy Insektów.">
           <input value={company.taxpayerName ?? ''} autoComplete="organization" onChange={(e) => setC({ taxpayerName: e.target.value })} />
@@ -422,19 +439,29 @@ function SettingsForm(props: {
           <input type="tel" inputMode="tel" placeholder="+48 500 600 700" value={company.blikPhone ?? ''} onChange={(e) => setC({ blikPhone: formatPhoneInput(e.target.value) })} />
         </Field>
       </fieldset>
+      </details>
       )}
 
+      <details className="settings-section">
+        <summary>
+          <strong>Zalecenia i zabiegi</strong>
+          <span>Pakiety zaleceń dla metod, miejsca</span>
+        </summary>
       <fieldset>
-        <legend>Zabieg (Twoje ustawienia)</legend>
         <p className="field-hint">Każda osoba ustawia to sobie sama, na swoim telefonie.</p>
         <MethodPackagesEditor packages={s.methodPackages ?? {}} pool={s.recommendations} onChange={(methodPackages) => set({ methodPackages })} />
         <ListEditor label="Inne zalecenia dla klienta (do zaznaczenia przy zakończeniu)" items={s.recommendations} placeholder="Nowe zalecenie" onChange={(recommendations) => set({ recommendations })} />
         <ListEditor label="Rodzaje zabiegu" items={s.treatments} placeholder="Np. Oprysk ciśnieniowy" onChange={(treatments) => set({ treatments })} />
         <ListEditor label="Miejsca" items={s.places} placeholder="Np. listwy" onChange={(places) => set({ places })} />
       </fieldset>
+      </details>
 
+      <details className="settings-section">
+        <summary>
+          <strong>Wiadomości SMS</strong>
+          <span>Przypomnienie, spóźnienie, podsumowanie</span>
+        </summary>
       <fieldset>
-        <legend>Wiadomości SMS (Twoje ustawienia)</legend>
         <p className="field-hint">
           Wstawki w nawiasach klamrowych aplikacja zamienia na dane zabiegu, np. {'{godzina}'} na „10:00”. Treść każdej wiadomości można
           też poprawić przed wysłaniem.
@@ -470,6 +497,7 @@ function SettingsForm(props: {
           Przywróć domyślne treści SMS
         </button>
       </fieldset>
+      </details>
 
       {!valid && <p className="notice notice-warn">Popraw zaznaczone pole: dopóki jest błędne, zmiany się nie zapisują.</p>}
     </form>
