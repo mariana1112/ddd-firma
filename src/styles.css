@@ -3810,3 +3810,153 @@ body {
   font-weight: 600;
   color: var(--muted);
 }
+
+/* Kod pink w kalendarzu: różowa ramka, w tygodniu i dniu różowy narożnik, w miesiącu kropka przed numerem */
+.calendar .cal-event-pink {
+  box-shadow: 0 0 0 2.5px var(--pink);
+}
+
+.calendar .cal-gblock,
+.calendar .cal-block {
+  position: relative;
+}
+
+.calendar .cal-pink-flag {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 12px solid var(--pink);
+  border-left: 12px solid transparent;
+}
+
+.calendar .cal-pink-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px var(--pink);
+  vertical-align: 1px;
+}
+
+.agenda-pink {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--pink-soft);
+  color: var(--pink);
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+.agenda-text small.agenda-pink-note {
+  color: var(--pink);
+}
+
+/* Kalendarz: znaczniki „!” (pilne, niedokończone) i „K” (problem u księgowej) */
+.cal-marks {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 3px;
+  vertical-align: 1px;
+}
+
+.calendar .cal-gblock .cal-marks,
+.calendar .cal-block .cal-marks {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  margin: 0;
+}
+
+.cal-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px #fff;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cal-mark-urgent {
+  background: #d93025;
+}
+
+.cal-mark-problem {
+  background: #7b3fe4;
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 14px;
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.cal-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cal-legend-pink {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--planned);
+  box-shadow: 0 0 0 2px var(--pink);
+}
+
+.agenda-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+.agenda-urgent {
+  background: #d93025;
+}
+
+.agenda-problem {
+  background: #7b3fe4;
+}
+
+.agenda-text small.agenda-problem-note {
+  color: #a77bf3;
+}
+
+/* Panel księgowej: zaznaczony problem */
+.check-problem.active {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.agenda-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.agenda-tags .agenda-pink,
+.agenda-tags .agenda-tag {
+  margin-left: 0;
+}

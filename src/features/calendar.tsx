@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
 import { pestName } from '../data/texts';
 import { methodNames } from '../data/methods';
+import { URGENT_LABEL, visitUrgent } from '../data/order-list';
 import type { VisitStatus } from '../data/types';
 import { addDays, addMinutes, formatTerm, nowWarsaw, todayWarsaw } from '../lib/dates';
 import { Icon } from '../ui/icons';
@@ -42,7 +43,7 @@ interface AgendaEvent {
   id: string;
   start: string;
   color: string;
-  extendedProps: { number: string; street: string; city: string; what: string; durationMin: number; pink: boolean };
+  extendedProps: { number: string; street: string; city: string; what: string; durationMin: number; pink: boolean; pinkNote: string; urgent: string | null; problem: string | null };
 }
 
 /**
@@ -86,9 +87,20 @@ function WeekAgenda(props: { events: AgendaEvent[]; from: string; to: string; on
                   <span className="agenda-text">
                     <span>
                       <b>{x.number}</b> · {x.street || x.city}
-                      {x.pink ? ' · PINK' : ''}
                     </span>
-                    <small>{[x.city, x.what].filter(Boolean).join(' · ')}</small>
+                    {(x.pink || x.urgent || x.problem !== null) && (
+                      <span className="agenda-tags">
+                        {x.pink && <span className="agenda-pink">PINK</span>}
+                        {x.urgent && <span className="agenda-tag agenda-urgent">{x.urgent}</span>}
+                        {x.problem !== null && <span className="agenda-tag agenda-problem">Księgowa</span>}
+                      </span>
+                    )}
+                    {x.problem && <small className="agenda-problem-note">Księgowa: {x.problem}</small>}
+                    {x.pink && x.pinkNote.trim() ? (
+                      <small className="agenda-pink-note">{x.pinkNote.trim()}</small>
+                    ) : (
+                      <small>{[x.city, x.what].filter(Boolean).join(' · ')}</small>
+                    )}
                   </span>
                 </button>
               );
@@ -181,6 +193,7 @@ export default function CalendarPage() {
   const events = useMemo(() => {
     if (!rows) return [];
     const orderById = new Map(rows.orders.map((o) => [o.id, o]));
+    const today = todayWarsaw();
     return rows.visits
       .filter((v) => v.start && v.status !== 'odwolany' && orderById.has(v.orderId))
       .map((v) => {
@@ -192,16 +205,20 @@ export default function CalendarPage() {
         const methods = methodNames(order);
         const what = [pestName(order), methods[0]].filter(Boolean).join(' · ');
         // Krótka ulica do małych bloczków (tydzień, miesiąc): „Zakopiańska”.
+        // Znaczniki: pilne lub niedokończone (np. brak płatności, zaległy termin) i problem zgłoszony przez księgową.
+        const reason = visitUrgent(order, v, today);
+        const urgent = reason ? URGENT_LABEL[reason] : null;
+        const problem = order.accountingProblem ? order.accountingNote?.trim() || '' : null;
         const short = (order.street || order.city || '').replace(/^(ul\.|al\.|os\.|pl\.)\s*/i, '').split(/\s+/)[0] ?? '';
         return {
           id: v.id,
-          title: `${visitCode(order, v.seq)} · ${place} · ${what}${order.pink ? ' · PINK' : ''}`,
+          title: `${visitCode(order, v.seq)} · ${place} · ${what}${order.pink ? ' · PINK' : ''}${urgent ? ` · ${urgent}` : ''}${problem !== null ? ' · problem u księgowej' : ''}`,
           start: v.start!,
           end: addMinutes(v.start!, v.durationMin),
           color: STATUS_COLOR[v.status],
           textColor: v.status === 'zaplanowany' ? '#ffffff' : 'var(--surface)',
           editable: v.status === 'zaplanowany',
-          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, place, city: order.city, what, phone, short, street, status: v.status, durationMin: v.durationMin },
+          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, pinkNote: order.pinkNote ?? '', urgent, problem, place, city: order.city, what, phone, short, street, status: v.status, durationMin: v.durationMin },
         };
       });
   }, [rows]);
@@ -265,7 +282,7 @@ export default function CalendarPage() {
           // Na komputerze bloczek ma pełny kod, szkodnika i miejscowość. Na telefonie (dzień ok. 50 px) mieszczą się tylko
           // cztery cyfry, a numer kolejnego zabiegu (II, III) jest w osobnej, małej linii.
           eventDisplay="block"
-          eventClass="cal-event"
+          eventClass={(arg) => ((arg.event.extendedProps as { pink?: boolean }).pink ? 'cal-event cal-event-pink' : 'cal-event')}
           dayCellClass="cal-day"
           views={{
             dayGridMonth: { dayMaxEvents: 3 },
@@ -302,14 +319,23 @@ export default function CalendarPage() {
               city: string;
               what: string;
             };
-            const { short } = arg.event.extendedProps as { short: string };
+            const { short, urgent, problem } = arg.event.extendedProps as { short: string; urgent: string | null; problem: string | null };
+            const marks =
+              urgent || problem !== null ? (
+                <span className="cal-marks">
+                  {urgent && <span className="cal-mark cal-mark-urgent" aria-label={urgent}>!</span>}
+                  {problem !== null && <span className="cal-mark cal-mark-problem" aria-label="Problem u księgowej">K</span>}
+                </span>
+              ) : null;
             const time = arg.event.start ? stripZone(arg.event.start).slice(11, 16) : '';
             const month = arg.view.type === 'dayGridMonth';
             const label = `${digits}${seq > 1 ? ` ${roman(seq)}` : ''}`;
             // Miesiąc jak w Google: jeden kolorowy pasek z numerem i ulicą (na komputerze także godzina).
             if (month) {
               return (
-                <span className={pink ? 'cal-chip cal-block-pink' : 'cal-chip'} title={arg.event.title}>
+                <span className="cal-chip" title={arg.event.title}>
+                  {pink && <span className="cal-pink-dot" aria-label="Kod pink" />}
+                  {marks}
                   {narrow ? '' : `${time} `}
                   <b>{label}</b> {narrow ? short : place}
                 </span>
@@ -318,14 +344,19 @@ export default function CalendarPage() {
             // Tydzień na telefonie (kolumna ok. 45 px): numer i ulica w kolorowym bloczku.
             if (arg.view.type === 'timeGridWeek' && narrow) {
               return (
-                <span className={pink ? 'cal-gblock cal-block-pink' : 'cal-gblock'} title={arg.event.title}>
+                <span className="cal-gblock" title={arg.event.title}>
+                  {pink && <span className="cal-pink-flag" aria-label="Kod pink" />}
+                {marks}
+                  {marks}
                   <b>{label}</b>
                   <span>{short}</span>
                 </span>
               );
             }
             return (
-              <span className={`cal-block${pink ? ' cal-block-pink' : ''}${arg.view.type.startsWith('list') ? ' cal-block-list' : ''}`} title={arg.event.title}>
+              <span className={`cal-block${arg.view.type.startsWith('list') ? ' cal-block-list' : ''}`} title={arg.event.title}>
+                {pink && <span className="cal-pink-flag" aria-label="Kod pink" />}
+                {marks}
                 <span className="cal-block-number">
                   {`${time} `}
                   {number}
@@ -387,6 +418,11 @@ export default function CalendarPage() {
         />
         </div>
       </div>
+      <p className="cal-legend">
+        <span><span className="cal-mark cal-mark-urgent">!</span> pilne / niedokończone</span>
+        <span><span className="cal-mark cal-mark-problem">K</span> problem u księgowej</span>
+        <span><span className="cal-legend-pink" /> kod pink</span>
+      </p>
     </Page>
   );
 }

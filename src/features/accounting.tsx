@@ -287,6 +287,10 @@ export function AccountingOrderPage() {
           </label>
         </Group>
       )}
+      <label className={order.accountingProblem ? 'check check-problem active' : 'check check-problem'}>
+        <input type="checkbox" checked={Boolean(order.accountingProblem)} onChange={(e) => void update({ accountingProblem: e.target.checked })} />
+        Problem do wyjaśnienia z technikiem (opisz w uwagach; technik zobaczy go w kalendarzu i na zabiegu)
+      </label>
       <SavedText label="Uwagi księgowej" value={order.accountingNote ?? ''} multiline onSave={(accountingNote) => update({ accountingNote })} />
 
       {order.accountingClosedAt && accountingState(order, list) === 'zamkniete' ? (

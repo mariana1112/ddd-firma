@@ -891,6 +891,14 @@ export function VisitPage() {
             <span>{order.access}</span>
           </div>
         )}
+        {order.accountingProblem && (
+          <div className="notice notice-danger">
+            <Icon name="alert" />
+            <span>
+              <strong>Księgowa zgłasza problem.</strong> {order.accountingNote?.trim() || 'Skontaktuj się z księgową.'}
+            </span>
+          </div>
+        )}
         {order.pink && (
           <div className="notice notice-pink">
             <Icon name="alert" />

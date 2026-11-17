@@ -256,6 +256,8 @@ export interface Order extends BaseRecord {
   protocolDone?: boolean;
   /** Uwagi księgowej do zlecenia. */
   accountingNote?: string;
+  /** Księgowa zgłasza problem do wyjaśnienia z technikiem (opis w uwagach); widać go w kalendarzu i na zabiegu. */
+  accountingProblem?: boolean;
   /** Kiedy księgowa zamknęła zlecenie (wszystko zrobione); brak: do zrobienia. */
   accountingClosedAt?: string | null;
 }
