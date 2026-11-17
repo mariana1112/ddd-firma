@@ -3967,3 +3967,20 @@ body {
   color: var(--primary);
   font-weight: 600;
 }
+
+/* Kalendarz: czerwona kropka przy dniu z pilnym zabiegiem albo problemem u księgowej */
+.cal-dn-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.cal-dn-alert {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d93025;
+  box-shadow: 0 0 0 1.5px var(--surface);
+}

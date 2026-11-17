@@ -14,7 +14,7 @@ import type { Order, Visit } from '../data/types';
 import { addDays, formatDate, formatDateLong, formatTime, todayWarsaw } from '../lib/dates';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Group, Loading, Page, Row } from '../ui/kit';
-import { SyncNotice } from './account';
+import { SyncNotice, SyncStale } from './account';
 import { RegionLine } from './regions';
 import { PinkBadge, VisitBadge } from './common';
 import { TomorrowReminders } from './reminders';
@@ -150,14 +150,17 @@ export function DashboardPage() {
     ...withOrder
       .filter(({ visit, order }) => paymentMissing(visit) && !order.archived)
       .map((x) => ({ ...x, reason: 'platnosc' as TodoReason, at: x.visit.finishedAt ?? x.visit.doneOn ?? '' })),
-    // Zakończone na szybko („opiszę później”): czekają na dopisanie wywiadu, prac i zdjęć.
-    ...withOrder
-      .filter(({ visit, order }) => visit.status === 'wykonany' && visit.detailsLater && !paymentMissing(visit) && !order.archived)
-      .map((x) => ({ ...x, reason: 'opis' as TodoReason, at: x.visit.finishedAt ?? x.visit.doneOn ?? '' })),
     ...overdue.map((x) => ({ ...x, reason: 'zalegly' as TodoReason, at: x.visit.start ?? '' })),
   ].sort((a, b) => b.at.localeCompare(a.at));
+  // Zakończone na szybko („opiszę później”): osobna grupa, czekają na dopisanie wywiadu, prac i zdjęć.
+  const toDescribe = withOrder
+    .filter(({ visit, order }) => visit.status === 'wykonany' && visit.detailsLater && !paymentMissing(visit) && !order.archived)
+    .sort((a, b) => (b.visit.finishedAt ?? '').localeCompare(a.visit.finishedAt ?? ''));
   const drafts = listDrafts();
-  const draftEdits = drafts.edits.map((id) => orderById.get(id)).filter((o): o is Order => Boolean(o));
+  const draftEdits = drafts.edits.flatMap((d) => {
+    const o = orderById.get(d.orderId);
+    return o ? [{ order: o, visitId: d.visitId }] : [];
+  });
   const todoCount = todo.length + (drafts.newOrder ? 1 : 0) + draftEdits.length;
 
   const hasData = data.orders.length > 0;
@@ -170,6 +173,7 @@ export function DashboardPage() {
       <p className="page-date">{formatDateLong(today)}</p>
 
       <SyncNotice />
+      <SyncStale />
 
       {fresh.length > 0 && (
         <section className="new-orders" role="alert">
@@ -235,17 +239,17 @@ export function DashboardPage() {
           {drafts.newOrder && (
             <Row to="/zlecenia/nowe" icon="clipboard" title="Niedokończone nowe zlecenie" sub={drafts.newOrder} trailing={<Badge tone="warn">Szkic</Badge>} />
           )}
-          {draftEdits.map((o) => (
-            <div key={o.id} className="row-with-action">
+          {draftEdits.map(({ order: o, visitId }) => (
+            <div key={o.id + (visitId ?? '')} className="row-with-action">
               <Row
-                to={`/zlecenia/${o.id}/edycja`}
+                to={`/zlecenia/${o.id}/edycja${visitId ? `?zabieg=${visitId}` : ''}`}
                 icon="edit"
                 title={`Niezapisane zmiany: ${orderCode(o)}`}
                 sub={o.clientName || orderAddress(o)}
                 trailing={<Badge tone="warn">Edycja</Badge>}
               />
               <button type="button" className="icon-btn" aria-label={`Porzuć zmiany: ${orderCode(o)}`} onClick={() => {
-                  dropEditDraft(o.id);
+                  dropEditDraft(o.id, visitId);
                   refresh((n) => n + 1);
                 }}>
                 <Icon name="close" size={18} />
@@ -254,6 +258,14 @@ export function DashboardPage() {
           ))}
           {todo.map(({ visit, order, reason }) => (
             <VisitRow key={`${reason}-${visit.id}`} visit={visit} order={order} reason={reason} />
+          ))}
+        </Group>
+      )}
+
+      {toDescribe.length > 0 && (
+        <Group title={`Do opisania (${toDescribe.length})`}>
+          {toDescribe.map(({ visit, order }) => (
+            <VisitRow key={visit.id} visit={visit} order={order} reason="opis" />
           ))}
         </Group>
       )}

@@ -150,7 +150,22 @@ export function ReportsPage() {
         {withKm && <Stat label="Km służbowo (VAT)" value={`${report.km.sluzbowy} km`} />}
         {withKm && <Stat label="w tym prywatne" value={`${report.km.prywatny} km`} />}
       </div>
-      {report.unpaid > 0 && <Badge tone="warn">Zabiegi bez zapisanej płatności: {report.unpaid}</Badge>}
+      {report.unpaid > 0 && (
+        <Group title={`Bez zapisanej płatności (${report.unpaid})`}>
+          {report.visits
+            .filter(({ visit }) => !visit.payMethod || !visit.amount)
+            .map(({ visit, order }) => (
+              <Row
+                key={visit.id}
+                to={`/zabieg/${visit.id}`}
+                icon="alert"
+                title={order ? visitCode(order, visit.seq) : 'Zabieg'}
+                sub={[formatDate(visit.doneOn), order && orderAddress(order), visit.technicianName].filter(Boolean).join(' · ')}
+                trailing={<Badge tone="danger">Uzupełnij</Badge>}
+              />
+            ))}
+        </Group>
+      )}
 
       <Group title="Rozliczenie do wysłania" plain>
         <pre className="report-text">{text}</pre>

@@ -241,6 +241,12 @@ export default function CalendarPage() {
         };
       });
   }, [rows]);
+  // Dni z zabiegiem pilnym albo z problemem u księgowej: czerwona kropka przy numerze dnia w miesiącu.
+  const alertDays = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of events) if (e.extendedProps.urgent || e.extendedProps.problem !== null) set.add(e.start.slice(0, 10));
+    return set;
+  }, [events]);
 
   return (
     <Page title="Kalendarz" actions={<AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
@@ -337,7 +343,14 @@ export default function CalendarPage() {
           }
           // Miesiąc: numer dnia, dziś w niebieskim kółku.
           dayCellTopContent={(arg) =>
-            arg.view.type === 'dayGridMonth' ? <span className={arg.isToday ? 'cal-dn today' : arg.isOther ? 'cal-dn other' : 'cal-dn'}>{arg.date.getUTCDate()}</span> : arg.dayNumberText
+            arg.view.type === 'dayGridMonth' ? (
+              <span className="cal-dn-wrap">
+                <span className={arg.isToday ? 'cal-dn today' : arg.isOther ? 'cal-dn other' : 'cal-dn'}>{arg.date.getUTCDate()}</span>
+                {alertDays.has(stripZone(arg.date).slice(0, 10)) && <span className="cal-dn-alert" aria-label="Pilne" />}
+              </span>
+            ) : (
+              arg.dayNumberText
+            )
           }
           dayCellTopClass="cal-day-top"
           moreLinkClass="cal-more"

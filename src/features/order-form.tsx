@@ -14,7 +14,7 @@ import { METHOD_LABEL, METHODS, orderMethods } from '../data/methods';
 import { normalizeCity } from '../data/cities';
 import { SCOPE_KINDS, scopeText, visitPrice, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl, readMapsInput, isShortMapsLink } from '../data/maps';
-import { addMinutes, formatDateLong, formatTerm, isValidDate, todayWarsaw, nowWarsaw } from '../lib/dates';
+import { addDays, addMinutes, formatDateLong, formatTerm, isValidDate, todayWarsaw, nowWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { formatPhoneInput, formatPostalInput, isValidNip, phoneError } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
@@ -112,14 +112,27 @@ const EMPTY: FormState = {
 
 const DRAFT_KEY = 'ddd-szkic-zlecenia';
 
+/**
+ * Domyślny termin nowego zlecenia: dziś, najbliższa pełna godzina (najwcześniej 8:00). Wieczorem (od 19:00) jutro 10:00.
+ */
+function freshStart(): { date: string; time: string } {
+  const hour = Number(nowWarsaw().slice(11, 13)) + 1;
+  if (hour >= 19) return { date: addDays(todayWarsaw(), 1), time: '10:00' };
+  return { date: todayWarsaw(), time: `${String(Math.max(8, hour)).padStart(2, '0')}:00` };
+}
+
+/** Pusty formularz (bez względu na proponowany termin): nic jeszcze nie wpisano. */
+function isBlank(state: FormState): boolean {
+  return JSON.stringify({ ...state, date: '', time: '' }) === JSON.stringify({ ...EMPTY, date: '', time: '' });
+}
+
 function loadDraft(): FormState {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
-    // Nowe zlecenie domyślnie na dziś.
     const draft = raw ? { ...EMPTY, ...(JSON.parse(raw) as Partial<FormState>) } : EMPTY;
-    return draft.date ? draft : { ...draft, date: todayWarsaw() };
+    return draft.date && !isBlank(draft) ? draft : { ...draft, ...freshStart() };
   } catch {
-    return { ...EMPTY, date: todayWarsaw() };
+    return { ...EMPTY, ...freshStart() };
   }
 }
 
@@ -1003,9 +1016,7 @@ export function OrderNewPage() {
     void (async () => {
       const source = await orders.get(copyFrom);
       if (!source || source.deletedAt) return;
-      const current = loadDraft();
-      const started = JSON.stringify(current) !== JSON.stringify({ ...EMPTY, date: current.date });
-      if (started) {
+      if (!isBlank(loadDraft())) {
         const ok = await confirm({
           title: 'Zastąpić rozpoczęte nowe zlecenie?',
           message: 'Masz niedokończone nowe zlecenie. Powielenie wpisze w formularz dane powielanego zlecenia, a wpisane dane znikną.',
@@ -1040,7 +1051,7 @@ export function OrderNewPage() {
   }, [copyFrom, copyVisit, copied]);
   const steps: StepId[] = [...ALL_STEPS, 'podsumowanie'];
   const step = steps[stepIndex];
-  const hasDraft = useMemo(() => JSON.stringify(state) !== JSON.stringify({ ...EMPTY, date: todayWarsaw() }), [state]);
+  const hasDraft = useMemo(() => !isBlank(state), [state]);
 
   const set = (patch: Partial<FormState>) =>
     setState((prev) => {

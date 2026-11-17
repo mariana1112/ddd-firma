@@ -241,7 +241,8 @@ function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings;
   const vat = order.invoice === 'vat';
   const options = [...new Set([agreed.priceMin, agreed.priceMax].filter((x): x is number => typeof x === 'number' && x > 0).map((x) => (vat ? Math.round((x * (100 + VAT_RATE)) / 100) : x)))];
   const toText = (grosze: number) => moneyToInput(grosze).replace(/,00$/, '');
-  const [text, setText] = useState(() => (visit.amount ? toText(visit.amount) : options.length === 1 ? toText(options[0]) : ''));
+  // Przy widełkach od razu górna granica (najczęściej tyle klient płaci); kwotę można zmienić albo wybrać dolną.
+  const [text, setText] = useState(() => (visit.amount ? toText(visit.amount) : options.length ? toText(Math.max(...options)) : ''));
   const [method, setMethod] = useState<PayMethod | null>(visit.payMethod);
   const [tried, setTried] = useState(false);
   const value = parseMoney(text);
@@ -903,6 +904,9 @@ export function VisitPage() {
             <span>
               <strong>Księgowa zgłasza problem.</strong> {order.accountingNote?.trim() || 'Skontaktuj się z księgową.'}
             </span>
+            <Link className="btn btn-sm" to={`/czat?k=ksiegowosc&tekst=${encodeURIComponent(`Zlecenie ${visitCode(order, visit.seq)}: `)}`}>
+              Napisz do księgowej
+            </Link>
           </div>
         )}
         {order.pink && (

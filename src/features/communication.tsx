@@ -182,7 +182,7 @@ export function ChatPage() {
   if (!data) return <Loading />;
   const channels = chatChannels(data.state, data.regions);
   const open = channels.find((c) => c.id === params.get('k'));
-  if (open) return <ChatConversation channel={open} data={data} onBack={() => setParams({}, { replace: true })} />;
+  if (open) return <ChatConversation channel={open} data={data} initialText={params.get('tekst') ?? ''} onBack={() => setParams({}, { replace: true })} />;
 
   const read = readMap();
   return (
@@ -217,10 +217,12 @@ function ChatConversation(props: {
   channel: { id: string; label: string };
   data: { state: Awaited<ReturnType<typeof getSyncState>>; me: string | null; messages: Message[] };
   onBack: () => void;
+  /** Początek wiadomości, np. „Zlecenie 0012/I: ” z karty zabiegu. */
+  initialText?: string;
 }) {
   const { data, channel } = props;
   const { run } = useFeedback();
-  const [text, setText] = useState('');
+  const [text, setText] = useState(props.initialText ?? '');
   // Oznaczone osoby (@Imię) wybrane z podpowiedzi; przy wysyłaniu liczą się te, które zostały w tekście.
   const [picked, setPicked] = useState<Person[]>([]);
   const [picking, setPicking] = useState(false);

@@ -1074,6 +1074,31 @@ export function SyncNotice() {
   );
 }
 
+/**
+ * Telefon długo bez synchronizacji (np. bez internetu), a zmiany czekają na wysłanie: przypomnienie na Pulpicie,
+ * żeby dane nie były tylko na tym telefonie.
+ */
+export function SyncStale() {
+  const data = useLiveQuery(async () => {
+    const state = await getSyncState();
+    if (!isSyncConfigured || !state || state.lastError) return null;
+    const pending = await db.changes.where('pushed').equals(0).count();
+    return { last: state.lastSyncAt, pending };
+  });
+  if (!data || data.pending === 0) return null;
+  const hours = data.last ? (Date.now() - Date.parse(data.last)) / 3600000 : Infinity;
+  if (hours < 12) return null;
+  return (
+    <a href="#/konto" className="notice notice-warn">
+      <Icon name="alert" />
+      <span>
+        <strong>Dane czekają na wysłanie ({data.pending}).</strong> Ostatnia synchronizacja: {data.last ? formatInstant(data.last) : 'jeszcze nie'}. Połącz
+        się z internetem, żeby trafiły na serwer.
+      </span>
+    </a>
+  );
+}
+
 // ---------- Oddziały ----------
 
 interface BranchView {
