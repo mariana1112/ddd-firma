@@ -3,6 +3,8 @@ import { visitCode } from '../data/codes';
 import { freeSlots, nextVisitDays, type DayStop } from '../data/geo';
 import { orders, visits } from '../data/repo';
 import { formatDate } from '../lib/dates';
+import { dayOff, eventBusy, listEvents } from '../data/events';
+import { getProfile } from '../data/settings';
 
 const weekday = new Intl.DateTimeFormat('pl-PL', { timeZone: 'UTC', weekday: 'short' });
 const dayLabel = (date: string) => `${weekday.format(new Date(`${date}T12:00:00Z`))} ${formatDate(date).slice(0, 5)}`;
@@ -16,15 +18,21 @@ export function NextDates(props: { after: string; durationMin: number; date: str
   const proposals = useLiveQuery(async () => {
     const byId = new Map((await orders.all()).map((o) => [o.id, o]));
     const all = (await visits.all()).filter((v) => (v.status === 'zaplanowany' || v.status === 'w_trakcie') && v.start && byId.has(v.orderId));
+    // Moje wolne i urlop wykluczają dzień, a wydarzenia z godzinami zajmują te godziny.
+    const events = await listEvents();
+    const me = (await getProfile()).userId;
     return days
+      .filter((date) => !dayOff(events, date, me))
       .map((date) => {
         const stops: DayStop[] = all
           .filter((v) => v.start!.slice(0, 10) === date)
           .map((v) => {
             const order = byId.get(v.orderId)!;
             return { start: v.start!, durationMin: v.durationMin || 60, label: visitCode(order, v.seq), city: order.city, point: null };
-          });
-        return { date, time: freeSlots(stops, null, props.durationMin || 60)[0] ?? null, busy: stops.length };
+          })
+          .concat(eventBusy(events, date, me).map((b) => ({ ...b, city: '', point: null })));
+        // Licznik „(N zab.)” tylko z zabiegów, bez wydarzeń.
+        return { date, time: freeSlots(stops, null, props.durationMin || 60)[0] ?? null, busy: all.filter((v) => v.start!.slice(0, 10) === date).length };
       })
       .filter((p): p is { date: string; time: string; busy: number } => p.time !== null);
   }, [props.after, props.durationMin]);
@@ -33,7 +41,7 @@ export function NextDates(props: { after: string; durationMin: number; date: str
     <div className="field">
       <span className="field-label">Proponowane terminy: 8–12 dni po zabiegu z {formatDate(props.after)}</span>
       {proposals.length === 0 ? (
-        <p className="field-hint">W tych dniach nie ma wolnych godzin. Wpisz datę ręcznie.</p>
+        <p className="field-hint">W tych dniach nie ma wolnych godzin (albo masz wolne). Wpisz datę ręcznie.</p>
       ) : (
         <div className="chips chips-wrap">
           {proposals.map((p) => (

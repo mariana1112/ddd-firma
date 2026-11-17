@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addressAt, currentPosition, freeSlots, locate, previousVisitDay, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
 import { NextDates } from './next-dates';
+import { dayOff, eventBusy, listEvents } from '../data/events';
 import { createOrder, orderVisits, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getProfile } from '../data/settings';
@@ -496,7 +497,19 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
         if (!order || visit.status !== 'zaplanowany' || !visit.start) continue;
         planned.push({ order, visit, point: await locate(order.city, order.postalCode) });
       }
-      if (!cancelled) setResult(suggestSlots(target, Number(duration) || 60, todayWarsaw(), planned));
+      const events = await listEvents();
+      const me = (await getProfile()).userId;
+      const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+      const len = Number(duration) || 60;
+      const free = suggestSlots(target, len, todayWarsaw(), planned).filter((s) => {
+        if (dayOff(events, s.date, me)) return false;
+        const a = toMin(s.start.slice(11, 16));
+        return !eventBusy(events, s.date, me).some((b) => {
+          const b0 = toMin(b.start.slice(11, 16));
+          return a < b0 + b.durationMin && a + len > b0;
+        });
+      });
+      if (!cancelled) setResult(free);
     })();
     return () => {
       cancelled = true;
@@ -529,7 +542,7 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
  */
 function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
   const { date, time, duration, city, postalCode } = props.state;
-  const [plan, setPlan] = useState<{ stops: DayStop[]; slots: string[] } | null>(null);
+  const [plan, setPlan] = useState<{ stops: DayStop[]; slots: string[]; off: string | null } | null>(null);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -548,10 +561,20 @@ function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
           point: online ? await locate(order.city, order.postalCode) : null,
         });
       }
+      // Moje wydarzenia: wolne/urlop blokuje dzień, wydarzenie z godzinami (np. serwis) zajmuje te godziny.
+      const events = await listEvents();
+      const me = (await getProfile()).userId;
+      const off = dayOff(events, date, me);
+      for (const b of eventBusy(events, date, me)) stops.push({ ...b, city: '', point: null });
       const target = online && city.trim() ? await locate(city, postalCode) : null;
       const now = nowWarsaw();
       const nowMin = date === now.slice(0, 10) ? Number(now.slice(11, 13)) * 60 + Number(now.slice(14, 16)) : undefined;
-      if (!cancelled) setPlan({ stops: stops.sort((a, b) => a.start.localeCompare(b.start)), slots: freeSlots(stops, target, Number(duration) || 60, { nowMin }) });
+      if (!cancelled)
+        setPlan({
+          stops: stops.sort((a, b) => a.start.localeCompare(b.start)),
+          slots: off ? [] : freeSlots(stops, target, Number(duration) || 60, { nowMin }),
+          off: off ? off.name : null,
+        });
     })();
     return () => {
       cancelled = true;
@@ -566,12 +589,12 @@ function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
     return b0 < a0 + st.durationMin && b0 + (Number(duration) || 60) > a0;
   });
   // Trasa z nowym zleceniem wstawionym według wybranej godziny.
-  const route = [...plan.stops.map((s) => ({ time: s.start.slice(11, 16), text: `${s.city || '—'} · ${s.label}`, fresh: false })), { time, text: `${city || 'nowe zlecenie'} · nowe`, fresh: true }].sort((a, b) => a.time.localeCompare(b.time));
+  const route = [...plan.stops.map((s) => ({ time: s.start.slice(11, 16), text: s.city ? `${s.city} · ${s.label}` : s.label, fresh: false })), { time, text: `${city || 'nowe zlecenie'} · nowe`, fresh: true }].sort((a, b) => a.time.localeCompare(b.time));
   return (
     <div className="day-plan">
       <span className="field-label">Trasa w dniu {formatDateLong(date)}</span>
       {plan.stops.length === 0 ? (
-        <p className="field-hint">Brak innych zabiegów tego dnia: cały dzień wolny.</p>
+        plan.off ? null : <p className="field-hint">Brak innych zabiegów tego dnia: cały dzień wolny.</p>
       ) : (
         <ol className="day-plan-route">
           {route.map((r, i) => (
@@ -585,11 +608,19 @@ function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
         <p className="notice notice-warn">
           <Icon name="alert" />
           <span>
-            O {time} trwa już {clash.label} ({clash.city}). Wybierz wolną godzinę poniżej.
+            O {time} trwa już {clash.label}{clash.city ? ` (${clash.city})` : ''}. Wybierz wolną godzinę poniżej.
           </span>
         </p>
       )}
-      {plan.slots.length > 0 ? (
+      {plan.off && (
+        <p className="notice notice-warn">
+          <Icon name="alert" />
+          <span>
+            Tego dnia masz w kalendarzu „{plan.off}”. Wybierz inny dzień.
+          </span>
+        </p>
+      )}
+      {plan.off ? null : plan.slots.length > 0 ? (
         <div className="chips chips-wrap">
           <span className="chips-label">Wolne godziny:</span>
           {plan.slots.map((t) => (

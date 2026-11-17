@@ -63,3 +63,19 @@ describe('wydarzenia w kalendarzu (wolne, serwis…)', () => {
     expect(JSON.stringify(backup)).toContain('Serwis auta');
   });
 });
+
+describe('wolne i urlop blokują terminy', () => {
+  it('cały dzień wolnego/urlopu blokuje dzień, serwis z godzinami zajmuje te godziny; cudze nie blokują', async () => {
+    const { dayOff, eventBusy } = await import('./events');
+    const off = await createEvent(draft({ type: 'urlop', name: 'Urlop', allDay: true, date: '2026-11-20', endDate: '2026-11-21' }));
+    const service = await createEvent(draft());
+    const all = await listEvents();
+    expect(dayOff(all, '2026-11-21', 'u1')?.id).toBe(off.id);
+    expect(dayOff(all, '2026-11-22', 'u1')).toBeUndefined();
+    expect(dayOff(all, '2026-11-20', 'ktos-inny')).toBeUndefined();
+    expect(eventBusy(all, '2026-11-20', 'u1')).toEqual([{ start: '2026-11-20T14:00', durationMin: 90, label: 'Serwis auta' }]);
+    expect(eventBusy(all, '2026-11-20', 'ktos-inny')).toEqual([]);
+    await deleteEvent(service.id);
+    expect(eventBusy(await listEvents(), '2026-11-20', 'u1')).toEqual([]);
+  });
+});

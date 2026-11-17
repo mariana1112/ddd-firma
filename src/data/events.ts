@@ -111,3 +111,26 @@ export async function deleteEvent(id: string): Promise<void> {
 
 /** Czy wydarzenie obejmuje dany dzień (np. kilka dni urlopu). */
 export const eventOnDay = (e: Pick<CalendarEvent, 'date' | 'endDate'>, day: string) => day >= e.date && day <= e.endDate;
+
+/** Rodzaje, które zwalniają cały dzień z pracy: wtedy nie proponujemy terminów zleceń. */
+const DAY_OFF: EventType[] = ['wolne', 'urlop'];
+
+/** Moje wolne albo urlop na cały dzień obejmujące ten dzień (blokuje propozycje terminów). */
+export function dayOff(events: CalendarEvent[], day: string, me: string | null): CalendarEvent | undefined {
+  return events.find((e) => !e.deletedAt && e.ownerId === me && e.allDay && DAY_OFF.includes(e.type) && eventOnDay(e, day));
+}
+
+/**
+ * Moje wydarzenia z godzinami w danym dniu (np. serwis auta 14:00–15:00) jako zajęte okna: start i czas trwania.
+ * Wydarzenie na kilka dni zajmuje w środkowych dniach cały dzień.
+ */
+export function eventBusy(events: CalendarEvent[], day: string, me: string | null): Array<{ start: string; durationMin: number; label: string }> {
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  return events
+    .filter((e) => !e.deletedAt && e.ownerId === me && !e.allDay && e.start && e.end && eventOnDay(e, day))
+    .map((e) => {
+      const from = e.date === day ? e.start! : '00:00';
+      const to = e.endDate === day ? e.end! : '23:59';
+      return { start: `${day}T${from}`, durationMin: Math.max(10, toMin(to) - toMin(from)), label: e.name };
+    });
+}
