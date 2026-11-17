@@ -329,7 +329,7 @@ function SettingsForm(props: {
   const set = (patch: Partial<AppSettings>) => setS((prev) => ({ ...prev, ...patch }));
   const bonusValue = parseMoney(bonus);
   const nextValue = Number(next);
-  const valid = bonusValue !== null && Number.isInteger(nextValue) && nextValue > 0 && s.vatRate >= 0 && !nipError && !accountError;
+  const valid = bonusValue !== null && Number.isInteger(nextValue) && nextValue > 0 && !nipError && !accountError;
 
   /** Zapis wszystkiego poza prefiksem i numerem zlecenia (te zapisują się po wyjściu z pola). */
   const save = () =>
@@ -432,7 +432,7 @@ function SettingsForm(props: {
       <details className="settings-section" open={bonusValue === null || undefined}>
         <summary>
           <strong>Rozliczenie</strong>
-          <span>Z kim rozliczasz gotówkę, VAT, numeracja</span>
+          <span>{props.readOnly ? 'Z kim rozliczasz gotówkę' : 'Z kim rozliczasz gotówkę, premia, numeracja'}</span>
         </summary>
       <fieldset>
         {/* Przy koncie firmy imię pochodzi z konta, więc tu go nie ma. */}
@@ -451,9 +451,6 @@ function SettingsForm(props: {
               <input inputMode="decimal" value={bonus} onChange={(e) => setBonus(e.target.value)} />
             </Field>
           )}
-          <Field label="VAT (%)">
-            <input inputMode="numeric" value={String(s.vatRate)} onChange={(e) => set({ vatRate: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
-          </Field>
         </div>
         {!props.readOnly && (
           <Field label="Następny numer zlecenia" hint={`Ostatni nadany: ${orderCode({ number: props.counter, prefix })}. Numer można tylko podnieść; numery nie powtarzają się w całej firmie.`}>

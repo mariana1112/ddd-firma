@@ -276,9 +276,13 @@ export const OBSOLETE_RECOMMENDATIONS = [
   'Nie odkurzać miejsc, w których jest żel.',
 ];
 
+/** Stawka VAT w całej aplikacji (bez ustawienia). */
+export const VAT_RATE = 23;
+
 export async function getAppSettings(): Promise<AppSettings> {
   const merged = { ...DEFAULT_APP, ...(await getMeta<Partial<AppSettings>>('app')), ...(await getMeta<Partial<PersonalSettings>>('myApp')) };
-  return { ...merged, recommendations: merged.recommendations.filter((r) => !OBSOLETE_RECOMMENDATIONS.includes(r)) };
+  // VAT zawsze 23%: wcześniej wpisana inna stawka nie ma znaczenia.
+  return { ...merged, vatRate: VAT_RATE, recommendations: merged.recommendations.filter((r) => !OBSOLETE_RECOMMENDATIONS.includes(r)) };
 }
 
 /** Wspólne ustawienia firmy (zmienia admin); osobiste pola zapisują się osobno. */

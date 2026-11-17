@@ -22,12 +22,12 @@ describe('ustawienia osobiste', () => {
     expect(isDeviceMetaKey('myApp')).toBe(true);
   });
 
-  it('rozliczenie (z kim gotówka, VAT) każdy ustawia sobie sam, premię ustala admin', async () => {
+  it('rozliczenie (z kim gotówka) każdy ustawia sobie sam, premię ustala admin, VAT zawsze 23%', async () => {
     await saveAppSettings({ ...DEFAULT_APP, thirdVisitBonus: 6000, bossName: 'Piotrka', vatRate: 23 });
     await savePersonalSettings({ ...DEFAULT_APP, thirdVisitBonus: 100, bossName: 'Ani', vatRate: 8 } as AppSettings);
     const s = await getAppSettings();
     expect(s.bossName).toBe('Ani');
-    expect(s.vatRate).toBe(8);
+    expect(s.vatRate).toBe(23);
     expect(s.thirdVisitBonus).toBe(6000);
     // Zapis ustawień firmy nie nadpisuje rozliczenia innych osób.
     expect(((await db.meta.get('app'))?.value as Record<string, unknown>).bossName).toBeUndefined();
