@@ -69,8 +69,12 @@ export function AdminDuty() {
       toast(data.off ? 'Tryb admina włączony' : 'Tryb admina wyłączony: pracujesz jak technik');
     });
   return (
-    <Group title="Tryb admina">
-      <div className="group-pad admin-duty">
+    <details className="settings-section">
+      <summary>
+        <strong>Tryb admina</strong>
+        <span>{data.off ? 'Wyłączony: pracujesz jak technik' : 'Włączony'}</span>
+      </summary>
+      <div className="admin-duty">
         <p className="admin-duty-state">
           <Badge tone={data.off ? 'muted' : 'primary'}>{data.off ? 'Wyłączony' : 'Włączony'}</Badge>
           <span>
@@ -83,32 +87,7 @@ export function AdminDuty() {
           <Icon name={data.off ? 'users' : 'close'} /> {data.off ? 'Włącz tryb admina' : 'Wyłącz tryb admina (po służbie)'}
         </button>
       </div>
-    </Group>
-  );
-}
-
-/** Pulpit: przypomnienie, że tryb admina jest wyłączony, z przyciskiem do włączenia. */
-export function AdminOffNotice() {
-  const { run, toast } = useFeedback();
-  const show = useLiveQuery(async () => (await getSyncState())?.role === 'owner' && (await getAdminOff()));
-  if (!show) return null;
-  return (
-    <div className="notice notice-info">
-      <Icon name="users" />
-      <span>Tryb admina wyłączony: pracujesz jak technik.</span>
-      <button
-        type="button"
-        className="btn btn-sm btn-primary"
-        onClick={() =>
-          void run(async () => {
-            await setAdminOff(false);
-            toast('Tryb admina włączony');
-          })
-        }
-      >
-        Włącz
-      </button>
-    </div>
+    </details>
   );
 }
 
@@ -117,7 +96,6 @@ export function MorePage() {
   const sync = useLiveQuery(async () => (await getUiSyncState()) ?? null);
   return (
     <Page title="Więcej">
-      <AdminDuty />
       <Group title="Praca">
         <Row to="/wizytowka" icon="wallet" title="Wizytówka" sub="Dane do przelewu, numer do BLIK-a i Twój numer do skopiowania" />
         <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />
@@ -575,6 +553,8 @@ export function SettingsPage() {
     regionName: string;
     myPhone: string;
   }>();
+  // Przełączenie trybu admina wczytuje formularz od nowa.
+  const adminOff = useLiveQuery(() => getAdminOff());
   // Formularz startuje z jednego odczytu, żeby synchronizacja nie resetowała pól w trakcie edycji.
   useEffect(() => {
     void (async () => {
@@ -595,10 +575,12 @@ export function SettingsPage() {
         })()),
       });
     })();
-  }, []);
+  }, [adminOff]);
   return (
     <Page title="Ustawienia" back="/wiecej">
-      {loaded ? <SettingsForm {...loaded} /> : <Loading />}
+      <AdminDuty />
+      {/* Po przełączeniu trybu admina formularz wczytuje się od nowa (z ustawieniami firmy albo bez). */}
+      {loaded ? <SettingsForm key={String(adminOff)} {...loaded} /> : <Loading />}
     </Page>
   );
 }

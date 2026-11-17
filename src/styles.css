@@ -3627,3 +3627,7 @@ body {
 .finish-later .field-hint {
   margin-top: 6px;
 }
+
+.settings-section > .admin-duty {
+  padding: 0 14px 14px;
+}

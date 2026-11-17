@@ -19,7 +19,6 @@ import { RegionLine } from './regions';
 import { PinkBadge, VisitBadge } from './common';
 import { TomorrowReminders } from './reminders';
 import { DayCard } from './day-card';
-import { AdminOffNotice } from './settings';
 
 const BACKUP_REMINDER_DAYS = 7;
 
@@ -197,7 +196,6 @@ export function DashboardPage() {
         </section>
       )}
 
-      <AdminOffNotice />
       <QuickSearch />
 
 
