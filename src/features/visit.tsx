@@ -1064,12 +1064,7 @@ export function VisitPage() {
                 value={interview.situation}
                 onSave={(v) => saveInterview('situation', v)}
               />
-              {order.pest !== 'karaluchy' && <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />}
               <YesNoField label="Czy widziano owady?" value={interview.seen} onChange={(v) => saveInterview('seen', v)} />
-              {interview.seen === 'tak' && (
-                <AutoText label="Ile owadów?" placeholder="Np. kilka, ok. 20" rows={1} value={interview.seenCount} onSave={(v) => saveInterview('seenCount', v)} />
-              )}
-              <YesNoField label="Czy klient używał środków na własną rękę?" value={interview.selfTreatment} onChange={(v) => saveInterview('selfTreatment', v)} />
             </Group>
 
             </>
