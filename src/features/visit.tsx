@@ -1,5 +1,4 @@
 import { orderCode, roman, visitCode } from '../data/codes';
-import { DuplicateOrderSheet } from './order-form';
 import { nextVisitDays, previousVisitDay } from '../data/geo';
 import { NextDates } from './next-dates';
 import { withCountryCode } from '../lib/validators';
@@ -11,7 +10,7 @@ import { googleCalendarUrl } from '../data/calendar';
 import { ScheduleNext } from './orders';
 import { paymentMissing } from '../data/order-list';
 import { orders, visits } from '../data/repo';
-import { getAppSettings, getCompany, type AppSettings, getProfile } from '../data/settings';
+import { getAppSettings, getCompany, type AppSettings } from '../data/settings';
 import { formatAccount } from '../data/card';
 import { formatPln } from '../data/reports';
 import type { CompanySettings } from '../data/types';
@@ -420,14 +419,16 @@ function OrderInfo(props: { order: Order; vatRate: number; terms?: string }) {
 }
 
 /** Rzadziej potrzebne opcje zlecenia: edycja danych klienta i adresu, PDF, wszystkie zabiegi zlecenia. */
-function OrderOptions(props: { order: Order; visits: Visit[]; vatRate: number }) {
+function OrderOptions(props: { order: Order; visits: Visit[]; vatRate: number; noEdit?: boolean }) {
   const { order } = props;
   const { deliverFile, run } = useFeedback();
   return (
     <>
-      <Link className="btn" to={`/zlecenia/${order.id}/edycja`}>
-        <Icon name="edit" /> Edytuj dane zlecenia (klient, adres, opis)
-      </Link>
+      {!props.noEdit && (
+        <Link className="btn" to={`/zlecenia/${order.id}/edycja`}>
+          <Icon name="edit" /> Edytuj dane zlecenia (klient, adres, opis)
+        </Link>
+      )}
       <button
         type="button"
         className="btn"
@@ -634,10 +635,8 @@ export function VisitPage() {
   const [paying, setPaying] = useState(false);
   const [finishLater, setFinishLater] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
-  const [editingPlanned, setEditingPlanned] = useState(false);
   const [leavingStarted, setLeavingStarted] = useState(false);
   const [planningNext, setPlanningNext] = useState(false);
-  const [duplicating, setDuplicating] = useState(false);
   const [editingTerms, setEditingTerms] = useState(false);
   // Próba zakończenia bez płatności: sekcja płatności świeci na czerwono, ekran przewija się do niej.
   const [payAlert, setPayAlert] = useState(false);
@@ -918,45 +917,41 @@ export function VisitPage() {
             </button>
             <div className="btn-stack">
               {/* Jedno miejsce na zmiany umówionego zabiegu: termin, czas, zakres i cena; dane klienta w edycji zlecenia. */}
-              <button type="button" className="btn" onClick={() => setEditingPlanned(true)}>
-                <Icon name="edit" /> {visit.start ? 'Edytuj zabieg (termin, czas, zakres, cena)' : 'Umów termin i edytuj zabieg'}
-              </button>
+              {/* Jedna edycja wszystkiego: termin, zakres, cena, klient, adres i opis. */}
+              <Link className="btn" to={`/zlecenia/${order.id}/edycja?zabieg=${visit.id}`}>
+                <Icon name="edit" /> {visit.start ? 'Edytuj' : 'Umów termin i edytuj'}
+              </Link>
             </div>
-            {duplicating && <DuplicateOrderSheet order={order} open durationMin={visit.durationMin || 60} start={visit.start} onClose={() => setDuplicating(false)} />}
+            <details className="more-actions">
+              <summary>Więcej opcji</summary>
+              <div className="btn-stack">
+                <OrderOptions order={order} visits={list} vatRate={settings.vatRate} noEdit />
+                {visit.start && (
+                  <a className="btn" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer">
+                    <Icon name="calendar" /> Dodaj do Kalendarza Google
+                  </a>
+                )}
+                {later?.start ? (
+                  <button type="button" className="btn" onClick={() => navigate(`/zabieg/${later.id}`)}>
+                    <Icon name="calendar" /> Kolejny zabieg {roman(later.seq)}: {formatTerm(later.start)}
+                  </button>
+                ) : (
+                  <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
+                    <Icon name="calendar" /> Umów kolejny zabieg
+                  </button>
+                )}
+                <Link className="btn" to={`/zlecenia/nowe?powiel=${order.id}&zabieg=${visit.id}`}>
+                  <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
+                </Link>
+                <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
+                  <Icon name="close" /> Odwołaj zabieg
+                </button>
+              </div>
+            </details>
           </>
         )}
         <OrderInfo order={order} vatRate={settings.vatRate} terms={summary ? undefined : termsText(terms, order.invoice, settings.vatRate)} />
 
-        {visit.status === 'zaplanowany' && (
-          <>
-          <details className="more-actions">
-            <summary>Więcej opcji</summary>
-            <div className="btn-stack">
-              <OrderOptions order={order} visits={list} vatRate={settings.vatRate} />
-              {visit.start && (
-                <a className="btn" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer">
-                  <Icon name="calendar" /> Dodaj do Kalendarza Google
-                </a>
-              )}
-              {later?.start ? (
-                <button type="button" className="btn" onClick={() => navigate(`/zabieg/${later.id}`)}>
-                  <Icon name="calendar" /> Kolejny zabieg {roman(later.seq)}: {formatTerm(later.start)}
-                </button>
-              ) : (
-                <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
-                  <Icon name="calendar" /> Umów kolejny zabieg
-                </button>
-              )}
-              <button type="button" className="btn" onClick={() => setDuplicating(true)}>
-                <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
-              </button>
-              <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
-                <Icon name="close" /> Odwołaj zabieg
-              </button>
-            </div>
-          </details>
-          </>
-        )}
 
         </>
       )}
@@ -1311,26 +1306,6 @@ export function VisitPage() {
           />
         )}
       </Sheet>
-      <Sheet open={editingPlanned} title={`Edytuj zabieg · ${visitCode(order, visit.seq)}`} onClose={() => setEditingPlanned(false)}>
-        {editingPlanned && (
-          <EditPlanned
-            visit={visit}
-            after={previousVisitDay(list, visit.seq)}
-            terms={terms}
-            invoice={order.invoice}
-            orderId={order.id}
-            onSave={(patch) =>
-              run(async () => {
-                // Pierwsze ustawienie terminu to umówienie zabiegu: zapisujemy, kto umówił.
-                const me = !visit.start && patch.start ? await getProfile() : null;
-                await visits.update(visit.id, me ? { ...patch, bookedById: me.userId, bookedByName: me.name, bookedAt: new Date().toISOString() } : patch);
-                setEditingPlanned(false);
-                toast(patch.start ? `Zapisano. Termin: ${formatTerm(patch.start)}` : 'Zapisano. Termin do umówienia');
-              })
-            }
-          />
-        )}
-      </Sheet>
       <Sheet open={rescheduling} title="Termin zabiegu" onClose={() => setRescheduling(false)}>
         {rescheduling && <Reschedule visit={visit} onDone={() => setRescheduling(false)} />}
       </Sheet>
@@ -1339,73 +1314,6 @@ export function VisitPage() {
 }
 
 /** Zmiana zakresu i ceny zabiegu, np. klient chce tylko jeden pokój. */
-const DURATIONS = [30, 45, 60, 90, 120, 150, 180, 240];
-
-/** Edycja umówionego zabiegu w jednym oknie: data, godzina (co 10 min), czas trwania, zakres i cena. */
-function EditPlanned(props: {
-  visit: Visit;
-  terms: VisitTerms;
-  invoice: Order['invoice'];
-  orderId: string;
-  /** Dzień poprzedniego zabiegu (dla II, III…): propozycje terminów 8–12 dni później. */
-  after?: string | null;
-  onSave: (patch: Pick<Visit, 'start' | 'durationMin' | 'scope' | 'priceMin' | 'priceMax'>) => void;
-}) {
-  const [date, setDate] = useState(props.visit.start?.slice(0, 10) ?? '');
-  const [time, setTime] = useState(props.visit.start?.slice(11, 16) ?? '10:00');
-  const [duration, setDuration] = useState(props.visit.durationMin || 60);
-  const [draft, setDraft] = useState(() => termsDraft(props.terms));
-  const parsed = termsFromDraft(draft);
-  const durations = DURATIONS.includes(duration) ? DURATIONS : [...DURATIONS, duration].sort((a, b) => a - b);
-  return (
-    <form
-      className="form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!parsed) return;
-        props.onSave({ start: date ? `${date}T${time}` : null, durationMin: duration, scope: parsed.scope, priceMin: parsed.priceMin, priceMax: parsed.priceMax });
-      }}
-    >
-      {props.after && props.visit.seq > 1 && (
-        <NextDates
-          after={props.after}
-          durationMin={duration}
-          date={date}
-          time={time}
-          onPick={(d, t) => {
-            setDate(d);
-            setTime(t);
-          }}
-        />
-      )}
-      <div className="form-row">
-        <Field label="Data" hint="Puste: termin do umówienia.">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </Field>
-        <Field label="Godzina">
-          <TimeSelect value={time} onChange={setTime} />
-        </Field>
-      </div>
-      <Field label="Czas trwania">
-        <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
-          {durations.map((d) => (
-            <option key={d} value={d}>
-              {d < 60 ? `${d} min` : `${Math.floor(d / 60)} godz.${d % 60 ? ` ${d % 60} min` : ''}`}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <TermsFields value={draft} onChange={setDraft} invoice={props.invoice} />
-      <button type="submit" className="btn btn-primary btn-block" disabled={!parsed}>
-        <Icon name="check" /> Zapisz zmiany
-      </button>
-      <Link className="btn btn-block" to={`/zlecenia/${props.orderId}/edycja`}>
-        <Icon name="edit" /> Edytuj dane zlecenia (klient, adres, telefon)
-      </Link>
-    </form>
-  );
-}
-
 function EditTerms(props: { initial: VisitTerms; invoice: Order['invoice']; onSave: (terms: VisitTerms) => void }) {
   const [draft, setDraft] = useState(() => termsDraft(props.initial));
   const parsed = termsFromDraft(draft);

@@ -3,17 +3,18 @@ import { isSyncConfigured } from '../data/sync/config';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { addressAt, currentPosition, freeSlots, locate, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
-import { createOrder, duplicateOrder, type OrderDraft } from '../data/orders';
+import { addressAt, currentPosition, freeSlots, locate, previousVisitDay, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
+import { NextDates } from './next-dates';
+import { createOrder, orderVisits, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
-import { getAppSettings } from '../data/settings';
+import { getAppSettings, getProfile } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
-import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind, TreatmentMethod } from '../data/types';
+import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind, TreatmentMethod, Visit } from '../data/types';
 import { METHOD_LABEL, METHODS, orderMethods } from '../data/methods';
 import { normalizeCity } from '../data/cities';
-import { SCOPE_KINDS, scopeText, type VisitTerms } from '../data/visit-terms';
+import { SCOPE_KINDS, scopeText, visitPrice, type VisitTerms } from '../data/visit-terms';
 import { coordsFromLink, isIos, isMapsLink, mapsQuery, mapsSearchUrl, readMapsInput, isShortMapsLink } from '../data/maps';
-import { addMinutes, formatDate, formatDateLong, formatTerm, isValidDate, todayWarsaw, nowWarsaw } from '../lib/dates';
+import { addMinutes, formatDateLong, formatTerm, isValidDate, todayWarsaw, nowWarsaw } from '../lib/dates';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { formatPhoneInput, formatPostalInput, isValidNip, phoneError } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
@@ -991,6 +992,37 @@ export function OrderNewPage() {
   const [stepIndex, setStepIndex] = useState(0);
   const [errors, setErrors] = useState<Errors>({});
   const [leaving, setLeaving] = useState(false);
+  // „Powiel zlecenie” (?powiel=id zlecenia&zabieg=id zabiegu): ten sam formularz co nowe zlecenie, wypełniony
+  // danymi powielanego. Numer mieszkania jest pusty, a termin zaraz po powielanym zabiegu.
+  const copyFrom = params.get('powiel');
+  const copyVisit = params.get('zabieg');
+  const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => {
+    if (!copyFrom || copied === copyFrom) return;
+    void (async () => {
+      const source = await orders.get(copyFrom);
+      if (!source || source.deletedAt) return;
+      const list = await orderVisits(copyFrom);
+      const visit = list.find((v) => v.id === copyVisit) ?? list.find((v) => v.start) ?? list[0];
+      const duration = visit?.durationMin || 60;
+      const after = visit?.start ? addMinutes(visit.start, duration) : null;
+      const next: FormState = {
+        ...fromOrder(source),
+        flatNo: '',
+        date: after?.slice(0, 10) ?? todayWarsaw(),
+        time: after?.slice(11, 16) ?? '10:00',
+        duration: String(duration),
+        scopeKind: visit?.scope?.kind ?? 'calosc',
+        scopeNote: visit?.scope?.note ?? '',
+      };
+      setState(next);
+      saveDraft(next);
+      setStepIndex(0);
+      setCopied(copyFrom);
+      toast(`Powielasz zlecenie ${orderCode(source)}. Sprawdź numer mieszkania i termin.`);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [copyFrom, copyVisit, copied]);
   const steps: StepId[] = [...ALL_STEPS, 'podsumowanie'];
   const step = steps[stepIndex];
   const hasDraft = useMemo(() => JSON.stringify(state) !== JSON.stringify({ ...EMPTY, date: todayWarsaw() }), [state]);
@@ -1139,19 +1171,39 @@ export function OrderNewPage() {
   );
 }
 
+/** Termin i zakres umówionego zabiegu w edycji (strona „Edytuj” z karty zabiegu). */
+interface VisitEdit {
+  date: string;
+  time: string;
+  duration: number;
+  kind: ScopeKind;
+  note: string;
+}
+
+const EDIT_DURATIONS = [30, 45, 60, 90, 120, 150, 180, 240];
+
+/**
+ * Edycja zlecenia. Z karty umówionego zabiegu (?zabieg=…) to jedna strona do wszystkiego: na górze termin, czas
+ * i zakres tego zabiegu, niżej telefon, adres, opis, cena i faktura. Cena dotyczy wtedy tego zabiegu.
+ */
 export function OrderEditPage() {
   const { id = '' } = useParams();
+  const [params] = useSearchParams();
+  const visitId = params.get('zabieg');
   const navigate = useNavigate();
   const { confirm, run, toast } = useFeedback();
   const loaded = useLiveQuery(async () => {
     const order = await orders.get(id);
-    return order && !order.deletedAt ? { order, settings: await getAppSettings() } : null;
-  }, [id]);
+    if (!order || order.deletedAt) return null;
+    const visit = visitId ? await visits.get(visitId) : undefined;
+    const editVisit = visit && visit.orderId === id && visit.status === 'zaplanowany' && !visit.deletedAt ? visit : null;
+    return { order, settings: await getAppSettings(), visit: editVisit, list: editVisit ? await orderVisits(id) : ([] as Visit[]) };
+  }, [id, visitId]);
   const [state, setState] = useState<FormState | null>(null);
+  const [visitEdit, setVisitEdit] = useState<VisitEdit | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   // Numer zlecenia do poprawienia (np. przepisany z kartki); pusty to bez zmiany.
   const [numberText, setNumberText] = useState('');
-  const [duplicating, setDuplicating] = useState(false);
   const editKey = `ddd-edycja-zlecenia-${id}`;
 
   // Niezapisane zmiany są w pamięci przeglądarki: przejście do Google Maps albo zamknięcie aplikacji ich nie gubi.
@@ -1164,7 +1216,22 @@ export function OrderEditPage() {
     } catch {
       restored = null;
     }
-    setState(restored ?? fromOrder(loaded.order));
+    const v = loaded.visit;
+    // Cena na stronie to cena tego zabiegu (II może mieć inną niż zlecenie).
+    const base = fromOrder(loaded.order);
+    if (v) {
+      const price = visitPrice(v, loaded.order);
+      base.priceMin = price.priceMin != null ? moneyToInput(price.priceMin) : '';
+      base.priceMax = price.priceMax != null ? moneyToInput(price.priceMax) : '';
+      setVisitEdit({
+        date: v.start?.slice(0, 10) ?? '',
+        time: v.start?.slice(11, 16) ?? '10:00',
+        duration: v.durationMin || 60,
+        kind: v.scope?.kind ?? 'calosc',
+        note: v.scope?.note ?? '',
+      });
+    }
+    setState(restored ?? base);
     if (restored) toast('Przywrócono niezapisane zmiany');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, state]);
@@ -1230,7 +1297,23 @@ export function OrderEditPage() {
     void run(async () => {
       const draft = toDraft(state);
       const before = loaded.order;
-      await orders.update(id, newNumber !== before.number ? { ...draft, number: newNumber } : draft);
+      const v = loaded.visit;
+      // Cena zabiegu II, III…: zostaje przy zabiegu, widełki zlecenia bez zmian.
+      const orderPatch = v && v.seq > 1 ? { ...draft, priceMin: before.priceMin, priceMax: before.priceMax } : draft;
+      await orders.update(id, newNumber !== before.number ? { ...orderPatch, number: newNumber } : orderPatch);
+      if (v && visitEdit) {
+        const start = visitEdit.date ? `${visitEdit.date}T${visitEdit.time}` : null;
+        // Pierwsze ustawienie terminu to umówienie zabiegu: zapisujemy, kto umówił.
+        const me = !v.start && start ? await getProfile() : null;
+        await visits.update(v.id, {
+          start,
+          durationMin: visitEdit.duration,
+          scope: { kind: visitEdit.kind, note: visitEdit.kind === 'calosc' ? '' : visitEdit.note.trim() },
+          priceMin: draft.priceMin,
+          priceMax: draft.priceMax,
+          ...(me ? { bookedById: me.userId, bookedByName: me.name, bookedAt: new Date().toISOString() } : {}),
+        });
+      }
       // Zmiana widełek zlecenia przechodzi na zabiegi do zrobienia, które miały dotychczasowe widełki.
       if (draft.priceMin !== before.priceMin || draft.priceMax !== before.priceMax) {
         for (const v of await visits.where('orderId', id)) {
@@ -1244,12 +1327,18 @@ export function OrderEditPage() {
         // nic
       }
       toast('Zapisano zmiany');
-      navigate(`/zlecenia/${id}`, { replace: true });
+      navigate(v ? `/zabieg/${v.id}` : `/zlecenia/${id}`, { replace: true });
     });
   };
 
   return (
-    <Page title={`Edycja ${orderCode(loaded.order)}`} back={`/zlecenia/${id}`}>
+    <Page title={loaded.visit ? `Edycja ${visitCode(loaded.order, loaded.visit.seq)}` : `Edycja ${orderCode(loaded.order)}`} back={loaded.visit ? `/zabieg/${loaded.visit.id}` : `/zlecenia/${id}`}>
+      {loaded.visit && visitEdit && (
+        <section className="edit-section">
+          <h2 className="wizard-title">Termin zabiegu {visitCode(loaded.order, loaded.visit.seq)}</h2>
+          <VisitEditFields visit={loaded.visit} after={previousVisitDay(loaded.list, loaded.visit.seq)} value={visitEdit} onChange={(patch) => setVisitEdit((prev) => ({ ...prev!, ...patch }))} />
+        </section>
+      )}
       <section className="edit-section">
         <h2 className="wizard-title">Numer zlecenia</h2>
         <Field
@@ -1269,58 +1358,58 @@ export function OrderEditPage() {
       <button type="button" className="btn btn-primary btn-block" onClick={() => void save()}>
         Zapisz zmiany
       </button>
-      <button type="button" className="btn btn-block" onClick={() => setDuplicating(true)}>
-        <Icon name="copy" /> Powiel zlecenie na inny termin (np. sąsiednie mieszkanie)
+      <button
+        type="button"
+        className="btn btn-block"
+        onClick={() => navigate(`/zlecenia/nowe?powiel=${id}${loaded.visit ? `&zabieg=${loaded.visit.id}` : ''}`)}
+      >
+        <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
       </button>
-      {duplicating && <DuplicateOrderSheet order={loaded.order} open durationMin={60} onClose={() => setDuplicating(false)} />}
     </Page>
   );
 }
 
-/**
- * „Powiel zlecenie”: te same dane (klient, adres, opis, cena, faktura) na inny termin, np. dwa sąsiednie mieszkania
- * tego samego właściciela. Wybierasz datę, godzinę i numer mieszkania; nowe zlecenie dostaje kolejny numer.
- */
-export function DuplicateOrderSheet(props: { order: Order; open: boolean; durationMin: number; start?: string | null; onClose: () => void }) {
-  const navigate = useNavigate();
-  const { run, toast } = useFeedback();
-  const [date, setDate] = useState(props.start?.slice(0, 10) || todayWarsaw());
-  const [time, setTime] = useState(props.start ? addMinutes(props.start, props.durationMin || 60).slice(11, 16) : '10:00');
-  const [flatNo, setFlatNo] = useState('');
+function VisitEditFields(props: { visit: Visit; after: string | null; value: VisitEdit; onChange: (patch: Partial<VisitEdit>) => void }) {
+  const v = props.value;
+  const durations = EDIT_DURATIONS.includes(v.duration) ? EDIT_DURATIONS : [...EDIT_DURATIONS, v.duration].sort((a, b) => a - b);
   return (
-    <Sheet open={props.open} title={`Powiel zlecenie ${orderCode(props.order)}`} onClose={props.onClose}>
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!date || !time) return;
-          void run(async () => {
-            const copy = await duplicateOrder(props.order.id, { start: `${date}T${time}`, durationMin: props.durationMin || 60, flatNo });
-            props.onClose();
-            toast(`Nowe zlecenie ${orderCode(copy)}: ${formatDate(date)}, ${time}`);
-            navigate(`/zlecenia/${copy.id}`);
-          });
-        }}
-      >
-        <p className="sheet-text">
-          Nowe zlecenie z tymi samymi danymi: {orderAddress(props.order)}, {props.order.clientName || props.order.phones[0]?.number || 'ten sam klient'}. Np. drugie
-          mieszkanie obok, od tego samego właściciela.
-        </p>
-        <div className="form-row">
-          <Field label="Data">
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-          </Field>
-          <Field label="Godzina">
-            <TimeSelect value={time} onChange={setTime} />
-          </Field>
-        </div>
-        <Field label="Numer mieszkania" hint={props.order.flatNo ? `Teraz: ${props.order.flatNo}. Puste: bez numeru lokalu.` : 'Puste: bez numeru lokalu.'}>
-          <input value={flatNo} autoComplete="off" onChange={(e) => setFlatNo(e.target.value)} />
+    <div className="form">
+      {props.after && props.visit.seq > 1 && (
+        <NextDates after={props.after} durationMin={v.duration} date={v.date} time={v.time} onPick={(date, time) => props.onChange({ date, time })} />
+      )}
+      <div className="form-row">
+        <Field label="Data" hint="Puste: termin do umówienia.">
+          <input type="date" value={v.date} onChange={(e) => props.onChange({ date: e.target.value })} />
         </Field>
-        <button type="submit" className="btn btn-primary btn-block" disabled={!date || !time}>
-          <Icon name="copy" /> Powiel zlecenie
-        </button>
-      </form>
-    </Sheet>
+        <Field label="Godzina">
+          <TimeSelect value={v.time} onChange={(time) => props.onChange({ time })} />
+        </Field>
+      </div>
+      <Field label="Czas trwania">
+        <select value={v.duration} onChange={(e) => props.onChange({ duration: Number(e.target.value) })}>
+          {durations.map((d) => (
+            <option key={d} value={d}>
+              {d < 60 ? `${d} min` : `${Math.floor(d / 60)} godz.${d % 60 ? ` ${d % 60} min` : ''}`}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <div className="field">
+        <span className="field-label">Co pryskamy</span>
+        <div className="choice">
+          {SCOPE_KINDS.map(([kind, label]) => (
+            <button key={kind} type="button" className={v.kind === kind ? 'choice-item active' : 'choice-item'} aria-pressed={v.kind === kind} onClick={() => props.onChange({ kind })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {v.kind !== 'calosc' && (
+        <Field label={v.kind === 'pokoj' ? 'Który pokój?' : 'Co dokładnie?'}>
+          <input value={v.note} placeholder={v.kind === 'pokoj' ? 'Np. sypialnia' : 'Np. kuchnia i łazienka, piwnica'} onChange={(e) => props.onChange({ note: e.target.value })} />
+        </Field>
+      )}
+    </div>
   );
 }
+
