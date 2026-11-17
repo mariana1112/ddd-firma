@@ -7,11 +7,12 @@ export function paymentMissing(visit: Pick<Visit, 'status' | 'payMethod' | 'amou
 }
 
 /** Dlaczego zlecenie jest pilne: zabieg rozpoczęty i niezakończony, brak płatności albo zaległy termin. */
-export type UrgentReason = 'w_trakcie' | 'platnosc' | 'zalegly';
+export type UrgentReason = 'w_trakcie' | 'platnosc' | 'opis' | 'zalegly';
 
 export const URGENT_LABEL: Record<UrgentReason, string> = {
   w_trakcie: 'Niedokończony',
   platnosc: 'Brak płatności',
+  opis: 'Do opisania',
   zalegly: 'Zaległy termin',
 };
 
@@ -20,6 +21,7 @@ export function urgentReason(order: Pick<Order, 'archived'>, list: Visit[], toda
   if (isArchived(order, list)) return null;
   if (list.some((v) => v.status === 'w_trakcie')) return 'w_trakcie';
   if (list.some(paymentMissing)) return 'platnosc';
+  if (list.some((v) => v.status === 'wykonany' && v.detailsLater)) return 'opis';
   if (list.some((v) => v.status === 'zaplanowany' && v.start && v.start.slice(0, 10) < today)) return 'zalegly';
   return null;
 }
@@ -66,6 +68,7 @@ export function visitUrgent(order: Pick<Order, 'archived'>, visit: Visit, today:
   if (order.archived || visit.status === 'odwolany') return null;
   if (visit.status === 'w_trakcie') return 'w_trakcie';
   if (paymentMissing(visit)) return 'platnosc';
+  if (visit.status === 'wykonany' && visit.detailsLater) return 'opis';
   if (visit.status === 'zaplanowany' && visit.start && visit.start.slice(0, 10) < today) return 'zalegly';
   return null;
 }

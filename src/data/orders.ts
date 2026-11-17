@@ -164,6 +164,8 @@ export interface FinishInput {
   problems: string;
   recommendations: string[];
   next: NextVisit;
+  /** „Zakończ teraz, opiszę później”: zabieg czeka w „Pilnych” jako „Do opisania”. */
+  detailsLater?: boolean;
 }
 
 /**
@@ -205,6 +207,7 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
       startedAt: startToSave(visit.startedAt, finishedAt),
       finishedAt,
       doneOn: input.doneOn || visit.doneOn || todayWarsaw(),
+      detailsLater: Boolean(input.detailsLater),
       payMethod: input.payMethod,
       amount: input.amount,
       treatments: input.treatments,

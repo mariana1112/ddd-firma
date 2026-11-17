@@ -343,6 +343,11 @@ export interface Visit extends BaseRecord {
    */
   priceMin?: number | null;
   priceMax?: number | null;
+  /**
+   * Zabieg zakończony na szybko („Zakończ teraz, opiszę później”): płatność jest, a wywiad, wykonane prace i zdjęcia
+   * technik dopisuje później (w aucie, w domu). Do tego czasu zabieg jest w „Pilnych” jako „Do opisania”.
+   */
+  detailsLater?: boolean;
   /** Kiedy wysłano klientowi przypomnienie z prośbą o potwierdzenie (SMS dzień przed). */
   remindedAt?: string | null;
   /** Co trzeba uszczelnić (np. kratki wentylacyjne/piony, listwy przypodłogowe); pusty: nie trzeba. */

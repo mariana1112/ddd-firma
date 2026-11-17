@@ -3564,3 +3564,66 @@ body {
 .cal-bar > .btn {
   flex: none;
 }
+
+/* Rozpoczęty zabieg: płatność w każdej chwili („Klient płaci od razu?”) */
+.pay-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pay-card > .icon {
+  flex: none;
+  color: var(--primary);
+}
+
+.pay-card-paid {
+  border-color: var(--ok);
+  background: var(--surface);
+}
+
+.pay-card-paid > .icon {
+  color: var(--ok);
+}
+
+.pay-card-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pay-card-text > span {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pay-card > .btn {
+  flex: none;
+  pointer-events: none;
+}
+
+.pay-amount {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.finish-later {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.finish-later .field-hint {
+  margin-top: 6px;
+}

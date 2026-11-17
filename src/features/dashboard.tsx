@@ -53,8 +53,8 @@ function QuickSearch() {
 }
 
 /** Powód, dla którego zabieg jest w „Pilnych”. */
-type TodoReason = 'w_trakcie' | 'platnosc' | 'zalegly';
-const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'Niedokończony', platnosc: 'Uzupełnij płatność', zalegly: 'Zaległy termin' };
+type TodoReason = 'w_trakcie' | 'platnosc' | 'opis' | 'zalegly';
+const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'Niedokończony', platnosc: 'Uzupełnij płatność', opis: 'Do opisania', zalegly: 'Zaległy termin' };
 
 function VisitRow({ visit, order, timeOnly, urgent, reason }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean; reason?: TodoReason }) {
   return (
@@ -71,7 +71,7 @@ function VisitRow({ visit, order, timeOnly, urgent, reason }: { visit: Visit; or
         <span className="row-end">
           {order.pink && <PinkBadge />}
           {reason ? (
-            <Badge tone={reason === 'w_trakcie' ? 'warn' : 'danger'}>{TODO_LABEL[reason]}</Badge>
+            <Badge tone={reason === 'w_trakcie' || reason === 'opis' ? 'warn' : 'danger'}>{TODO_LABEL[reason]}</Badge>
           ) : urgent ? (
             <Badge tone="danger">Uzupełnij płatność</Badge>
           ) : (
@@ -145,12 +145,16 @@ export function DashboardPage() {
   const overdue = planned.filter(({ visit }) => visit.status === 'zaplanowany' && visit.start!.slice(0, 10) < today);
   const tomorrow = addDays(today, 1);
   const tomorrowList = planned.filter(({ visit }) => visit.start!.slice(0, 10) === tomorrow);
-  // Pilne: rozpoczęte i niedokończone, bez płatności („później”) i zaległe terminy, od najnowszych.
+  // Pilne: rozpoczęte i niedokończone, bez płatności („później”), do opisania i zaległe terminy, od najnowszych.
   const todo = [
     ...withOrder.filter(({ visit }) => visit.status === 'w_trakcie').map((x) => ({ ...x, reason: 'w_trakcie' as TodoReason, at: x.visit.startedAt ?? x.visit.start ?? '' })),
     ...withOrder
       .filter(({ visit, order }) => paymentMissing(visit) && !order.archived)
       .map((x) => ({ ...x, reason: 'platnosc' as TodoReason, at: x.visit.finishedAt ?? x.visit.doneOn ?? '' })),
+    // Zakończone na szybko („opiszę później”): czekają na dopisanie wywiadu, prac i zdjęć.
+    ...withOrder
+      .filter(({ visit, order }) => visit.status === 'wykonany' && visit.detailsLater && !paymentMissing(visit) && !order.archived)
+      .map((x) => ({ ...x, reason: 'opis' as TodoReason, at: x.visit.finishedAt ?? x.visit.doneOn ?? '' })),
     ...overdue.map((x) => ({ ...x, reason: 'zalegly' as TodoReason, at: x.visit.start ?? '' })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   const drafts = listDrafts();

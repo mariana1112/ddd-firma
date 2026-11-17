@@ -13,6 +13,8 @@ import { paymentMissing } from '../data/order-list';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getCompany, type AppSettings, getProfile } from '../data/settings';
 import { formatAccount } from '../data/card';
+import { formatPln } from '../data/reports';
+import type { CompanySettings } from '../data/types';
 import { CopyRow } from './card';
 import {
   INVOICES,
@@ -205,6 +207,103 @@ function InvoiceData({ order, alert, onSave }: { order: Order; alert: boolean; o
       )}
       <OrderField label="E-mail" value={order.email} inputMode="email" missing={flag('email')} onSave={(email) => onSave({ email })} />
       <OrderField label="Adres do faktury (puste: adres zlecenia)" value={order.invoiceAddress} missing={false} onSave={(invoiceAddress) => onSave({ invoiceAddress })} />
+    </div>
+  );
+}
+
+/**
+ * Płatność w każdej chwili zabiegu: klient często płaci od razu. Karta na górze rozpoczętego zabiegu pokazuje, czy
+ * płatność jest przyjęta, i otwiera arkusz z kwotą, formą, protokołem i fakturą.
+ */
+function PayCard({ visit, order, onOpen }: { visit: Visit; order: Order; onOpen: () => void }) {
+  const paid = Boolean(visit.payMethod && visit.amount);
+  const docs = [order.invoice !== 'brak' && INVOICES[order.invoice], order.protocol && 'Protokół'].filter(Boolean).join(', ');
+  return (
+    <button type="button" className={paid ? 'pay-card pay-card-paid' : 'pay-card'} onClick={onOpen}>
+      <Icon name={paid ? 'check' : 'wallet'} size={22} />
+      <span className="pay-card-text">
+        <strong>{paid ? `Zapłacono ${formatPln(visit.amount!)}, ${PAY_NAMES[visit.payMethod!].toLowerCase()}` : 'Klient płaci od razu?'}</strong>
+        <span>{paid ? docs || 'Bez faktury i protokołu' : 'Kwota, forma płatności, protokół, faktura'}</span>
+      </span>
+      <span className={paid ? 'btn btn-sm' : 'btn btn-sm btn-primary'}>{paid ? 'Zmień' : 'Przyjmij'}</span>
+    </button>
+  );
+}
+
+function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings; alert: boolean; onClose: () => void }) {
+  const { visit, order, company } = props;
+  const { run, toast } = useFeedback();
+  const agreed = visitPrice(visit, order);
+  const options = [...new Set([agreed.priceMin, agreed.priceMax].filter((x): x is number => typeof x === 'number' && x > 0))];
+  const toText = (grosze: number) => moneyToInput(grosze).replace(/,00$/, '');
+  const [text, setText] = useState(() => (visit.amount ? toText(visit.amount) : options.length === 1 ? toText(options[0]) : ''));
+  const [method, setMethod] = useState<PayMethod | null>(visit.payMethod);
+  const [tried, setTried] = useState(false);
+  const value = parseMoney(text);
+  const amountError = text.trim() && (value === null || value > MAX_VISIT_AMOUNT) ? 'Podaj kwotę, np. 350' : tried && !value ? 'Wpisz kwotę' : undefined;
+  const save = () =>
+    run(async () => {
+      setTried(true);
+      if (!method || !value || value > MAX_VISIT_AMOUNT) return;
+      await visits.update(visit.id, { payMethod: method, amount: value });
+      toast(`Płatność zapisana: ${formatPln(value)}, ${PAY_NAMES[method].toLowerCase()}`);
+      props.onClose();
+    });
+  return (
+    <div className="form">
+      <Field label="Kwota (zł)" error={amountError}>
+        <input className="pay-amount" inputMode="decimal" autoComplete="off" value={text} placeholder="0" onChange={(e) => setText(e.target.value)} />
+      </Field>
+      {options.length > 1 && (
+        <div className="chips" role="group" aria-label="Ustalona cena">
+          {options.map((o) => (
+            <button key={o} type="button" className={value === o ? 'chip active' : 'chip'} onClick={() => setText(toText(o))}>
+              {formatPln(o)}
+            </button>
+          ))}
+        </div>
+      )}
+      <span className="field-label">Forma płatności</span>
+      <div className="pay-choice">
+        {(['gotowka', 'blik', 'przelew'] as PayMethod[]).map((m) => (
+          <button
+            key={m}
+            type="button"
+            className={`pay-option pay-opt-${m}${method === m ? ' active' : ''}${tried && !method ? ' missing' : ''}`}
+            aria-pressed={method === m}
+            onClick={() => setMethod(m)}
+          >
+            {PAY_NAMES[m]}
+          </button>
+        ))}
+      </div>
+      {tried && !method && <span className="field-message">Wybierz formę płatności</span>}
+      {method === 'przelew' && company.bankAccount.trim() && (
+        <div className="pay-details">
+          <CopyRow label="Numer konta do przelewu" value={formatAccount(company.bankAccount)} copyValue={company.bankAccount.replace(/\s/g, '')} />
+        </div>
+      )}
+      {method === 'blik' && company.blikPhone?.trim() && (
+        <div className="pay-details">
+          <CopyRow label="BLIK na telefon" value={company.blikPhone.trim()} copyValue={company.blikPhone.replace(/\s/g, '')} />
+        </div>
+      )}
+      <span className="field-label">Dokumenty</span>
+      <label className="check">
+        <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
+        Protokół z zabiegu
+      </label>
+      <div className="choice">
+        {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([v, label]) => (
+          <button key={v} type="button" className={order.invoice === v ? 'choice-item active' : 'choice-item'} onClick={() => void run(() => orders.update(order.id, { invoice: v }))}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <InvoiceData order={order} alert={props.alert} onSave={(patch) => void run(() => orders.update(order.id, patch))} />
+      <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void save()}>
+        <Icon name="check" /> Zapisz płatność
+      </button>
     </div>
   );
 }
@@ -531,6 +630,9 @@ export function VisitPage() {
   const { confirm, run, toast } = useFeedback();
   const navigate = useNavigate();
   const [finishing, setFinishing] = useState(false);
+  // Arkusz płatności („Klient płaci od razu?”) i szybkie zakończenie z opisem na później.
+  const [paying, setPaying] = useState(false);
+  const [finishLater, setFinishLater] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
   const [editingPlanned, setEditingPlanned] = useState(false);
   const [leavingStarted, setLeavingStarted] = useState(false);
@@ -596,7 +698,8 @@ export function VisitPage() {
    * „Zakończ zabieg”: forma płatności i kwota są wymagane. Gdy ich brakuje, płatność świeci na czerwono i ekran
    * przewija się do niej; można też zakończyć teraz i uzupełnić później (zabieg trafia do „Pilnych”).
    */
-  const requestFinish = async () => {
+  const requestFinish = async (later = false) => {
+    setFinishLater(later);
     // Kwota zapisuje się przy wyjściu z pola, więc czytamy świeży stan po chwili.
     await new Promise((resolve) => setTimeout(resolve, 150));
     const fresh = (await visits.get(visit.id)) ?? visit;
@@ -606,20 +709,22 @@ export function VisitPage() {
     if (lacking.length) {
       setInvoiceAlert(true);
       toast(`Do faktury brakuje: ${lacking.map((f) => INVOICE_FIELD_LABEL[f]).join(', ')}`, { tone: 'error' });
-      scrollToPay();
+      if (later) setPaying(true);
+      else scrollToPay();
       return;
     }
     const missing = [!fresh.payMethod && 'formy płatności', !fresh.amount && 'kwoty'].filter(Boolean) as string[];
     if (missing.length) {
       setPayAlert(true);
-      const later = await confirm({
+      const ok = await confirm({
         title: 'Brak płatności',
         message: `Nie wybrano ${missing.join(' ani ')}. Uzupełnij płatność albo zakończ teraz i uzupełnij później: zabieg trafi do „Pilnych”.`,
         confirmLabel: 'Później (do Pilnych)',
         cancelLabel: 'Uzupełnię teraz',
       });
-      if (!later) {
-        scrollToPay();
+      if (!ok) {
+        if (later) setPaying(true);
+        else scrollToPay();
         return;
       }
     }
@@ -662,9 +767,15 @@ export function VisitPage() {
         problems: visit.problems,
         recommendations: input.recommendations,
         next: input.next,
+        detailsLater: finishLater,
       });
       setFinishing(false);
       setEditingId(null);
+      if (finishLater) {
+        setFinishLater(false);
+        toast('Zabieg zakończony. Opis dopiszesz później: czeka w „Pilnych” jako „Do opisania”.');
+        return;
+      }
       // SMS z zaleceniami wysyła się przyciskiem w podsumowaniu, bez wyskakującego okna.
       toast(phone ? 'Zabieg zakończony. Zalecenia wyślesz przyciskiem „SMS” na górze.' : 'Zabieg zakończony');
     });
@@ -740,6 +851,25 @@ export function VisitPage() {
           order={order}
           visit={visit}
         />
+        {summary && visit.detailsLater && (
+          <div className="notice notice-warn">
+            <Icon name="edit" />
+            <span>
+              <strong>Do opisania.</strong> Dopisz wywiad, wykonane prace i zdjęcia.
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              onClick={() => {
+                setEditingId(visit.id);
+                goStep(0);
+              }}
+            >
+              Dopisz teraz
+            </button>
+          </div>
+        )}
+
         {params.has('nowe') && visit.start && (
           <div className="notice notice-info calendar-offer">
             <Icon name="calendar" />
@@ -913,6 +1043,8 @@ export function VisitPage() {
 
       {active && (
         <>
+          {/* Klient płaci od razu: płatność można przyjąć na każdym kroku. Na ostatnim kroku jest pełna sekcja płatności. */}
+          {workStep < WORK_STEPS.length - 1 && <PayCard visit={visit} order={order} onOpen={() => setPaying(true)} />}
           {/* Zabieg krok po kroku, jak tworzenie zlecenia: wywiad, wykonane, zdjęcia i protokół, płatność. */}
           <div className="wizard-progress" aria-label={`Krok ${workStep + 1} z ${WORK_STEPS.length}`}>
             {WORK_STEPS.map((title, i) => (
@@ -1099,8 +1231,19 @@ export function VisitPage() {
                   </p>
                 )}
                 <div className="btn-stack">
-                  <button type="button" className="btn btn-primary" onClick={() => { setEditingId(null); if (params.has('edycja')) navigate(`/zabieg/${visit.id}`, { replace: true }); }}>
-                    <Icon name="check" /> Zapisz i wyjdź
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() =>
+                      void run(async () => {
+                        // Dopisany opis: zabieg znika z „Do opisania”.
+                        if (visit.detailsLater) await visits.update(visit.id, { detailsLater: false });
+                        setEditingId(null);
+                        if (params.has('edycja')) navigate(`/zabieg/${visit.id}`, { replace: true });
+                      })
+                    }
+                  >
+                    <Icon name="check" /> {visit.detailsLater ? 'Gotowe, opisane' : 'Zapisz i wyjdź'}
                   </button>
                   <button type="button" className="btn" onClick={() => setFinishing(true)}>
                     Zmień zalecenia lub kolejny zabieg
@@ -1122,6 +1265,15 @@ export function VisitPage() {
               </button>
             </div>
           )}
+          {/* Zapłacone i trzeba wychodzić: opis, prace i zdjęcia można dopisać później (w aucie, w domu). */}
+          {visit.status === 'w_trakcie' && workStep < WORK_STEPS.length - 1 && (
+            <div className="finish-later">
+              <button type="button" className="btn btn-block btn-dashed" onClick={() => void requestFinish(true)}>
+                <Icon name="check" /> Zakończ teraz, opiszę później
+              </button>
+              <p className="field-hint">Opis, wykonane prace i zdjęcia dopiszesz w aucie albo w domu. Zabieg poczeka w „Pilnych”.</p>
+            </div>
+          )}
           {workStep === WORK_STEPS.length - 1 && (
             <button type="button" className="btn btn-block" onClick={() => goStep(workStep - 1)}>
               Wstecz
@@ -1131,6 +1283,10 @@ export function VisitPage() {
       )}
 
       {!active && <History list={list} current={visit} order={order} vatRate={settings.vatRate} />}
+
+      <Sheet open={paying} title={`Płatność · ${visitCode(order, visit.seq)}`} onClose={() => setPaying(false)}>
+        {paying && <PaySheet visit={visit} order={order} company={company} alert={invoiceAlert} onClose={() => setPaying(false)} />}
+      </Sheet>
 
       {finishing && (
         <FinishSheet
