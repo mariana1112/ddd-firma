@@ -69,12 +69,8 @@ export function AdminDuty() {
       toast(data.off ? 'Tryb admina włączony' : 'Tryb admina wyłączony: pracujesz jak technik');
     });
   return (
-    <details className="settings-section">
-      <summary>
-        <strong>Tryb admina</strong>
-        <span>{data.off ? 'Wyłączony: pracujesz jak technik' : 'Włączony'}</span>
-      </summary>
-      <div className="admin-duty">
+    <Group title="Tryb admina">
+      <div className="group-pad admin-duty">
         <p className="admin-duty-state">
           <Badge tone={data.off ? 'muted' : 'primary'}>{data.off ? 'Wyłączony' : 'Włączony'}</Badge>
           <span>
@@ -87,7 +83,7 @@ export function AdminDuty() {
           <Icon name={data.off ? 'users' : 'close'} /> {data.off ? 'Włącz tryb admina' : 'Wyłącz tryb admina (po służbie)'}
         </button>
       </div>
-    </details>
+    </Group>
   );
 }
 
@@ -96,6 +92,7 @@ export function MorePage() {
   const sync = useLiveQuery(async () => (await getUiSyncState()) ?? null);
   return (
     <Page title="Więcej">
+      <AdminDuty />
       <Group title="Praca">
         <Row to="/wizytowka" icon="wallet" title="Wizytówka" sub="Dane do przelewu, numer do BLIK-a i Twój numer do skopiowania" />
         <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />
@@ -578,7 +575,6 @@ export function SettingsPage() {
   }, [adminOff]);
   return (
     <Page title="Ustawienia" back="/wiecej">
-      <AdminDuty />
       {/* Po przełączeniu trybu admina formularz wczytuje się od nowa (z ustawieniami firmy albo bez). */}
       {loaded ? <SettingsForm key={String(adminOff)} {...loaded} /> : <Loading />}
     </Page>
