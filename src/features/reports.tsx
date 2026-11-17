@@ -5,7 +5,7 @@ import { useContext, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { buildReport, costName, formatPln, PAY_METHODS, periodOf, periodTitle, reportText, shiftPeriod, type Period, type PeriodKind, byTechnician, initials, technicianLines } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
-import { getAppSettings, getProfile, getSyncState, ownedBy } from '../data/settings';
+import { getAppSettings, getProfile, getUiSyncState, ownedBy } from '../data/settings';
 import { orderAddress, PAY_NAMES, pestName, firstName } from '../data/texts';
 import { formatDate, todayWarsaw } from '../lib/dates';
 import { reportDocument } from '../pdf/documents';
@@ -20,7 +20,7 @@ export function ReportsPage() {
   const { share, copy } = useContactActions();
   // Szef otwiera raport technika z listy oddziałów; domyślnie raport jest własny.
   const [params] = useSearchParams();
-  // Link z przypomnienia „Raport do odhaczenia” otwiera ten dzień albo tydzień.
+  // Link z okresem (?okres=dzien|tydzien&data=…) otwiera ten dzień albo tydzień.
   const [period, setPeriod] = useState<Period>(() => {
     const kind = params.get('okres');
     const date = params.get('data');
@@ -34,7 +34,7 @@ export function ReportsPage() {
   const [onlyMine, setOnlyMine] = useState<boolean | null>(null);
   const data = useLiveQuery(async () => {
     const profile = await getProfile();
-    const state = await getSyncState();
+    const state = await getUiSyncState();
     // Admin i księgowa widzą domyślnie wszystkich techników.
     const owner = state?.role === 'owner' || state?.role === 'ksiegowosc';
     const mine = onlyMine ?? !owner;

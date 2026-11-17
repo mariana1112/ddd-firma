@@ -38,6 +38,7 @@ export function isDeviceMetaKey(key: string): boolean {
     key === 'profile' ||
     key === 'vehicle' ||
     key === 'adminSecrets' ||
+    key === 'adminOff' ||
     key === 'myApp' ||
     key === 'dayStart' ||
     key.startsWith('geo:') ||
@@ -76,6 +77,28 @@ export async function markBackupDone(at = new Date().toISOString()): Promise<voi
 
 export async function getSyncState(): Promise<SyncState | null> {
   return (await getMeta<SyncState>('sync')) ?? null;
+}
+
+/** Tryb admina wyłączony na tym telefonie („po służbie”): admin pracuje jak technik, bez funkcji admina. */
+export const ADMIN_OFF_KEY = 'adminOff';
+
+export async function getAdminOff(): Promise<boolean> {
+  return (await getMeta<boolean>(ADMIN_OFF_KEY)) === true;
+}
+
+/** Tylko na tym urządzeniu: nie trafia na serwer, nie zmienia roli konta ani szyfrowania. */
+export async function setAdminOff(off: boolean): Promise<void> {
+  await db.meta.put({ key: ADMIN_OFF_KEY, value: off, updatedAt: new Date().toISOString() });
+}
+
+/**
+ * Stan konta dla ekranów: admin z wyłączonym trybem admina widzi aplikację jak technik (bez panelu admina, decyzji
+ * o usunięciu, wszystkich regionów i ustawień firmy). Synchronizacja i klucze zawsze używają prawdziwej roli.
+ */
+export async function getUiSyncState(): Promise<SyncState | null> {
+  const state = await getSyncState();
+  if (state?.role === 'owner' && (await getAdminOff())) return { ...state, role: 'technik' };
+  return state;
 }
 
 export async function setSyncState(state: SyncState | null): Promise<void> {

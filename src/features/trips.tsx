@@ -6,7 +6,7 @@ import { restoreRecord } from '../data/domain';
 import { driverSummary, mileageSheets, normalizePlate, routeText, suggestRoutes } from '../data/mileage';
 import { lastOdometer, tripKm } from '../data/orders';
 import { trips, orders, visits } from '../data/repo';
-import { COMPANY_NAME, DEFAULT_BASE, getCompany, getProfile, getSyncState, getVehicle, ownedBy, saveVehicle, type VehicleSettings } from '../data/settings';
+import { COMPANY_NAME, DEFAULT_BASE, getCompany, getProfile, getUiSyncState, getVehicle, ownedBy, saveVehicle, type VehicleSettings } from '../data/settings';
 import { DayCard } from './day-card';
 import type { CompanySettings, Trip, TripKind } from '../data/types';
 import { formatDate, formatMonth, monthOf, nowWarsaw, shiftMonth, todayWarsaw } from '../lib/dates';
@@ -259,7 +259,7 @@ export function TripsPage() {
   const [busy, setBusy] = useState(false);
   const data = useLiveQuery(async () => {
     const profile = await getProfile();
-    const sync = await getSyncState();
+    const sync = await getUiSyncState();
     return {
       all: await trips.all(),
       profile,

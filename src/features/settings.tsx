@@ -25,6 +25,9 @@ import {
   getMyPhone,
   getRegion,
   getSyncState,
+  getUiSyncState,
+  getAdminOff,
+  setAdminOff,
   ownedBy,
   localOrderCounter,
   saveAppSettings,
@@ -52,11 +55,69 @@ import { Badge, Empty, Field, Group, Info, Loading, Page, Row, Sheet } from '../
 
 // ---------- Więcej ----------
 
+/**
+ * Tryb admina na tym telefonie: „Wyłącz” (po służbie) chowa funkcje admina i aplikacja działa jak u technika,
+ * „Włącz” przywraca je od razu. Rola konta na serwerze się nie zmienia.
+ */
+export function AdminDuty() {
+  const { run, toast } = useFeedback();
+  const data = useLiveQuery(async () => ({ owner: (await getSyncState())?.role === 'owner', off: await getAdminOff() }));
+  if (!data?.owner) return null;
+  const toggle = () =>
+    run(async () => {
+      await setAdminOff(!data.off);
+      toast(data.off ? 'Tryb admina włączony' : 'Tryb admina wyłączony: pracujesz jak technik');
+    });
+  return (
+    <Group title="Tryb admina">
+      <div className="group-pad admin-duty">
+        <p className="admin-duty-state">
+          <Badge tone={data.off ? 'muted' : 'primary'}>{data.off ? 'Wyłączony' : 'Włączony'}</Badge>
+          <span>
+            {data.off
+              ? 'Pracujesz jak technik. Panel admina, wszystkie regiony, prośby o usunięcie i ustawienia firmy są schowane.'
+              : 'Masz panel admina, wszystkie regiony, decyzje o usunięciu zleceń i ustawienia firmy.'}
+          </span>
+        </p>
+        <button type="button" className={data.off ? 'btn btn-primary btn-block' : 'btn btn-block'} onClick={() => void toggle()}>
+          <Icon name={data.off ? 'users' : 'close'} /> {data.off ? 'Włącz tryb admina' : 'Wyłącz tryb admina (po służbie)'}
+        </button>
+      </div>
+    </Group>
+  );
+}
+
+/** Pulpit: przypomnienie, że tryb admina jest wyłączony, z przyciskiem do włączenia. */
+export function AdminOffNotice() {
+  const { run, toast } = useFeedback();
+  const show = useLiveQuery(async () => (await getSyncState())?.role === 'owner' && (await getAdminOff()));
+  if (!show) return null;
+  return (
+    <div className="notice notice-info">
+      <Icon name="users" />
+      <span>Tryb admina wyłączony: pracujesz jak technik.</span>
+      <button
+        type="button"
+        className="btn btn-sm btn-primary"
+        onClick={() =>
+          void run(async () => {
+            await setAdminOff(false);
+            toast('Tryb admina włączony');
+          })
+        }
+      >
+        Włącz
+      </button>
+    </div>
+  );
+}
+
 export function MorePage() {
   const lastBackup = useLiveQuery(() => getLastBackupAt());
-  const sync = useLiveQuery(async () => (await getSyncState()) ?? null);
+  const sync = useLiveQuery(async () => (await getUiSyncState()) ?? null);
   return (
     <Page title="Więcej">
+      <AdminDuty />
       <Group title="Praca">
         <Row to="/wizytowka" icon="wallet" title="Wizytówka" sub="Dane do przelewu, numer do BLIK-a i Twój numer do skopiowania" />
         <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />
@@ -520,7 +581,8 @@ export function SettingsPage() {
   // Formularz startuje z jednego odczytu, żeby synchronizacja nie resetowała pól w trakcie edycji.
   useEffect(() => {
     void (async () => {
-      const sync = await getSyncState();
+      // Admin z wyłączonym trybem admina widzi ustawienia jak technik (bez danych firmy i premii).
+      const sync = await getUiSyncState();
       setLoaded({
         settings: await getAppSettings(),
         company: await getCompany(),

@@ -11,7 +11,7 @@ import { documentTags, orderMethods, tagDone, methodNames } from '../data/method
 import { accountingNote } from '../data/accounting';
 import { googleCalendarUrl } from '../data/calendar';
 import { archiveOrder, cancelOrderDeletionRequest, decideOrderDeletion, deleteOrder, orderVisits, requestOrderDeletion, restoreOrder, scheduleNextVisit } from '../data/orders';
-import { getSyncState } from '../data/settings';
+import { getUiSyncState } from '../data/settings';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getProfile } from '../data/settings';
 import { accessDetails, BUILDINGS, INVOICES, orderAddress, orderText, pestName, priceRange, bookedBy, firstName } from '../data/texts';
@@ -47,7 +47,7 @@ const ordersCount = (n: number) => {
  */
 export function OrdersPage({ archive = false }: { archive?: boolean }) {
   const data = useLiveQuery(async () => {
-    const role = (await getSyncState())?.role;
+    const role = (await getUiSyncState())?.role;
     const everywhere = archive && role === 'owner';
     return {
       orders: everywhere ? await orders.allRegions() : await orders.all(),
@@ -62,7 +62,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
   const mode: 'zabiegi' | 'zlecenia' = archive ? 'zlecenia' : 'zabiegi';
   const [moreFilters, setMoreFilters] = useState(false);
   const { confirm, run, toast } = useFeedback();
-  const role = useLiveQuery(async () => (await getSyncState())?.role ?? null);
+  const role = useLiveQuery(async () => (await getUiSyncState())?.role ?? null);
   // Bez konta firmy (jedno urządzenie) albo admin: może usuwać zlecenia.
   const isOwner = role === null || role === 'owner';
   const removeFolder = async (folder: string, ids: string[]) => {
@@ -433,7 +433,7 @@ export function OrderDetailPage() {
         o.id !== id &&
         (o.phones.some((p) => phones.has(p.number.replace(/\D/g, ''))) || normalizeForSearch(orderAddress(o)) === address),
     );
-    const state = await getSyncState();
+    const state = await getUiSyncState();
     return { order, visits: list, others, settings: await getAppSettings(), role: state?.role ?? null, me: (await getProfile()).userId };
   }, [id]);
 

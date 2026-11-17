@@ -8,9 +8,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
-import { getLastBackupAt, getProfile, getSyncState, ownedBy } from '../data/settings';
-import { getReportChecks, pendingReportChecks, setReportChecked, type ReportCheck } from '../data/report-checks';
-import { useFeedback } from '../ui/feedback';
+import { getLastBackupAt, getProfile, getSyncState } from '../data/settings';
 import { orderAddress, pestName, firstName } from '../data/texts';
 import type { Order, Visit } from '../data/types';
 import { addDays, formatDate, formatDateLong, formatTime, todayWarsaw } from '../lib/dates';
@@ -21,6 +19,7 @@ import { RegionLine } from './regions';
 import { PinkBadge, VisitBadge } from './common';
 import { TomorrowReminders } from './reminders';
 import { DayCard } from './day-card';
+import { AdminOffNotice } from './settings';
 
 const BACKUP_REMINDER_DAYS = 7;
 
@@ -94,36 +93,6 @@ function readSeen(): string[] {
   }
 }
 
-/**
- * Raporty do odhaczenia: dzień albo tydzień z wykonanymi zabiegami się skończył, raport jest gotowy. Przypomnienie wisi,
- * dopóki technik go nie odhaczy (np. po wysłaniu szefowi i rozliczeniu gotówki).
- */
-function ReportChecks({ list }: { list: ReportCheck[] }) {
-  const { run, toast } = useFeedback();
-  if (!list.length) return null;
-  return (
-    <Group title={`Raporty do odhaczenia (${list.length})`}>
-      {list.map((r) => (
-        <div key={r.id} className="row-with-action">
-          <Row to={r.link} icon="chart" title={r.title} sub={r.text} />
-          <button
-            type="button"
-            className="btn btn-sm btn-primary"
-            onClick={() =>
-              void run(async () => {
-                await setReportChecked(r.id, true);
-                toast('Odhaczono raport', { action: { label: 'Cofnij', onClick: () => void run(() => setReportChecked(r.id, false)) } });
-              })
-            }
-          >
-            <Icon name="check" /> Odhacz
-          </button>
-        </div>
-      ))}
-    </Group>
-  );
-}
-
 export function DashboardPage() {
   // Szkice są w pamięci przeglądarki, której baza nie obserwuje: po porzuceniu szkicu odświeżamy ręcznie.
   const [, refresh] = useState(0);
@@ -144,7 +113,6 @@ export function DashboardPage() {
     profile: await getProfile(),
     lastBackup: await getLastBackupAt(),
     synced: Boolean(await getSyncState()),
-    checked: await getReportChecks(),
   }));
 
   if (!data) {
@@ -225,6 +193,7 @@ export function DashboardPage() {
         </section>
       )}
 
+      <AdminOffNotice />
       <QuickSearch />
 
 
@@ -295,10 +264,6 @@ export function DashboardPage() {
       </Group>
 
       <DayCard />
-
-      <ReportChecks
-        list={pendingReportChecks({ visits: data.visits, mine: (v) => ownedBy(v.technicianId, data.profile.userId, true), today, checked: data.checked })}
-      />
 
       <TomorrowReminders />
 

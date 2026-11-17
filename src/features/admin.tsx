@@ -12,7 +12,7 @@ import { companyText, regionRanking, regionData, type RegionRef } from '../data/
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
-import { COMPANY_NAME, getAppSettings, getDataKey, getRegions, getSyncState, matchRegionsToServer, saveRegions, setSyncState, saveProfile } from '../data/settings';
+import { COMPANY_NAME, getAdminOff, getAppSettings, getDataKey, getRegions, getSyncState, getUiSyncState, matchRegionsToServer, setAdminOff, saveRegions, setSyncState, saveProfile } from '../data/settings';
 import { enterRegion } from './regions';
 import type { SyncState } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
@@ -45,11 +45,25 @@ async function refetchAfterRecovery(): Promise<void> {
  * Konto i tak jest potwierdzone logowaniem, a serwer sprawdza rolę przy każdej operacji.
  */
 function useAdminGate(): { state: SyncState | null | undefined; unlocked: boolean } {
-  const state = useLiveQuery(async () => (await getSyncState()) ?? null);
+  // Wyłączony tryb admina (po służbie): panel jest zamknięty, dopóki admin go nie włączy.
+  const state = useLiveQuery(async () => (await getUiSyncState()) ?? null);
   return { state, unlocked: state?.role === 'owner' };
 }
 
 function NotAdmin() {
+  const off = useLiveQuery(async () => (await getSyncState())?.role === 'owner' && (await getAdminOff()));
+  if (off) {
+    return (
+      <Page title="Panel admina" back="/wiecej">
+        <Empty icon="users" title="Tryb admina jest wyłączony">
+          <p className="field-hint">Włącz go, żeby korzystać z panelu admina.</p>
+          <button type="button" className="btn btn-primary" onClick={() => void setAdminOff(false)}>
+            Włącz tryb admina
+          </button>
+        </Empty>
+      </Page>
+    );
+  }
   return (
     <Page title="Panel admina" back="/wiecej">
       <Empty icon="users" title="Panel admina jest dostępny tylko na koncie admina firmy">
