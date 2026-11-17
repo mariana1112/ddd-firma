@@ -17,7 +17,7 @@ import { orders, visits } from '../data/repo';
 import { pestName } from '../data/texts';
 import { methodNames } from '../data/methods';
 import type { VisitStatus } from '../data/types';
-import { addMinutes, formatTerm, nowWarsaw, todayWarsaw } from '../lib/dates';
+import { addDays, addMinutes, formatTerm, nowWarsaw, todayWarsaw } from '../lib/dates';
 import { Icon } from '../ui/icons';
 import { useFeedback } from '../ui/feedback';
 import { AddLink, Page } from '../ui/kit';
@@ -25,6 +25,80 @@ import { AddLink, Page } from '../ui/kit';
 const VIEW_KEY = 'ddd-kalendarz-widok';
 /** Oglądany dzień: po wejściu w zabieg i powrocie kalendarz jest tam, gdzie był (do zamknięcia aplikacji). */
 const DATE_KEY = 'ddd-kalendarz-data';
+
+const WEEKDAYS = ['pon', 'wt', 'śr', 'czw', 'pt', 'sob', 'nd'];
+const MONTHS_GEN = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia'];
+
+/** „9–15 listopada”, a na przełomie miesięcy „30 listopada – 6 grudnia”. */
+function weekTitle(from: string, to: string): string {
+  const [m1, m2] = [Number(from.slice(5, 7)) - 1, Number(to.slice(5, 7)) - 1];
+  const [d1, d2] = [Number(from.slice(8, 10)), Number(to.slice(8, 10))];
+  return m1 === m2 ? `${d1}–${d2} ${MONTHS_GEN[m2]}` : `${d1} ${MONTHS_GEN[m1]} – ${d2} ${MONTHS_GEN[m2]}`;
+}
+
+const WEEKDAY_NAMES = ['poniedziałek', 'wtorek', 'środa', 'czwartek', 'piątek', 'sobota', 'niedziela'];
+
+interface AgendaEvent {
+  id: string;
+  start: string;
+  color: string;
+  extendedProps: { number: string; street: string; city: string; what: string; durationMin: number; pink: boolean };
+}
+
+/**
+ * Lista: cały tydzień po dniach. Zabieg w jednej linii: godzina i czas trwania, kolor statusu, numer i ulica, pod spodem
+ * miejscowość, szkodnik i metoda. Dni bez zabiegów to jedna cienka linia „wolne”.
+ */
+function WeekAgenda(props: { events: AgendaEvent[]; from: string; to: string; onOpen: (id: string) => void }) {
+  const today = todayWarsaw();
+  const days: string[] = [];
+  for (let d = props.from; d < props.to; d = addDays(d, 1)) days.push(d);
+  return (
+    <div className="agenda">
+      {days.map((day) => {
+        const list = props.events.filter((e) => e.start.slice(0, 10) === day).sort((a, b) => a.start.localeCompare(b.start));
+        const wd = (new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7;
+        const name = `${day === today ? 'Dziś · ' : ''}${WEEKDAY_NAMES[wd]} ${Number(day.slice(8, 10))}`;
+        if (!list.length) {
+          return (
+            <div key={day} className={day === today ? 'agenda-day agenda-free today' : 'agenda-day agenda-free'}>
+              <span>{name}</span>
+              <span>wolne</span>
+            </div>
+          );
+        }
+        return (
+          <section key={day}>
+            <div className={day === today ? 'agenda-day today' : 'agenda-day'}>
+              <span>{name}</span>
+              <span>{list.length}</span>
+            </div>
+            {list.map((e) => {
+              const x = e.extendedProps;
+              const dur = x.durationMin >= 60 ? `${String(x.durationMin / 60).replace('.', ',')} h` : `${x.durationMin} min`;
+              return (
+                <button key={e.id} type="button" className="agenda-row" onClick={() => props.onOpen(e.id)}>
+                  <span className="agenda-time">
+                    {e.start.slice(11, 16)}
+                    <small>{dur}</small>
+                  </span>
+                  <span className="agenda-bar" style={{ background: e.color }} />
+                  <span className="agenda-text">
+                    <span>
+                      <b>{x.number}</b> · {x.street || x.city}
+                      {x.pink ? ' · PINK' : ''}
+                    </span>
+                    <small>{[x.city, x.what].filter(Boolean).join(' · ')}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
 
 const VIEWS: Array<[string, string]> = [
   ['listWeek', 'Lista'],
@@ -84,7 +158,7 @@ export default function CalendarPage() {
   const narrow = useNarrow();
   const calendar = useRef<CalendarRef>(null);
   const api = () => calendar.current?.getApi();
-  const [head, setHead] = useState<{ title: string; view: string; hasToday: boolean; date: string }>({ title: '', view, hasToday: true, date: '' });
+  const [head, setHead] = useState<{ title: string; view: string; hasToday: boolean; date: string; from: string; to: string }>({ title: '', view, hasToday: true, date: '', from: '', to: '' });
   // Przesunięcie palcem w lewo / w prawo: następny / poprzedni dzień, tydzień albo miesiąc.
   const touch = useRef<{ x: number; y: number; at: number } | null>(null);
   const onTouchStart = (e: TouchEvent) => {
@@ -117,6 +191,8 @@ export default function CalendarPage() {
         const place = [street, order.city].filter(Boolean).join(', ') || '—';
         const methods = methodNames(order);
         const what = [pestName(order), methods[0]].filter(Boolean).join(' · ');
+        // Krótka ulica do małych bloczków (tydzień, miesiąc): „Zakopiańska”.
+        const short = (order.street || order.city || '').replace(/^(ul\.|al\.|os\.|pl\.)\s*/i, '').split(/\s+/)[0] ?? '';
         return {
           id: v.id,
           title: `${visitCode(order, v.seq)} · ${place} · ${what}${order.pink ? ' · PINK' : ''}`,
@@ -125,7 +201,7 @@ export default function CalendarPage() {
           color: STATUS_COLOR[v.status],
           textColor: v.status === 'zaplanowany' ? '#ffffff' : 'var(--surface)',
           editable: v.status === 'zaplanowany',
-          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, place, city: order.city, what, phone },
+          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, place, city: order.city, what, phone, short, street, status: v.status, durationMin: v.durationMin },
         };
       });
   }, [rows]);
@@ -163,7 +239,9 @@ export default function CalendarPage() {
           Dziś
         </button>
       </div>
-      <div className="calendar" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div className={head.view === 'listWeek' ? 'calendar calendar-agenda' : 'calendar'} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {head.view === 'listWeek' && head.from && <WeekAgenda events={events} from={head.from} to={head.to} onOpen={(id) => navigate(`/zabieg/${id}`)} />}
+        <div className={head.view === 'listWeek' ? 'cal-hidden' : undefined}>
         <FullCalendar
           ref={calendar}
           plugins={[classicTheme, dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
@@ -189,12 +267,33 @@ export default function CalendarPage() {
           eventDisplay="block"
           eventClass="cal-event"
           dayCellClass="cal-day"
-          views={{ dayGridMonth: { dayMaxEvents: 3 } }}
+          views={{
+            dayGridMonth: { dayMaxEvents: 3 },
+            // Tydzień: godziny od 7 do 20 (wysokość jak w widoku dnia), kolorowe bloczki.
+            timeGridWeek: { slotMinTime: '07:00:00', slotMaxTime: '20:00:00' },
+          }}
+          // Nagłówek tygodnia: skrót dnia i numer, dziś w niebieskim kółku.
+          dayHeaderContent={(arg) =>
+            arg.view.type === 'timeGridWeek' ? (
+              <span className="cal-dh">
+                <span>{WEEKDAYS[(arg.date.getUTCDay() + 6) % 7]}</span>
+                <span className={arg.isToday ? 'cal-dh-num today' : 'cal-dh-num'}>{arg.date.getUTCDate()}</span>
+              </span>
+            ) : (
+              arg.text
+            )
+          }
+          // Miesiąc: numer dnia, dziś w niebieskim kółku.
+          dayCellTopContent={(arg) =>
+            arg.view.type === 'dayGridMonth' ? <span className={arg.isToday ? 'cal-dn today' : arg.isOther ? 'cal-dn other' : 'cal-dn'}>{arg.date.getUTCDate()}</span> : arg.dayNumberText
+          }
+          dayCellTopClass="cal-day-top"
+          moreLinkClass="cal-more"
           moreLinkClick="timeGridDay"
-          moreLinkContent={(arg) => `…+${arg.num}`}
+          moreLinkContent={(arg) => `+${arg.num}`}
           moreLinkHint={(num) => `Jeszcze ${num}: otwórz dzień`}
           eventContent={(arg) => {
-            const { number, digits, seq, pink, place, city, what } = arg.event.extendedProps as {
+            const { number, digits, seq, pink, place, what } = arg.event.extendedProps as {
               number: string;
               digits: string;
               seq: number;
@@ -203,20 +302,25 @@ export default function CalendarPage() {
               city: string;
               what: string;
             };
+            const { short } = arg.event.extendedProps as { short: string };
             const time = arg.event.start ? stripZone(arg.event.start).slice(11, 16) : '';
             const month = arg.view.type === 'dayGridMonth';
-            // Miesiąc na telefonie (dzień ok. 50 px): godzina, cztery cyfry numeru i miejscowość.
-            if (month && narrow) {
+            const label = `${digits}${seq > 1 ? ` ${roman(seq)}` : ''}`;
+            // Miesiąc jak w Google: jeden kolorowy pasek z numerem i ulicą (na komputerze także godzina).
+            if (month) {
               return (
-                <span className={pink ? 'cal-block cal-block-pink' : 'cal-block'} title={arg.event.title}>
-                  <span className="cal-block-time">{time}</span>
-                  <span className="cal-block-number">
-                    {digits}
-                  </span>
-                  <span className="cal-block-city">
-                    {seq > 1 ? `${roman(seq)} · ` : ''}
-                    {city}
-                  </span>
+                <span className={pink ? 'cal-chip cal-block-pink' : 'cal-chip'} title={arg.event.title}>
+                  {narrow ? '' : `${time} `}
+                  <b>{label}</b> {narrow ? short : place}
+                </span>
+              );
+            }
+            // Tydzień na telefonie (kolumna ok. 45 px): numer i ulica w kolorowym bloczku.
+            if (arg.view.type === 'timeGridWeek' && narrow) {
+              return (
+                <span className={pink ? 'cal-gblock cal-block-pink' : 'cal-gblock'} title={arg.event.title}>
+                  <b>{label}</b>
+                  <span>{short}</span>
                 </span>
               );
             }
@@ -246,7 +350,10 @@ export default function CalendarPage() {
             const to = stripZone(info.view.currentEnd).slice(0, 10);
             // Oglądany dzień: dziś, gdy jest w widoku, inaczej początek okresu.
             const date = today >= from && today < to ? today : from;
-            setHead({ title: info.view.title, view: info.view.type, hasToday: today >= from && today < to, date });
+            // Tydzień i lista: „9–15 listopada” zamiast samego miesiąca.
+            const week = info.view.type === 'timeGridWeek' || info.view.type === 'listWeek';
+            const title = week ? weekTitle(from, addDays(to, -1)) : info.view.title;
+            setHead({ title, view: info.view.type, hasToday: today >= from && today < to, date, from, to });
             try {
               localStorage.setItem(VIEW_KEY, info.view.type);
               sessionStorage.setItem(DATE_KEY, date);
@@ -278,6 +385,7 @@ export default function CalendarPage() {
             });
           }}
         />
+        </div>
       </div>
     </Page>
   );

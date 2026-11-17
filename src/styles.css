@@ -3648,3 +3648,165 @@ body {
 .accounting-details[open] > summary {
   margin-bottom: 8px;
 }
+
+/* Kalendarz jak w Kalendarzu Google: tydzień i miesiąc z kolorowymi bloczkami, lista jako agenda */
+.calendar .cal-event {
+  border-radius: 5px;
+}
+
+.calendar .cal-gblock {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1px 2px;
+  font-size: 0.64rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.calendar .cal-gblock b {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.calendar .cal-chip {
+  display: block;
+  overflow: hidden;
+  padding: 0 3px;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.calendar .cal-chip b {
+  font-weight: 700;
+}
+
+.cal-dh {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 0;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cal-dh-num {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.cal-dn {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.78rem;
+}
+
+.cal-dh-num.today,
+.cal-dn.today {
+  background: var(--planned);
+  color: #fff;
+  font-weight: 700;
+}
+
+.cal-hidden {
+  display: none;
+}
+
+.calendar-agenda {
+  padding: 4px 12px 12px;
+}
+
+.agenda-day {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding-bottom: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.agenda-day.today {
+  color: var(--planned);
+}
+
+.agenda-free {
+  font-weight: 400;
+}
+
+.agenda-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.agenda-time {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 46px;
+  font-weight: 700;
+}
+
+.agenda-time small,
+.agenda-text small {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.agenda-bar {
+  flex: none;
+  width: 4px;
+  border-radius: 2px;
+}
+
+.agenda-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.agenda-text > span,
+.agenda-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar .cal-day-top {
+  justify-content: center;
+}
+
+.cal-dn.other {
+  color: var(--muted);
+}
+
+.calendar .cal-more {
+  border: 0;
+  background: transparent;
+  padding: 0 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+}
