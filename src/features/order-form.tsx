@@ -1138,13 +1138,17 @@ export function OrderNewPage() {
   const save = () =>
     run(async () => {
       const duration = Number(state.duration) || 60;
-      const { order } = await createOrder(
+      const { order, offlineNumber } = await createOrder(
         toDraft(state),
         { start: state.date ? `${state.date}T${state.time}` : null, durationMin: duration, terms: formTerms(state) },
         null,
       );
       saveDraft(null);
-      toast(`Zapisano zlecenie ${orderCode(order)}`);
+      toast(
+        offlineNumber
+          ? `Zapisano zlecenie ${orderCode(order)} bez internetu: numer może się powtórzyć z numerem z innego telefonu. Sprawdź po połączeniu.`
+          : `Zapisano zlecenie ${orderCode(order)}`,
+      );
       // Karta nowego zlecenia od razu proponuje dodanie terminu do Kalendarza Google.
       navigate(`/zlecenia/${order.id}?nowe=1`, { replace: true });
     });
@@ -1432,7 +1436,7 @@ function VisitEditFields(props: { visit: Visit; after: string | null; value: Vis
   return (
     <div className="form">
       {props.after && props.visit.seq > 1 && (
-        <NextDates after={props.after} durationMin={v.duration} date={v.date} time={v.time} onPick={(date, time) => props.onChange({ date, time })} />
+        <NextDates after={props.after} durationMin={v.duration} date={v.date} time={v.time} exclude={props.visit.id} onPick={(date, time) => props.onChange({ date, time })} />
       )}
       <div className="form-row">
         <Field label="Data" hint="Puste: termin do umówienia.">

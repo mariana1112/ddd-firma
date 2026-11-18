@@ -13,11 +13,19 @@ const dayLabel = (date: string) => `${weekday.format(new Date(`${date}T12:00:00Z
  * Proponowane terminy kolejnego zabiegu: zawsze 8–12 dni po poprzednim (bez niedziel), w każdym dniu pierwsza wolna
  * godzina między już umówionymi zabiegami (z 30 minutami na dojazd). Dotknięcie ustawia datę i godzinę.
  */
-export function NextDates(props: { after: string; durationMin: number; date: string; time: string; onPick: (date: string, time: string) => void }) {
+export function NextDates(props: {
+  after: string;
+  durationMin: number;
+  date: string;
+  time: string;
+  /** Edytowany zabieg: nie liczy się jako zajęty (inaczej propozycja omija jego własną godzinę). */
+  exclude?: string;
+  onPick: (date: string, time: string) => void;
+}) {
   const days = nextVisitDays(props.after);
   const proposals = useLiveQuery(async () => {
     const byId = new Map((await orders.all()).map((o) => [o.id, o]));
-    const all = (await visits.all()).filter((v) => (v.status === 'zaplanowany' || v.status === 'w_trakcie') && v.start && byId.has(v.orderId));
+    const all = (await visits.all()).filter((v) => (v.status === 'zaplanowany' || v.status === 'w_trakcie') && v.start && byId.has(v.orderId) && v.id !== props.exclude);
     // Moje wolne i urlop wykluczają dzień, a wydarzenia z godzinami zajmują te godziny.
     const events = await listEvents();
     const me = (await getProfile()).userId;
@@ -35,7 +43,7 @@ export function NextDates(props: { after: string; durationMin: number; date: str
         return { date, time: freeSlots(stops, null, props.durationMin || 60)[0] ?? null, busy: all.filter((v) => v.start!.slice(0, 10) === date).length };
       })
       .filter((p): p is { date: string; time: string; busy: number } => p.time !== null);
-  }, [props.after, props.durationMin]);
+  }, [props.after, props.durationMin, props.exclude]);
   if (!proposals) return null;
   return (
     <div className="field">

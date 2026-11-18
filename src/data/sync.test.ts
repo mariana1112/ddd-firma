@@ -357,6 +357,19 @@ describe('numery zleceń', () => {
     expect([...numbers].every((n) => n >= 210)).toBe(true);
   });
 
+  it('szef i technik dodający zlecenia na zmianę dostają numery po kolei, bez przeskoków', async () => {
+    await useDevice('telefon');
+    await enableSync(server, account);
+    await useDevice('komputer');
+    await enableSync(server, account);
+    const numbers: number[] = [];
+    for (const device of ['telefon', 'komputer', 'komputer', 'telefon', 'komputer', 'telefon']) {
+      await useDevice(device);
+      numbers.push((await createOrder(draft(), plan, null)).order.number);
+    }
+    expect(numbers).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
   it('po wyczerpaniu puli bez internetu numeracja ciągnie się dalej od ostatniego numeru', async () => {
     await useDevice('telefon');
     await enableSync(server, account);

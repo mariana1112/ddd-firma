@@ -8,7 +8,8 @@ import { db, writeTransaction } from './db';
 import { DomainError } from './domain';
 import { normalizePlate, tripKm } from './mileage';
 import { attachments, expenses, orders, visits, trips, type NewRecord } from './repo';
-import { getAppSettings, getProfile, getRegion, nextOrderNumber, ownedBy } from './settings';
+import { getAppSettings, getProfile, getRegion, getSyncState, nextOrderNumber, ownedBy } from './settings';
+import { reserveOrderNumber } from './sync/numbers';
 import { EMPTY_INTERVIEW } from './interview';
 import type { Order, PayMethod, Visit, PestCategory } from './types';
 
@@ -69,14 +70,18 @@ export async function createOrder(
   draft: OrderDraft,
   first: PlannedVisit,
   second: PlannedVisit | null,
-): Promise<{ order: Order; visits: Visit[] }> {
+): Promise<{ order: Order; visits: Visit[]; offlineNumber: boolean }> {
   const profile = await getProfile();
   const technician = { id: profile.userId, name: profile.name };
   const { prefix } = await getRegion();
+  // Numer z serwera przed zapisem (zapytanie sieciowe nie może być w transakcji bazy telefonu).
+  const reserved = await reserveOrderNumber();
+  // Konto firmy bez numeru z serwera (brak internetu): numer nadał telefon i może się powtórzyć.
+  const offlineNumber = reserved === null && Boolean(await getSyncState());
   return writeTransaction([db.orders, db.visits, db.meta], async () => {
     const order = await orders.create({
       ...draft,
-      number: await nextOrderNumber(),
+      number: await nextOrderNumber(reserved),
       prefix,
       ownerId: technician.id,
       ownerName: technician.name,
@@ -84,7 +89,7 @@ export async function createOrder(
     });
     const created = [await visits.create(newVisit(order.id, 1, first, technician))];
     if (second) created.push(await visits.create(newVisit(order.id, 2, second, technician)));
-    return { order, visits: created };
+    return { order, visits: created, offlineNumber };
   });
 }
 
@@ -400,12 +405,13 @@ export async function addPastVisit(input: PastVisitInput): Promise<{ order: Orde
   if (!(input.amount >= 0)) throw new DomainError('Podaj kwotę.');
   const profile = await getProfile();
   const { prefix } = await getRegion();
+  const reserved = input.orderNumber ? null : await reserveOrderNumber();
   return writeTransaction([db.orders, db.visits, db.meta], async () => {
     let order = input.orderNumber ? (await orders.all()).find((x) => x.number === input.orderNumber && !x.deletedAt) : undefined;
     const created = !order;
     if (!order) {
       order = await orders.create({
-        number: input.orderNumber || (await nextOrderNumber()),
+        number: input.orderNumber || (await nextOrderNumber(reserved)),
         prefix,
         ownerId: profile.userId,
         ownerName: profile.name,

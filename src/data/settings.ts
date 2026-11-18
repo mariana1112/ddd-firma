@@ -446,10 +446,15 @@ export async function setOrderCounter(last: number, branchId?: string | null): P
  * telefony z tego regionu nie nadają tych samych numerów. Gdy pula wyczerpie się bez internetu, numer jest kolejnym
  * po najwyższym znanym w regionie. Rzadki duplikat nie psuje danych, bo numer służy do wyszukiwania.
  */
-export async function nextOrderNumber(): Promise<number> {
+export async function nextOrderNumber(reserved: number | null = null): Promise<number> {
   return db.transaction('rw', [db.meta, db.orders], async () => {
     const branch = await currentBranch();
     const counter = await localOrderCounter(branch);
+    // Numer pobrany z serwera tuż przed zapisem (po kolei w regionie, zob. reserveOrderNumber).
+    if (reserved !== null && reserved > counter) {
+      await db.meta.put({ key: orderCounterKey(branch), value: reserved, updatedAt: new Date().toISOString() });
+      return reserved;
+    }
     if (await getMeta<SyncState>('sync')) {
       const key = orderNumbersKey(branch);
       const blocks = (await getMeta<NumberBlock[]>(key)) ?? [];

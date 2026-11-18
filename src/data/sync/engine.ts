@@ -8,15 +8,13 @@ import {
   getDataKey,
   getDeviceId,
   getSyncState,
-  localOrderCounter,
   saveProfile,
   setDataKey,
   setSyncState,
   SYNCED_META_KEYS,
-  orderNumbersKey,
-  orderSeries,
 } from '../settings';
-import type { Attachment, ChangeOp, MetaRow, NumberBlock, SyncState, SyncTable } from '../types';
+import type { Attachment, ChangeOp, MetaRow, SyncState, SyncTable } from '../types';
+import { registerNumberServer } from './numbers';
 import { createDataKey, decryptFields, decryptFile, encryptFields, encryptFile, type WrappedKey } from './crypto';
 
 export interface PushChange {
@@ -58,12 +56,8 @@ export type Account = Pick<SyncState, 'orgId' | 'orgName' | 'userId' | 'email' |
 
 const PUSH_BATCH = 200;
 const PULL_PAGE = 500;
-/** Pula numerów zleceń na urządzenie: mała, żeby numery z różnych telefonów nie robiły dużych przeskoków. */
-const NUMBER_BLOCK = 5;
 /** Ile ostatnich zmian pobierać ponownie przy każdej synchronizacji (zob. pullAll). */
 const PULL_OVERLAP = 100;
-/** Dobieramy nową pulę, gdy zostały mniej niż 2 numery (zapas na pracę bez internetu). */
-const NUMBER_LOW_WATER = 2;
 
 const recordTables = () => SYNC_TABLES.map((t) => db.table(t));
 
@@ -79,6 +73,7 @@ async function requireKey(): Promise<CryptoKey> {
  * w postaci zaszyfrowanej, także gdy urządzenie synchronizowało się wcześniej bez szyfrowania.
  */
 export async function enableSync(server: SyncServer, account: Account): Promise<void> {
+  registerNumberServer(server);
   await requireKey();
   await writeTransaction([...recordTables(), db.meta], async () => {
     // Dotychczasowy dziennik opisuje stan, który i tak idzie w całości.
@@ -172,6 +167,7 @@ export async function disableSync(options: { wipe: boolean }): Promise<void> {
 
 /** Pełny cykl: wysłanie zmian i zdjęć, pobranie zmian z serwera, uzupełnienie puli numerów. */
 export async function syncNow(server: SyncServer): Promise<void> {
+  registerNumberServer(server);
   const state = await getSyncState();
   if (!state) throw new SyncError('Synchronizacja nie jest włączona na tym urządzeniu.');
   const key = await requireKey();
@@ -180,7 +176,6 @@ export async function syncNow(server: SyncServer): Promise<void> {
   await pushPending(server, state, deviceId, key);
   if (await uploadPhotos(server, state, key)) await pushPending(server, state, deviceId, key);
   const unreadable = await pullAll(server, state, key);
-  await topUpNumbers(server, state);
 
   const latest = await getSyncState();
   if (latest) await setSyncState({ ...latest, lastSyncAt: new Date().toISOString(), lastError: null });
@@ -315,20 +310,6 @@ export async function applyRemote(rows: RemoteRecord[]): Promise<void> {
       await table.put(merged);
     }
   });
-}
-
-/** Pula numerów zleceń (#210) zarezerwowana na serwerze, żeby urządzenia nie nadawały tych samych. */
-async function topUpNumbers(server: SyncServer, state: SyncState): Promise<void> {
-  // Pula aktywnego regionu (każdy region numeruje osobno, zob. orderSeries).
-  const key = orderNumbersKey(state.branchId);
-  const counter = await localOrderCounter(state.branchId ?? null);
-  const blocks = (((await db.meta.get(key))?.value as NumberBlock[] | undefined) ?? []).filter((b) => b.next <= b.end && b.end > counter);
-  const left = blocks.reduce((sum, b) => sum + b.end - Math.max(b.next, counter + 1) + 1, 0);
-  if (left >= NUMBER_LOW_WATER) return;
-  // Numery nadane wcześniej w regionie (także bez internetu) nie mogą się powtórzyć.
-  const first = await server.reserveNumbers(state.orgId, orderSeries(state.branchId), counter + 1, NUMBER_BLOCK);
-  blocks.push({ next: first, end: first + NUMBER_BLOCK - 1 });
-  await db.meta.put({ key, value: blocks, updatedAt: new Date().toISOString() });
 }
 
 /** Plik zdjęcia zrobionego na innym urządzeniu, pobierany i odszyfrowywany przy pierwszym wyświetleniu. */
