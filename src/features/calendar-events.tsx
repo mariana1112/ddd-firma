@@ -17,15 +17,17 @@ const plusHour = (time: string) => {
 };
 
 /** „+” w kalendarzu albo dotknięcie godziny: nowe zlecenie czy wydarzenie (wolne, serwis…), jak w Kalendarzu Google. */
-export function AddChooser(props: { spot: CalendarSpot | null; onOrder: (spot: CalendarSpot) => void; onEvent: (spot: CalendarSpot) => void; onClose: () => void }) {
+export function AddChooser(props: { spot: CalendarSpot | null; canOrder?: boolean; onOrder: (spot: CalendarSpot) => void; onEvent: (spot: CalendarSpot) => void; onClose: () => void }) {
   const spot = props.spot;
   return (
     <Sheet open={Boolean(spot)} title={spot ? `Dodaj: ${formatDate(spot.date)}${spot.time ? `, ${spot.time}` : ''}` : 'Dodaj'} onClose={props.onClose}>
       {spot && (
         <div className="form">
-          <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => props.onOrder(spot)}>
-            <Icon name="clipboard" /> Nowe zlecenie
-          </button>
+          {props.canOrder !== false && (
+            <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => props.onOrder(spot)}>
+              <Icon name="clipboard" /> Nowe zlecenie
+            </button>
+          )}
           <button type="button" className="btn btn-block btn-big" onClick={() => props.onEvent(spot)}>
             <Icon name="calendar" /> Wydarzenie (wolne, urlop, serwis…)
           </button>

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addressAt, currentPosition, freeSlots, locate, previousVisitDay, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
 import { NextDates } from './next-dates';
+import { usePermissions } from './permissions';
 import { dayOff, eventBusy, listEvents } from '../data/events';
 import { createOrder, orderVisits, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
@@ -1245,6 +1246,7 @@ const EDIT_DURATIONS = [30, 45, 60, 90, 120, 150, 180, 240];
  */
 export function OrderEditPage() {
   const { id = '' } = useParams();
+  const perms = usePermissions();
   const [params] = useSearchParams();
   const visitId = params.get('zabieg');
   const navigate = useNavigate();
@@ -1415,13 +1417,13 @@ export function OrderEditPage() {
       <button type="button" className="btn btn-primary btn-block" onClick={() => void save()}>
         Zapisz zmiany
       </button>
-      <button
+      {perms?.addOrders !== false && <button
         type="button"
         className="btn btn-block"
         onClick={() => navigate(`/zlecenia/nowe?powiel=${id}${loaded.visit ? `&zabieg=${loaded.visit.id}` : ''}`)}
       >
         <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
-      </button>
+      </button>}
     </Page>
   );
 }

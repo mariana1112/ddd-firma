@@ -52,6 +52,7 @@ import { APP_BUILT, APP_VERSION, checkForUpdates } from '../lib/updates';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Field, Group, Info, Loading, Page, Row, Sheet } from '../ui/kit';
+import { usePermissions } from './permissions';
 
 // ---------- Więcej ----------
 
@@ -88,6 +89,7 @@ export function AdminDuty() {
 }
 
 export function MorePage() {
+  const perms = usePermissions();
   const lastBackup = useLiveQuery(() => getLastBackupAt());
   const sync = useLiveQuery(async () => (await getUiSyncState()) ?? null);
   return (
@@ -95,8 +97,8 @@ export function MorePage() {
       <AdminDuty />
       <Group title="Praca">
         <Row to="/wizytowka" icon="wallet" title="Wizytówka" sub="Dane do przelewu, numer do BLIK-a i Twój numer do skopiowania" />
-        <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />
-        <Row to="/kilometry" icon="car" title="Kilometry" sub="Przejazdy służbowe i prywatne, wydruk" />
+        {perms?.costs !== false && <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />}
+        {perms?.costs !== false && <Row to="/kilometry" icon="car" title="Kilometry" sub="Przejazdy służbowe i prywatne, wydruk" />}
         <Row to="/raporty" icon="chart" title="Raporty" sub="Dzień, tydzień, miesiąc, rozliczenie gotówki" />
         <Row to="/archiwum" icon="clipboard" title="Archiwum" sub="Odwołane zlecenia i usunięte regiony" />
         {sync && sync.role === 'owner' && <Row to="/admin" icon="building" title="Panel admina" sub="Wszystkie regiony, raporty firmy, ranking, prefiksy" />}

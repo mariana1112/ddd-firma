@@ -25,6 +25,7 @@ import { FeedbackProvider } from './ui/feedback';
 import { PullToRefresh } from './ui/pull-refresh';
 import { Icon, type IconName } from './ui/icons';
 import { HeaderExtraContext, Loading } from './ui/kit';
+import { Allowed } from './features/permissions';
 
 // Kalendarz jest największą zależnością ekranów, więc nie spowalnia startu aplikacji.
 const CalendarPage = lazy(() => import('./features/calendar'));
@@ -129,14 +130,14 @@ function AppRoutes() {
       <Route path="/kalendarz" element={<CalendarPage />} />
       <Route path="/zlecenia" element={<OrdersPage />} />
       <Route path="/archiwum" element={<OrdersPage archive />} />
-      <Route path="/zlecenia/nowe" element={<OrderNewPage />} />
+      <Route path="/zlecenia/nowe" element={<Allowed perm="addOrders" title="Nowe zlecenie" back="/zlecenia"><OrderNewPage /></Allowed>} />
       <Route path="/zlecenia/:id" element={<OrderDetailPage />} />
-      <Route path="/zlecenia/:id/edycja" element={<OrderEditPage />} />
+      <Route path="/zlecenia/:id/edycja" element={<Allowed perm="editOrders" title="Edycja" back="/zlecenia"><OrderEditPage /></Allowed>} />
       <Route path="/zabieg/:id" element={<VisitPage />} />
       <Route path="/raporty" element={<ReportsPage />} />
-      <Route path="/koszty" element={<CostsPage />} />
+      <Route path="/koszty" element={<Allowed perm="costs" title="Koszty" back="/wiecej"><CostsPage /></Allowed>} />
       <Route path="/wizytowka" element={<CardPage />} />
-      <Route path="/kilometry" element={<TripsPage />} />
+      <Route path="/kilometry" element={<Allowed perm="costs" title="Kilometry" back="/wiecej"><TripsPage /></Allowed>} />
       <Route path="/wiecej" element={<MorePage />} />
       <Route path="/ustawienia" element={<SettingsPage />} />
       <Route path="/kopie" element={<BackupPage />} />

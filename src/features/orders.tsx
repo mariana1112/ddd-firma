@@ -25,6 +25,7 @@ import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
 import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
+import { usePermissions } from './permissions';
 
 type StatusFilter = ListFilter;
 type PayFilter = 'wszystkie' | PayMethod;
@@ -46,6 +47,7 @@ const ordersCount = (n: number) => {
  * jedno zlecenie w wierszu; admin widzi w nim wszystkie regiony.
  */
 export function OrdersPage({ archive = false }: { archive?: boolean }) {
+  const perms = usePermissions();
   const data = useLiveQuery(async () => {
     const role = (await getUiSyncState())?.role;
     const everywhere = archive && role === 'owner';
@@ -140,7 +142,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
     );
 
   return (
-    <Page title={archive ? 'Archiwum' : 'Zlecenia'} back={archive ? '/wiecej' : undefined} actions={archive ? undefined : <AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
+    <Page title={archive ? 'Archiwum' : 'Zlecenia'} back={archive ? '/wiecej' : undefined} actions={archive || perms?.addOrders === false ? undefined : <AddLink to="/zlecenia/nowe" label="Nowe zlecenie" />}>
       {!data ? (
         <Loading />
       ) : archive && rows.length === 0 && !searching ? (
@@ -149,7 +151,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
         </Empty>
       ) : data.orders.length === 0 ? (
         <Empty icon="clipboard" title="Nie ma jeszcze zleceń">
-          <Link className="btn btn-primary" to="/zlecenia/nowe">Nowe zlecenie</Link>
+          {perms?.addOrders !== false && <Link className="btn btn-primary" to="/zlecenia/nowe">Nowe zlecenie</Link>}
         </Empty>
       ) : (
         <>
@@ -414,6 +416,7 @@ export function ScheduleNext(props: {
 }
 
 export function OrderDetailPage() {
+  const perms = usePermissions();
   const { id = '' } = useParams();
   const [scheduling, setScheduling] = useState(false);
   const [askingDelete, setAskingDelete] = useState(false);
@@ -509,9 +512,11 @@ export function OrderDetailPage() {
       title={orderCode(order)}
       back="/zlecenia"
       actions={
-        <Link className="icon-btn" to={`/zlecenia/${id}/edycja`} aria-label="Edytuj zlecenie">
-          <Icon name="edit" />
-        </Link>
+        perms?.editOrders === false ? undefined : (
+          <Link className="icon-btn" to={`/zlecenia/${id}/edycja`} aria-label="Edytuj zlecenie">
+            <Icon name="edit" />
+          </Link>
+        )
       }
     >
       <div className="job-hero">
@@ -740,7 +745,7 @@ export function OrderDetailPage() {
             </button>
           )}
         </>
-      ) : (
+      ) : perms?.cancelOrders === false ? null : (
         <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void toArchive()}>
           <Icon name="close" /> Odwołaj zlecenie (do archiwum)
         </button>
