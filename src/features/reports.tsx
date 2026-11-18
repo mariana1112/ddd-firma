@@ -14,7 +14,6 @@ import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Chips, Empty, Group, Loading, Page, Row, ScopeBannerContext, Stat } from '../ui/kit';
 import { PayBadge, useContactActions } from './common';
-import { usePermissions } from './permissions';
 
 export function ReportsPage() {
   const { deliverFile, run } = useFeedback();
@@ -33,15 +32,12 @@ export function ReportsPage() {
   const inPanel = useContext(ScopeBannerContext) !== null;
   // Null: domyślnie admin i księgowa widzą wszystkich, technik swoje (może przełączyć na cały region).
   const [onlyMine, setOnlyMine] = useState<boolean | null>(null);
-  // Technik bez uprawnienia „Raport całego regionu” widzi tylko swój raport.
-  const perms = usePermissions();
-  const regionAllowed = perms?.regionReport !== false;
   const data = useLiveQuery(async () => {
     const profile = await getProfile();
     const state = await getUiSyncState();
     // Admin i księgowa widzą domyślnie wszystkich techników.
     const owner = state?.role === 'owner' || state?.role === 'ksiegowosc';
-    const mine = owner || regionAllowed ? (onlyMine ?? !owner) : true;
+    const mine = onlyMine ?? !owner;
     // Technik też może zrobić raport całego regionu (z podziałem na techników po inicjałach).
     const everyone = !otherId && Boolean(state) && (inPanel || !mine);
     const who = otherId ?? profile.userId;
@@ -59,7 +55,7 @@ export function ReportsPage() {
       expenses: own(await expenses.all()),
       trips: own(await trips.all()),
     };
-  }, [otherId, onlyMine, inPanel, regionAllowed]);
+  }, [otherId, onlyMine, inPanel]);
 
   const [withKm, setWithKm] = useReportKm();
 
@@ -86,7 +82,7 @@ export function ReportsPage() {
 
   return (
     <Page title={otherId ? `Raport: ${data.profile.name}` : 'Raporty'} back={otherId ? '/oddzialy' : undefined}>
-      {data.synced && !otherId && !inPanel && (data.owner || regionAllowed) && (
+      {data.synced && !otherId && !inPanel && (
         <Chips
           value={data.everyone ? 'wszyscy' : 'moje'}
           onChange={(v: string) => setOnlyMine(v === 'moje')}

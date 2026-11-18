@@ -12,7 +12,6 @@ import { companyText, regionRanking, regionData, type RegionRef } from '../data/
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
-import { FULL_PERMISSIONS, getPermissionMap, PERMISSIONS, permissionsFor, setMemberPermissions, type PermissionSet } from '../data/settings';
 import { COMPANY_NAME, getAdminOff, getAppSettings, getDataKey, getRegions, getSyncState, getUiSyncState, matchRegionsToServer, setAdminOff, saveRegions, setSyncState, saveProfile } from '../data/settings';
 import { enterRegion } from './regions';
 import type { SyncState } from '../data/types';
@@ -228,24 +227,6 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
   // Zmiana imienia i nazwiska konta: osoba, której dotyczy, i wpisywana nazwa.
   const [renaming, setRenaming] = useState<MemberRow | null>(null);
   const [newName, setNewName] = useState('');
-  // Uprawnienia technika: osoba i zaznaczane pola.
-  const permMap = useLiveQuery(() => getPermissionMap()) ?? {};
-  const [permFor, setPermFor] = useState<MemberRow | null>(null);
-  const [perms, setPerms] = useState<PermissionSet>(FULL_PERMISSIONS);
-  const openPerms = (m: MemberRow) => {
-    setPerms(permissionsFor(m.role, m.userId, permMap));
-    setPermFor(m);
-  };
-  const savePerms = () =>
-    run(async () => {
-      if (!permFor) return;
-      await setMemberPermissions(permFor.userId, perms);
-      void syncInBackground().catch(() => undefined);
-      const off = PERMISSIONS.filter((x) => !perms[x.key]).length;
-      toast(off ? `Zapisano uprawnienia: ${label(permFor)} (wyłączone: ${off})` : `${label(permFor)}: pełne uprawnienia`);
-      setPermFor(null);
-    });
-  const limited = (m: MemberRow) => m.role === 'technik' && PERMISSIONS.some((x) => permMap[m.userId]?.[x.key] === false);
 
   const load = async () => {
     const api = await supabaseApi();
@@ -353,7 +334,6 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
               <span className="member-badges">
                 {m.role === 'owner' ? <Badge tone="primary">Admin</Badge> : m.role === 'ksiegowosc' ? <Badge tone="info">Księgowa</Badge> : <Badge tone="muted">Technik</Badge>}
                 {!m.approved ? <Badge tone="warn">Czeka na zgodę</Badge> : m.suspended ? <Badge tone="danger">Zawieszone</Badge> : <Badge tone="ok">Aktywne</Badge>}
-                {limited(m) && <Badge tone="warn">Ograniczone uprawnienia</Badge>}
               </span>
             </div>
             {self && (
@@ -394,11 +374,6 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
                     Zmień imię
                   </button>
                 )}
-                {m.approved && m.role === 'technik' && (
-                  <button type="button" className="btn btn-sm" onClick={() => openPerms(m)}>
-                    Uprawnienia
-                  </button>
-                )}
                 {m.approved && !m.suspended && (
                   <button type="button" className="btn btn-sm" onClick={() => void toggleAdmin(m)}>
                     {m.role === 'owner' ? 'Odbierz admina' : 'Daj admina'}
@@ -417,30 +392,6 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
           </div>
         );
       })}
-      <Sheet open={Boolean(permFor)} title={`Uprawnienia: ${permFor ? label(permFor) : ''}`} onClose={() => setPermFor(null)}>
-        {permFor && (
-          <div className="form">
-            <p className="sheet-text">Zaznacz, co ta osoba może robić. Rozpoczynanie i kończenie zabiegów, płatności i zdjęcia są zawsze dostępne.</p>
-            {PERMISSIONS.map((x) => (
-              <label key={x.key} className="check check-perm">
-                <input type="checkbox" checked={perms[x.key]} onChange={(e) => setPerms((prev) => ({ ...prev, [x.key]: e.target.checked }))} />
-                <span>
-                  <strong>{x.label}</strong>
-                  <span className="field-hint">{x.hint}</span>
-                </span>
-              </label>
-            ))}
-            <div className="btn-stack">
-              <button type="button" className="btn btn-primary btn-block" onClick={() => void savePerms()}>
-                <Icon name="check" /> Zapisz uprawnienia
-              </button>
-              <button type="button" className="btn btn-block" onClick={() => setPerms(FULL_PERMISSIONS)}>
-                Zaznacz wszystko
-              </button>
-            </div>
-          </div>
-        )}
-      </Sheet>
       <Sheet open={Boolean(renaming)} title={`Imię i nazwisko: ${renaming ? label(renaming) : ''}`} onClose={() => setRenaming(null)}>
         <form
           className="form"

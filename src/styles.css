@@ -4010,16 +4010,3 @@ body {
 .calendar .cal-event-pink {
   box-shadow: 0 0 0 3px var(--pink);
 }
-
-/* Panel admina: uprawnienia technika */
-.check-perm {
-  align-items: flex-start;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.check-perm > span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}

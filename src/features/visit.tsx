@@ -34,7 +34,6 @@ import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect, 
 import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
 import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, recommendationsFor, SEALING_OPTIONS, methodNames } from '../data/methods';
 import { Photos } from './photos';
-import { usePermissions } from './permissions';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
 import { isValidNip } from '../lib/validators';
 import { VisitSummary } from './visit-summary';
@@ -636,7 +635,6 @@ function WorkHeader({ order, visit }: { order: Order; visit: Visit }) {
 
 export function VisitPage() {
   const { id = '' } = useParams();
-  const perms = usePermissions();
   const { confirm, run, toast } = useFeedback();
   const navigate = useNavigate();
   const [finishing, setFinishing] = useState(false);
@@ -938,11 +936,9 @@ export function VisitPage() {
             <div className="btn-stack">
               {/* Jedno miejsce na zmiany umówionego zabiegu: termin, czas, zakres i cena; dane klienta w edycji zlecenia. */}
               {/* Jedna edycja wszystkiego: termin, zakres, cena, klient, adres i opis. */}
-              {perms?.editOrders !== false && (
-                <Link className="btn" to={`/zlecenia/${order.id}/edycja?zabieg=${visit.id}`}>
-                  <Icon name="edit" /> {visit.start ? 'Edytuj' : 'Umów termin i edytuj'}
-                </Link>
-              )}
+              <Link className="btn" to={`/zlecenia/${order.id}/edycja?zabieg=${visit.id}`}>
+                <Icon name="edit" /> {visit.start ? 'Edytuj' : 'Umów termin i edytuj'}
+              </Link>
             </div>
             <details className="more-actions">
               <summary>Więcej opcji</summary>
@@ -962,16 +958,12 @@ export function VisitPage() {
                     <Icon name="calendar" /> Umów kolejny zabieg
                   </button>
                 )}
-                {perms?.addOrders !== false && (
-                  <Link className="btn" to={`/zlecenia/nowe?powiel=${order.id}&zabieg=${visit.id}`}>
-                    <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
-                  </Link>
-                )}
-                {perms?.cancelOrders !== false && (
-                  <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
-                    <Icon name="close" /> Odwołaj zabieg
-                  </button>
-                )}
+                <Link className="btn" to={`/zlecenia/nowe?powiel=${order.id}&zabieg=${visit.id}`}>
+                  <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
+                </Link>
+                <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
+                  <Icon name="close" /> Odwołaj zabieg
+                </button>
               </div>
             </details>
           </>
@@ -1037,7 +1029,7 @@ export function VisitPage() {
               <button type="button" className="btn" onClick={() => setEditingId(visit.id)}>
                 <Icon name="edit" /> Edytuj zabieg
               </button>
-              <OrderOptions order={order} visits={list} vatRate={settings.vatRate} noEdit={perms?.editOrders === false} />
+              <OrderOptions order={order} visits={list} vatRate={settings.vatRate} />
             </div>
           </details>
         </>
@@ -1225,11 +1217,9 @@ export function VisitPage() {
                 <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void requestFinish()}>
                   <Icon name="check" /> Zakończ zabieg
                 </button>
-                {perms?.cancelOrders !== false && (
-                  <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void cancel()}>
-                    <Icon name="close" /> Odwołaj zabieg
-                  </button>
-                )}
+                <button type="button" className="btn btn-danger-quiet btn-block" onClick={() => void cancel()}>
+                  <Icon name="close" /> Odwołaj zabieg
+                </button>
               </>
             ) : (
               <Group title="Po zabiegu" plain>

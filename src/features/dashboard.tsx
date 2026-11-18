@@ -19,7 +19,6 @@ import { RegionLine } from './regions';
 import { PinkBadge, VisitBadge } from './common';
 import { TomorrowReminders } from './reminders';
 import { DayCard } from './day-card';
-import { usePermissions } from './permissions';
 
 const BACKUP_REMINDER_DAYS = 7;
 
@@ -94,7 +93,6 @@ function readSeen(): string[] {
 }
 
 export function DashboardPage() {
-  const perms = usePermissions();
   // Szkice są w pamięci przeglądarki, której baza nie obserwuje: po porzuceniu szkicu odświeżamy ręcznie.
   const [, refresh] = useState(0);
   // Nowe zlecenia od innych, które technik już zobaczył (tylko na tym urządzeniu).
@@ -206,18 +204,14 @@ export function DashboardPage() {
 
 
       <div className="tiles">
-        {perms?.addOrders !== false && (
-          <Link to="/zlecenia/nowe" className="tile tile-primary">
-            <Icon name="plus" size={26} />
-            <span>Nowe zlecenie</span>
-          </Link>
-        )}
-        {perms?.costs !== false && (
-          <Link to="/koszty" className="tile">
-            <Icon name="receipt" size={26} />
-            <span>Dodaj koszt</span>
-          </Link>
-        )}
+        <Link to="/zlecenia/nowe" className="tile tile-primary">
+          <Icon name="plus" size={26} />
+          <span>Nowe zlecenie</span>
+        </Link>
+        <Link to="/koszty" className="tile">
+          <Icon name="receipt" size={26} />
+          <span>Dodaj koszt</span>
+        </Link>
         <Link to="/wizytowka" className="tile">
           <Icon name="wallet" size={26} />
           <span>Wizytówka</span>
@@ -283,7 +277,7 @@ export function DashboardPage() {
         ))}
       </Group>
 
-      {perms?.costs !== false && <DayCard />}
+      <DayCard />
 
       <TomorrowReminders />
 

@@ -25,7 +25,6 @@ import { useFeedback } from '../ui/feedback';
 import { Page } from '../ui/kit';
 import { eventOnDay, eventType, listEvents, type CalendarEvent } from '../data/events';
 import { AddChooser, EventSheet, type CalendarSpot } from './calendar-events';
-import { usePermissions } from './permissions';
 import { clockInWarsaw, firstName } from '../data/texts';
 
 const VIEW_KEY = 'ddd-kalendarz-widok';
@@ -233,7 +232,6 @@ export default function CalendarPage() {
   const rows = useLiveQuery(async () => ({ visits: await visits.all(), orders: await orders.all(), custom: await listEvents(), me: (await getProfile()).userId }));
   // „+” i dotknięcie godziny: wybór „zlecenie / wydarzenie”; dotknięcie wydarzenia: jego edycja.
   const [adding, setAdding] = useState<CalendarSpot | null>(null);
-  const perms = usePermissions();
   const [eventSource, setEventSource] = useState<CalendarEvent | CalendarSpot | null>(null);
 
   const events = useMemo(() => {
@@ -311,7 +309,6 @@ export default function CalendarPage() {
       <AddChooser
         spot={adding}
         onClose={() => setAdding(null)}
-        canOrder={perms?.addOrders !== false}
         onOrder={(spot) => navigate(`/zlecenia/nowe?data=${spot.date}${spot.time ? `&czas=${spot.time}` : ''}`)}
         onEvent={(spot) => {
           setAdding(null);
@@ -508,8 +505,7 @@ export default function CalendarPage() {
           listItemEventTimeClass="cal-list-time"
           listItemEventTitleClass="cal-list-title"
           events={allEvents}
-          // Przeciąganie zabiegu (zmiana terminu) tylko z uprawnieniem do edycji.
-          editable={perms?.editOrders !== false}
+          editable
           // Przeciąganie zabiegu przesuwa termin co 10 minut.
           snapDuration="00:10:00"
           eventDurationEditable={false}

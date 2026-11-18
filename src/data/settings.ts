@@ -27,7 +27,7 @@ export const DEFAULT_COMPANY: CompanySettings = {
 };
 
 /** Klucze meta wspólne dla wszystkich urządzeń firmy. */
-export const SYNCED_META_KEYS = ['company', 'app', 'regions', 'permissions'];
+export const SYNCED_META_KEYS = ['company', 'app', 'regions'];
 
 /** Klucze opisujące to jedno urządzenie. Nie trafiają do kopii zapasowej ani na serwer. */
 export function isDeviceMetaKey(key: string): boolean {
@@ -77,47 +77,6 @@ export async function markBackupDone(at = new Date().toISOString()): Promise<voi
 
 export async function getSyncState(): Promise<SyncState | null> {
   return (await getMeta<SyncState>('sync')) ?? null;
-}
-
-// ---------- Uprawnienia techników ----------
-
-/** Co technik może robić. Admin ustawia to każdej osobie w panelu admina; rozpoczynanie i kończenie zabiegów jest zawsze. */
-export type Permission = 'addOrders' | 'editOrders' | 'cancelOrders' | 'regionReport' | 'costs';
-export type PermissionSet = Record<Permission, boolean>;
-
-export const PERMISSIONS: Array<{ key: Permission; label: string; hint: string }> = [
-  { key: 'addOrders', label: 'Dodawanie zleceń', hint: 'Nowe zlecenie i powielanie zlecenia' },
-  { key: 'editOrders', label: 'Edycja zleceń i zabiegów', hint: 'Dane klienta, adres, termin, zakres i cena; przesuwanie w kalendarzu' },
-  { key: 'cancelOrders', label: 'Odwoływanie zabiegów i zleceń', hint: 'Odwołanie zabiegu albo całego zlecenia (do archiwum)' },
-  { key: 'regionReport', label: 'Raport całego regionu', hint: 'Raport z zabiegami wszystkich techników regionu' },
-  { key: 'costs', label: 'Koszty i kilometrówka', hint: 'Dodawanie kosztów, przejazdy i karta „Start dnia”' },
-];
-
-/** Domyślnie technik może wszystko (jak dotąd); admin odbiera wybrane uprawnienia. */
-export const FULL_PERMISSIONS: PermissionSet = { addOrders: true, editOrders: true, cancelOrders: true, regionReport: true, costs: true };
-
-/**
- * Uprawnienia osób: wspólne ustawienie firmy (meta „permissions”), zaszyfrowane jak inne dane. Serwer przyjmuje zmiany
- * ustawień firmy tylko od admina, więc technik nie zmieni sobie uprawnień.
- */
-export async function getPermissionMap(): Promise<Record<string, Partial<PermissionSet>>> {
-  return (await getMeta<Record<string, Partial<PermissionSet>>>('permissions')) ?? {};
-}
-
-export async function setMemberPermissions(userId: string, set: PermissionSet): Promise<void> {
-  const map = await getPermissionMap();
-  // Pełne uprawnienia to brak wpisu (mniej danych, nowe uprawnienia domyślnie włączone).
-  const restricted = Object.values(set).some((v) => !v);
-  const next = { ...map };
-  if (restricted) next[userId] = set;
-  else delete next[userId];
-  await setMeta('permissions', next);
-}
-
-/** Uprawnienia osoby: admin (i aplikacja bez konta) może wszystko, technik według ustawienia admina. */
-export function permissionsFor(role: SyncState['role'] | null | undefined, userId: string | null, map: Record<string, Partial<PermissionSet>>): PermissionSet {
-  if (!role || role === 'owner' || !userId) return FULL_PERMISSIONS;
-  return { ...FULL_PERMISSIONS, ...(map[userId] ?? {}) };
 }
 
 /** Tryb admina wyłączony na tym telefonie („po służbie”): admin pracuje jak technik, bez funkcji admina. */
