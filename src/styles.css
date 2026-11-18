@@ -4124,3 +4124,73 @@ body {
     max-width: none;
   }
 }
+
+/* Pulpit: data i region w jednej linii; region jako plakietka z wyborem */
+.page-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: -8px;
+}
+
+.page-meta .page-date {
+  margin: 0;
+}
+
+.region-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+a.region-pill {
+  padding-right: 14px;
+}
+
+.region-pill > .icon {
+  color: var(--primary);
+}
+
+.region-pill-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.region-pill select {
+  width: auto;
+  min-height: 0;
+  height: 28px;
+  padding: 0 26px 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background-color: transparent;
+  color: var(--primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.region-pill select:focus-visible {
+  outline: 2px solid var(--primary);
+}
+
+/* Komputer: trzy kafelki na całą szerokość (bez pustego czwartego miejsca) */
+@media (min-width: 900px) {
+  .tiles {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .tiles .tile {
+    min-height: 88px;
+  }
+}

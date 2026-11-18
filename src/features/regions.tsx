@@ -126,14 +126,18 @@ export function RegionLine() {
   const fromSaved = Object.entries(saved ?? {}).map(([id, info]) => ({ id, name: info.name }));
   const list = server ?? (state.role === 'owner' ? fromSaved : fromSaved.filter((b) => b.id === state.branchId));
   const current = state.branchName || list.find((b) => b.id === state.branchId)?.name || '';
+  // Nazwa regionu wielką literą: „Pomorskie”.
+  const nice = (name: string) => name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
   if (list.length <= 1) return current ? (
-      <Link to="/region" className="region-line region-link">
-        region {current.toLowerCase()}
+      <Link to="/region" className="region-pill">
+        <Icon name="pin" size={16} />
+        <span>Region {nice(current)}</span>
       </Link>
     ) : null;
   return (
-    <label className="region-line region-switch">
-      <span>region</span>
+    <label className="region-pill region-switch">
+      <Icon name="pin" size={16} />
+      <span className="region-pill-label">Region</span>
       <select
         value={state.branchId ?? ''}
         aria-label="Przełącz region"
@@ -149,7 +153,7 @@ export function RegionLine() {
         {!state.branchId && <option value="">wybierz region</option>}
         {list.map((b) => (
           <option key={b.id} value={b.id}>
-            {b.name.toLowerCase()}
+            {nice(b.name)}
           </option>
         ))}
       </select>

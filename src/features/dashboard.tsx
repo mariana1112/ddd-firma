@@ -169,8 +169,10 @@ export function DashboardPage() {
 
   return (
     <Page title={data.profile.name ? `Cześć, ${firstName(data.profile.name)}` : 'Pulpit'}>
-      <RegionLine />
-      <p className="page-date">{formatDateLong(today)}</p>
+      <div className="page-meta">
+        <p className="page-date">{formatDateLong(today)}</p>
+        <RegionLine />
+      </div>
 
       <SyncNotice />
       <SyncStale />
