@@ -6,6 +6,7 @@ import { CryptoError } from '../data/sync/crypto';
 import { SyncError } from '../data/sync/engine';
 import { Sheet } from './kit';
 import { Icon } from './icons';
+import { PdfPreview } from './pdf-preview';
 
 interface ToastAction {
   label: string;
@@ -61,6 +62,8 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   const [toastState, setToast] = useState<ToastState | null>(null);
   const [confirmState, setConfirm] = useState<(ConfirmOptions & { resolve: (ok: boolean) => void }) | null>(null);
   const [file, setFile] = useState<{ blob: Blob; filename: string } | null>(null);
+  // Każdy PDF (raporty, zlecenie, kilometrówka, podsumowanie firmy) najpierw w podglądzie wydruku.
+  const [preview, setPreview] = useState<{ blob: Blob; filename: string } | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const nextId = useRef(1);
 
@@ -81,6 +84,10 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
   );
 
   const deliverFile = useCallback<FeedbackApi['deliverFile']>((blob, filename) => {
+    if (blob.type === 'application/pdf' || filename.toLowerCase().endsWith('.pdf')) {
+      setPreview({ blob, filename });
+      return;
+    }
     // iOS pozwala otworzyć arkusz udostępniania tylko bezpośrednio po dotknięciu, a generowanie
     // pliku trwa dłużej. Dlatego na telefonie użytkownik dotyka jeszcze raz, gdy plik jest gotowy.
     if (isTouch()) setFile({ blob, filename });
@@ -120,20 +127,24 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     setConfirm(null);
   };
 
-  const shareFile = async () => {
-    if (!file) return;
-    const shareable = new File([file.blob], file.filename, { type: file.blob.type });
+  /** Udostępnienie (telefon: arkusz z „Drukuj”, „Zapisz w Plikach”, wiadomości) albo pobranie pliku. */
+  const shareBlob = async (target: { blob: Blob; filename: string }): Promise<boolean> => {
+    const shareable = new File([target.blob], target.filename, { type: target.blob.type || 'application/pdf' });
     if (navigator.canShare?.({ files: [shareable] })) {
       try {
         await navigator.share({ files: [shareable] });
-        setFile(null);
-        return;
+        return true;
       } catch (error) {
-        if ((error as Error).name === 'AbortError') return;
+        if ((error as Error).name === 'AbortError') return false;
       }
     }
-    downloadFile(file.blob, file.filename);
-    setFile(null);
+    downloadFile(target.blob, target.filename);
+    return true;
+  };
+
+  const shareFile = async () => {
+    if (!file) return;
+    if (await shareBlob(file)) setFile(null);
   };
 
   return (
@@ -173,6 +184,18 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
           </button>
         </div>
       </Sheet>
+      {preview && (
+        <PdfPreview
+          blob={preview.blob}
+          filename={preview.filename}
+          touch={isTouch()}
+          onClose={() => setPreview(null)}
+          onShare={() => {
+            if (isTouch()) void shareBlob(preview);
+            else downloadFile(preview.blob, preview.filename);
+          }}
+        />
+      )}
       <Sheet open={Boolean(file)} title="Plik gotowy" onClose={() => setFile(null)}>
         <p className="sheet-text break">{file?.filename}</p>
         <button type="button" className="btn btn-primary btn-block" onClick={shareFile}>

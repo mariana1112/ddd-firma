@@ -4010,3 +4010,117 @@ body {
 .calendar .cal-event-pink {
   box-shadow: 0 0 0 3px var(--pink);
 }
+
+/* Podgląd wydruku PDF: pełny ekran, strony jak kartki, przyciski na dole */
+.pdf-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.pdf-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.pdf-preview-head > span {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pdf-preview-head small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdf-preview-body {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  background: color-mix(in srgb, var(--text) 12%, var(--bg));
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.pdf-page {
+  max-width: 100%;
+  height: auto;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 25%);
+}
+
+.pdf-preview-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px calc(env(safe-area-inset-bottom) + 10px);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.pdf-preview-foot .btn-primary {
+  flex: 1 1 220px;
+}
+
+.pdf-preview-foot .field-hint {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: center;
+}
+
+@media (min-width: 900px) {
+  .pdf-pages {
+    max-width: 820px;
+    margin: 0 auto;
+  }
+
+  .pdf-preview-foot .btn-primary {
+    flex: 0 0 auto;
+  }
+}
+
+.print-frame {
+  position: fixed;
+  width: 0;
+  height: 0;
+  border: 0;
+  visibility: hidden;
+}
+
+.pdf-pages .pdf-page {
+  width: 100%;
+}
+
+/* Powiększenie: strona 2× szersza, przewijana w bok i w dół */
+.pdf-pages-zoom {
+  align-items: flex-start;
+  width: 200%;
+}
+
+@media (min-width: 900px) {
+  .pdf-pages-zoom {
+    width: 160%;
+    max-width: none;
+  }
+}
