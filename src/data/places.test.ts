@@ -58,7 +58,11 @@ describe('podpowiedzi adresów Google', () => {
 
   it('wieś bez „locality”: miejscowość z poziomu gminy; zły klucz: zrozumiały błąd', async () => {
     expect(addressFromComponents([{ longText: 'Pruszcz', types: ['administrative_area_level_3'] }]).city).toBe('Pruszcz');
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 403 })));
-    await expect(suggestAddresses({ key: 'zly', input: 'Długa', session: 'S' })).rejects.toThrow(/Klucz Google nie działa/);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'API key not valid.', details: [{ reason: 'API_KEY_INVALID' }] } }), { status: 400 })));
+    await expect(suggestAddresses({ key: 'zly', input: 'Długa', session: 'S' })).rejects.toThrow(/Klucz Google jest nieprawidłowy.*API_KEY_INVALID/);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { status: 'PERMISSION_DENIED', message: 'Requests from referer are blocked.', details: [{ reason: 'API_KEY_HTTP_REFERRER_BLOCKED' }] } }), { status: 403 })));
+    await expect(suggestAddresses({ key: 'k', input: 'Długa', session: 'S' })).rejects.toThrow(/nie pozwala na tę stronę/);
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    await expect(suggestAddresses({ key: 'k', input: 'Długa', session: 'S' })).rejects.toThrow(/Brak połączenia z Google/);
   });
 });
