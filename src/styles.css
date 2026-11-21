@@ -4692,3 +4692,8 @@ a.region-pill {
   gap: 12px;
   padding: 0 12px 12px;
 }
+
+/* Nowe zlecenie, krok „Termin”: zwinięty podgląd tygodnia */
+.calendar-peek-body {
+  padding: 0 8px 8px;
+}
