@@ -97,7 +97,6 @@ function AutoText(props: {
       document.removeEventListener('visibilitychange', onHide);
       flush();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -390,16 +389,41 @@ function ProtocolEmail({ order }: { order: Order }) {
   );
 }
 
-function ToggleChips(props: { options: string[]; selected: string[]; onChange: (selected: string[]) => void; addLabel: string }) {
+/**
+ * Wybór kilku pozycji. Zaznaczenie zmienia się od razu na ekranie, a zapis idzie w tle: szybkie stukanie jedno po
+ * drugim nie gubi zaznaczeń (wcześniej każde stuknięcie liczyło się od stanu sprzed zapisu poprzedniego).
+ */
+function ToggleChips(props: { options: string[]; selected: string[]; onChange: (selected: string[]) => unknown; addLabel: string }) {
   const [custom, setCustom] = useState('');
-  const all = [...props.options, ...props.selected.filter((s) => !props.options.includes(s))];
-  const toggle = (item: string) =>
-    props.onChange(props.selected.includes(item) ? props.selected.filter((s) => s !== item) : [...props.selected, item]);
+  const [selected, setSelected] = useState(props.selected);
+  const pending = useRef(0);
+  const latest = useRef(props.selected);
+  // Stan z bazy przyjmujemy dopiero, gdy nic nie czeka na zapis (inaczej starszy odczyt cofnąłby świeże stuknięcie).
+  const fromDb = props.selected.join('\u0000');
+  useEffect(() => {
+    if (pending.current === 0) {
+      latest.current = props.selected;
+      setSelected(props.selected);
+    }
+  }, [fromDb]);
+  const change = (next: string[]) => {
+    latest.current = next;
+    setSelected(next);
+    pending.current += 1;
+    void Promise.resolve(props.onChange(next)).finally(() => {
+      pending.current -= 1;
+    });
+  };
+  const all = [...props.options, ...selected.filter((s) => !props.options.includes(s))];
+  const toggle = (item: string) => {
+    const now = latest.current;
+    change(now.includes(item) ? now.filter((s) => s !== item) : [...now, item]);
+  };
   return (
     <>
       <div className="chips chips-wrap">
         {all.map((item) => (
-          <button key={item} type="button" className={props.selected.includes(item) ? 'chip active' : 'chip'} aria-pressed={props.selected.includes(item)} onClick={() => toggle(item)}>
+          <button key={item} type="button" className={selected.includes(item) ? 'chip active' : 'chip'} aria-pressed={selected.includes(item)} onClick={() => toggle(item)}>
             {item}
           </button>
         ))}
@@ -408,7 +432,7 @@ function ToggleChips(props: { options: string[]; selected: string[]; onChange: (
         className="inline-add"
         onSubmit={(e) => {
           e.preventDefault();
-          if (custom.trim() && !props.selected.includes(custom.trim())) props.onChange([...props.selected, custom.trim()]);
+          if (custom.trim() && !latest.current.includes(custom.trim())) change([...latest.current, custom.trim()]);
           setCustom('');
         }}
       >
@@ -774,7 +798,7 @@ export function VisitPage() {
   // Cena i zakres tego zabiegu; zabiegi sprzed tej opcji mają widełki zlecenia i całe mieszkanie.
   const terms: VisitTerms = { scope: visit.scope ?? { kind: 'calosc', note: '' }, ...visitPrice(visit, order) };
   const price = priceRange({ ...terms, invoice: order.invoice }, settings.vatRate);
-  const save = (patch: Partial<Visit>) => void run(() => visits.update(visit.id, patch));
+  const save = (patch: Partial<Visit>) => run(() => visits.update(visit.id, patch));
   // Świeży odczyt z bazy: dwa pola zapisane tuż po sobie nie mogą nadpisać się nawzajem.
   // Zapisy wywiadu idą po kolei: tekst zapisany przy wyjściu z pola i dotknięte zaraz potem Tak/Nie
   // czytałyby ten sam stary wywiad i drugi zapis nadpisałby pierwszy. Zapis zawsze w obecnej postaci.

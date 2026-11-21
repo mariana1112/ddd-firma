@@ -4608,3 +4608,10 @@ a.region-pill {
   transform: scale(1.06);
   overflow: visible;
 }
+
+/* Szybkie stukanie w przyciski wyboru: bez czekania na podwójne stuknięcie (powiększenie) */
+.chip,
+.choice-item,
+.pay-option {
+  touch-action: manipulation;
+}
