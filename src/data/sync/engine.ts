@@ -14,6 +14,7 @@ import {
   SYNCED_META_KEYS,
 } from '../settings';
 import type { Attachment, ChangeOp, MetaRow, SyncState, SyncTable } from '../types';
+import { setGrantedRecords } from '../scope';
 import { registerNumberServer } from './numbers';
 import { createDataKey, decryptFields, decryptFile, encryptFields, encryptFile, type WrappedKey } from './crypto';
 
@@ -44,6 +45,8 @@ export interface SyncServer {
   pull(orgId: string, sinceRev: number, limit: number): Promise<RemoteRecord[]>;
   /** Rezerwuje count kolejnych numerów, nie mniejszych niż minNext. Zwraca pierwszy. */
   reserveNumbers(orgId: string, series: string, minNext: number, count: number): Promise<number>;
+  /** Zlecenia i zabiegi z innych regionów udostępnione temu kontu (opcjonalne). */
+  recordGrants?(orgId: string): Promise<string[]>;
   uploadFile(path: string, blob: Blob): Promise<void>;
   /** Usuwa plik. Brak pliku nie jest błędem. */
   deleteFile(path: string): Promise<void>;
@@ -176,6 +179,13 @@ export async function syncNow(server: SyncServer): Promise<void> {
   await pushPending(server, state, deviceId, key);
   if (await uploadPhotos(server, state, key)) await pushPending(server, state, deviceId, key);
   const unreadable = await pullAll(server, state, key);
+  // Udostępnione pojedyncze zlecenia (admin widzi wszystko i ich nie potrzebuje). Błąd nie psuje synchronizacji.
+  if (server.recordGrants && state.role !== 'owner') {
+    await server
+      .recordGrants(state.orgId)
+      .then((ids) => setGrantedRecords(ids))
+      .catch(() => undefined);
+  }
 
   const latest = await getSyncState();
   if (latest) await setSyncState({ ...latest, lastSyncAt: new Date().toISOString(), lastError: null });

@@ -23,7 +23,8 @@ export function AssignSheet(props: { order: Order; visit: Visit; open: boolean; 
   const [members, setMembers] = useState<Member[] | null | 'offline'>(null);
   const [access, setAccess] = useState<Array<{ userId: string; branchId: string }>>([]);
   const [regionNames, setRegionNames] = useState<Record<string, string>>({});
-  const [notify, setNotify] = useState<(Person & { outside?: boolean }) | null>(null);
+  // outside: technik z innego regionu; inApp: zlecenie udostępnione w jego aplikacji (bez tego tylko wiadomość).
+  const [notify, setNotify] = useState<(Person & { outside?: boolean; inApp?: boolean }) | null>(null);
 
   useEffect(() => {
     if (!props.open) return;
@@ -52,28 +53,53 @@ export function AssignSheet(props: { order: Order; visit: Visit; open: boolean; 
   const others = owner ? people.filter((m) => !inRegion(m)) : [];
   const name = (m: Member) => m.displayName || m.email || 'Technik';
 
+  const records = [
+    { tbl: 'orders' as const, id: props.order.id },
+    { tbl: 'visits' as const, id: props.visit.id },
+  ];
+  /** Odbiera udostępnienie poprzedniemu technikowi z innego regionu (przy zmianie albo zdjęciu przydziału). */
+  const unshare = async (next: string | null) => {
+    const prev = props.visit.assignedId;
+    if (!state || !owner || !prev || prev === next || local.some((m) => m.userId === prev)) return;
+    await (await supabaseApi()).setRecordAccess(state.orgId, prev, records, false).catch(() => undefined);
+  };
+
   const assign = (person: Person, outside = false) =>
     run(async () => {
+      await unshare(person.id);
+      let inApp = !outside;
+      if (outside && state) {
+        // Technik z innego regionu: serwer udostępnia mu tylko to zlecenie i ten zabieg.
+        try {
+          await (await supabaseApi()).setRecordAccess(state.orgId, person.id, records, true);
+          inApp = true;
+        } catch {
+          inApp = false;
+        }
+      }
       await assignVisit(props.visit.id, person);
       toast(`Przydzielono: ${person.name}`);
-      setNotify({ ...person, outside });
+      setNotify({ ...person, outside, inApp });
     });
 
-  const text = notify ? assignmentText(props.order, props.visit, notify.name, notify.outside) : '';
+  const text = notify ? assignmentText(props.order, props.visit, notify.name, notify.outside && !notify.inApp) : '';
 
   return (
     <Sheet open={props.open} title={notify ? `Powiadom: ${notify.name}` : `Przydziel technika · ${visitCode(props.order, props.visit.seq)}`} onClose={props.onClose}>
       {notify ? (
         <div className="form">
-          {notify.outside ? (
+          {notify.outside && !notify.inApp ? (
             <p className="notice notice-warn">
               <Icon name="alert" />
-              <span>{notify.name} jest w innym regionie i nie zobaczy tego zlecenia w swojej aplikacji. Wyślij mu wiadomość ze wszystkimi danymi:</span>
+              <span>Nie udało się udostępnić zlecenia w aplikacji (brak internetu albo serwer jeszcze tego nie obsługuje). Wyślij {notify.name} wiadomość ze wszystkimi danymi:</span>
             </p>
           ) : (
             <p className="notice notice-info">
               <Icon name="bell" />
-              <span>{notify.name} dostanie powiadomienie w aplikacji (dzwoneczek), gdy jego telefon się zsynchronizuje. Możesz też od razu wysłać wiadomość:</span>
+              <span>
+                {notify.outside ? `${notify.name} zobaczy w swojej aplikacji tylko to zlecenie (jego region się nie zmienia) i dostanie powiadomienie (dzwoneczek). ` : `${notify.name} dostanie powiadomienie w aplikacji (dzwoneczek), gdy jego telefon się zsynchronizuje. `}
+                Możesz też od razu wysłać wiadomość:
+              </span>
             </p>
           )}
           <pre className="assign-text">{text}</pre>
@@ -105,6 +131,7 @@ export function AssignSheet(props: { order: Order; visit: Visit; open: boolean; 
                 className="btn btn-sm"
                 onClick={() =>
                   void run(async () => {
+                    await unshare(null);
                     await assignVisit(props.visit.id, null);
                     toast('Zdjęto przydział');
                     props.onClose();
@@ -142,7 +169,7 @@ export function AssignSheet(props: { order: Order; visit: Visit; open: boolean; 
                   </span>
                 </button>
               ))}
-              <p className="field-hint">Region technika się nie zmienia. Zastępstwo w całym regionie ustawisz w panelu admina (Zastępstwa).</p>
+              <p className="field-hint">Technik zobaczy tylko to zlecenie, a jego region się nie zmienia. Zabieg liczy się do raportu regionu zlecenia. Zastępstwo w całym regionie ustawisz w panelu admina (Zastępstwa).</p>
             </>
           )}
         </div>

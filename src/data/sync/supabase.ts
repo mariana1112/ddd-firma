@@ -133,6 +133,8 @@ export const supabaseServer: SyncServer = {
     );
   },
 
+  recordGrants: (orgId: string) => myRecordGrants(orgId),
+
   async reserveNumbers(orgId: string, series: string, minNext: number, count: number) {
     const { data, error } = await supabase().rpc('reserve_numbers', {
       p_org: orgId,
@@ -424,6 +426,22 @@ export async function createBranch(orgId: string, name: string): Promise<string>
 
 export async function renameBranch(branchId: string, name: string): Promise<void> {
   const { error } = await supabase().rpc('rename_branch', { p_branch: branchId, p_name: name });
+  if (error) fail(error);
+}
+
+/** Admin udostępnia (grant) albo odbiera technikowi pojedyncze rekordy: zlecenie i zabieg z innego regionu. */
+/** Zlecenia i zabiegi udostępnione zalogowanemu kontu (technik z innego regionu). Bez migracji: pusta lista. */
+export async function myRecordGrants(orgId: string): Promise<string[]> {
+  const user = (await supabase().auth.getUser()).data.user;
+  if (!user) return [];
+  const { data, error } = await supabase().from('record_grants').select('record_id').eq('org_id', orgId).eq('user_id', user.id);
+  if (error && /record_grants/.test(error.message ?? '')) return [];
+  if (error) fail(error);
+  return (data ?? []).map((r) => r.record_id as string);
+}
+
+export async function setRecordAccess(orgId: string, userId: string, records: Array<{ tbl: 'orders' | 'visits'; id: string }>, grant: boolean): Promise<void> {
+  const { error } = await supabase().rpc('set_record_access', { p_org: orgId, p_user: userId, p_records: records, p_grant: grant });
   if (error) fail(error);
 }
 

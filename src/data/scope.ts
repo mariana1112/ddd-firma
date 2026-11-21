@@ -38,6 +38,18 @@ export function setOwnBranch(state: Pick<SyncState, 'branchId'> | null): void {
   ownBranch = state?.branchId ?? null;
 }
 
+/**
+ * Zlecenia i zabiegi z innych regionów, które admin udostępnił temu kontu (przydział do jednego zlecenia).
+ * Lista przychodzi z serwera przy każdej synchronizacji, więc po odebraniu udostępnienia rekord znika z list.
+ */
+let granted = new Set<string>();
+const GRANTS_KEY = 'grants';
+
+export async function setGrantedRecords(ids: string[]): Promise<void> {
+  granted = new Set(ids);
+  await db.meta.put({ key: GRANTS_KEY, value: ids, updatedAt: new Date().toISOString() });
+}
+
 export function getOwnBranch(): string | null {
   return ownBranch;
 }
@@ -45,13 +57,16 @@ export function getOwnBranch(): string | null {
 /** Wczytuje region konta przed pierwszym wyświetleniem list. */
 export async function initViewScope(): Promise<void> {
   setOwnBranch(((await db.meta.get('sync'))?.value as SyncState | undefined) ?? null);
+  granted = new Set(((await db.meta.get(GRANTS_KEY))?.value as string[] | undefined) ?? []);
 }
 
 /** Filtr list według zakresu albo null, gdy nic nie trzeba odfiltrować (bez synchronizacji, cała firma). */
-export function scopeFilter(): ((record: { branchId?: string | null }) => boolean) | null {
+export function scopeFilter(): ((record: { id?: string; branchId?: string | null }) => boolean) | null {
   const scope = currentViewScope();
   if (scope === 'all' || (scope === 'own' && !ownBranch)) return null;
   const own = ownBranch;
   const target = scope === 'own' ? own : scope;
-  return (record) => regionOf(record, own) === target;
+  const shared = granted;
+  // Zlecenie z innego regionu udostępnione temu kontu (przydział do jednego zlecenia) też jest „moje”.
+  return (record) => regionOf(record, own) === target || (scope === 'own' && Boolean(record.id) && shared.has(record.id!));
 }
