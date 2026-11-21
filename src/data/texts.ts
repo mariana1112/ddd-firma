@@ -17,6 +17,7 @@ export const PESTS: Record<PestCategory, string> = {
   karaluchy: 'Karaluchy',
   chrzaszczowate: 'Chrząszczowate',
   pluskwy: 'Pluskwy',
+  pchly: 'Pchły',
   gryzonie: 'Gryzonie',
   inne: 'Inne',
 };
@@ -221,10 +222,42 @@ export function interviewLines(raw: Visit['interview']): string[] {
   const lines: string[] = [];
   if (i.situation) lines.push(`Opis: ${i.situation.replace(/\n+/g, '; ')}`);
   if (i.bites) lines.push(`Ugryzienia: ${i.bites}`);
-  if (i.seen) lines.push(`Widziane owady: ${i.seen}${i.seen === 'tak' && i.seenCount ? `, ile: ${i.seenCount}` : ''}`);
+  if (i.seenCount) lines.push(`Skala populacji: ${i.seenCount}`);
+  else if (i.seen) lines.push(`Widziane owady: ${i.seen}`);
+  if (i.improvement) lines.push(`Widać poprawę: ${i.improvement}`);
+  if (i.improvementNote) lines.push(`Co jest: ${i.improvementNote}`);
   if (i.selfTreatment) lines.push(`Środki na własną rękę: ${i.selfTreatment}`);
   if (i.other.trim()) lines.push(`Inne uwagi: ${i.other.trim()}`);
   return lines;
+}
+
+/** „Opis: 300 zł gotówka - Pluskwy w sypialni…” (do wklejenia szefowi albo do centrali). */
+export function descriptionCopy(visit: Pick<Visit, 'amount' | 'payMethod' | 'interview'>): string {
+  const i = normalizeInterview(visit.interview);
+  const pay = visit.amount ? `${zl(visit.amount)} zł${visit.payMethod ? ` ${visit.payMethod === 'blik' ? 'BLIK' : PAY_NAMES[visit.payMethod].toLowerCase()}` : ''}` : 'bez płatności';
+  return `Opis: ${pay} - ${i.situation.trim().replace(/\n+/g, '; ')}`;
+}
+
+/** Dane do wystawienia faktury za zabieg: nabywca, NIP, adres, e-mail, usługa, data, kwota i płatność. */
+export function invoiceCopy(order: Order, visit: Visit, vatRate: number, code: string): string {
+  const vat = order.invoice === 'vat';
+  const gross = visit.amount ?? 0;
+  const net = Math.round((gross * 100) / (100 + vatRate));
+  const address = order.invoiceAddress.trim() || [orderAddress(order), order.postalCode].filter(Boolean).join(', ');
+  const methods = [...new Set(visit.treatments.length ? visit.treatments : [])].join(', ');
+  return [
+    vat ? 'Faktura VAT' : 'Faktura imienna',
+    `Nabywca: ${(vat ? order.invoiceName?.trim() : '') || order.clientName.trim() || '—'}`,
+    vat && `NIP: ${order.nip.trim() || '—'}`,
+    `Adres: ${address || '—'}`,
+    order.email.trim() && `E-mail: ${order.email.trim()}`,
+    `Usługa: dezynsekcja – ${pestName(order).toLowerCase()}${methods ? ` (${methods})` : ''}, zabieg ${code}`,
+    visit.doneOn && `Data wykonania: ${visit.doneOn.split('-').reverse().join('.')}`,
+    vat ? `Kwota: ${zl(gross)} zł brutto (netto ${zl(net)} zł, VAT ${vatRate}%)` : `Kwota: ${zl(gross)} zł`,
+    visit.payMethod && `Płatność: ${PAY_NAMES[visit.payMethod]}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** Podpowiedź w opisie kodu pink. */

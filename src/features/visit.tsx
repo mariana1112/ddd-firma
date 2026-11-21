@@ -8,7 +8,7 @@ import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import { cancelVisit, defaultDoneOn, finishVisit, normalizeInterview, orderVisits, restoreOrder, revertStartedVisit, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
 import { googleCalendarUrl } from '../data/calendar';
 import { ScheduleNext } from './orders';
-import { addressMissing, paymentMissing } from '../data/order-list';
+import { addressMissing, dayPositions, paymentMissing } from '../data/order-list';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getCompany, type AppSettings } from '../data/settings';
 import { formatAccount } from '../data/card';
@@ -23,7 +23,7 @@ import {
   pestName,
   priceRange,
   workSummary,
-  bookedBy, firstName, centralExport, orderAddress, telUrl } from '../data/texts';
+  bookedBy, firstName, centralExport, descriptionCopy, invoiceCopy, orderAddress, telUrl } from '../data/texts';
 import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { TomorrowReminders } from './reminders';
@@ -193,7 +193,7 @@ function InvoiceData({ order, alert, onSave }: { order: Order; alert: boolean; o
     <div className="invoice-data">
       {order.invoice === 'vat' ? (
         <>
-          <OrderField label="Nazwa firmy" value={order.invoiceName ?? ''} missing={flag('invoiceName')} placeholder="Np. Apt Production sp. z o.o." onSave={(invoiceName) => onSave({ invoiceName })} />
+          <OrderField label="Nazwa firmy (opcjonalnie)" value={order.invoiceName ?? ''} missing={flag('invoiceName')} placeholder="Np. Apt Production sp. z o.o." onSave={(invoiceName) => onSave({ invoiceName })} />
           <OrderField
             label="NIP"
             value={order.nip}
@@ -683,6 +683,12 @@ export function VisitPage() {
   // Edycja opisu wykonanego zabiegu (sytuacja z wywiadu i opis zlecenia) bez przechodzenia całych kroków.
   const [editingDesc, setEditingDesc] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  // Numer zabiegu w dniu („2 z 5”): ze wszystkich zabiegów tego dnia.
+  const dayPos = useLiveQuery(async () => {
+    const v = await visits.get(id);
+    if (!v?.start) return null;
+    return dayPositions((await visits.all()).filter((x) => x.start?.slice(0, 10) === v.start!.slice(0, 10))).get(id) ?? null;
+  }, [id]);
   const [editingTerms, setEditingTerms] = useState(false);
   // Próba zakończenia bez płatności: sekcja płatności świeci na czerwono, ekran przewija się do niej.
   const [payAlert, setPayAlert] = useState(false);
@@ -888,6 +894,7 @@ export function VisitPage() {
           <AddressBlock order={order} />
           <p>
             {pestName(order)} · {visitWhen(visit)}
+            {dayPos && dayPos.of > 1 && <span className="day-pos day-pos-wide">zabieg {dayPos.n} z {dayPos.of} tego dnia</span>}
           </p>
           {bookedBy(visit, order) && <p className="visit-booked">Umówione przez: {firstName(bookedBy(visit, order))}</p>}
         </div>
@@ -1069,7 +1076,7 @@ export function VisitPage() {
               <button
                 type="button"
                 className="btn"
-                onClick={() => void copyText(interview.situation.trim()).then((ok) => toast(ok ? 'Skopiowano opis' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
+                onClick={() => void copyText(descriptionCopy(visit)).then((ok) => toast(ok ? 'Skopiowano opis' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
               >
                 <Icon name="copy" /> Kopiuj opis
               </button>
@@ -1081,6 +1088,19 @@ export function VisitPage() {
             >
               <Icon name="copy" /> Kopiuj wszystkie dane
             </button>
+            {order.invoice !== 'brak' && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  void copyText(invoiceCopy(order, visit, settings.vatRate, visitCode(order, visit.seq))).then((ok) =>
+                    toast(ok ? 'Skopiowano dane do faktury' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
+                  )
+                }
+              >
+                <Icon name="copy" /> Kopiuj do faktury
+              </button>
+            )}
             <button type="button" className="btn" onClick={() => setEditingDesc(true)}>
               <Icon name="edit" /> Edytuj opis
             </button>
@@ -1144,7 +1164,28 @@ export function VisitPage() {
                 value={interview.situation}
                 onSave={(v) => saveInterview('situation', v)}
               />
-              <YesNoField label="Czy widziano owady?" value={interview.seen} onChange={(v) => saveInterview('seen', v)} />
+              {(order.pest === 'pluskwy' || order.pest === 'pchly' || order.pest === 'inne') && (
+                <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />
+              )}
+              <AutoText
+                label="Jaka jest skala populacji? (wpisz ile)"
+                placeholder="Np. kilka, ok. 20, dużo w całym mieszkaniu"
+                rows={1}
+                value={interview.seenCount}
+                onSave={(v) => saveInterview('seenCount', v)}
+              />
+              {visit.seq > 1 && (
+                <>
+                  <YesNoField label="Czy widać poprawę?" value={interview.improvement} onChange={(v) => saveInterview('improvement', v)} />
+                  <AutoText
+                    label="Co jest? (jak wygląda sytuacja teraz)"
+                    placeholder="Np. dużo mniej, pojedyncze w sypialni"
+                    rows={2}
+                    value={interview.improvementNote}
+                    onSave={(v) => saveInterview('improvementNote', v)}
+                  />
+                </>
+              )}
             </Group>
 
             </>

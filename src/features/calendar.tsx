@@ -97,12 +97,15 @@ function WeekAgenda(props: { events: AgendaEvent[]; custom: CalendarEvent[]; me:
               <span>{list.length || ''}</span>
             </div>
             {extraRows}
-            {list.map((e) => {
+            {list.map((e, index) => {
               const x = e.extendedProps;
               const dur = x.durationMin >= 60 ? `${String(x.durationMin / 60).replace('.', ',')} h` : `${x.durationMin} min`;
               return (
                 <button key={e.id} type="button" className={x.next ? 'agenda-row agenda-next' : 'agenda-row'} onClick={() => props.onOpen(e.id)}>
                   <span className="agenda-time">
+                    <span className="day-pos">
+                      {index + 1}/{list.length}
+                    </span>
                     {e.start.slice(11, 16)}
                     <small>{dur}</small>
                   </span>

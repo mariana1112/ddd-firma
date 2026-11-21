@@ -1,7 +1,7 @@
 import { roman, visitCode } from '../data/codes';
 import { scopeText } from '../data/visit-terms';
 import { mainPhone } from '../data/order-search';
-import { addressMissing, nextVisitOfDay, paymentMissing } from '../data/order-list';
+import { addressMissing, dayPositions, nextVisitOfDay, paymentMissing } from '../data/order-list';
 import { orderCode } from '../data/codes';
 import { dropEditDraft, listDrafts } from '../lib/drafts';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -56,13 +56,14 @@ function QuickSearch() {
 type TodoReason = 'w_trakcie' | 'platnosc' | 'opis' | 'adres' | 'zalegly';
 const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'Niedokończony', platnosc: 'Uzupełnij płatność', opis: 'Do opisania', adres: 'Uzupełnij adres', zalegly: 'Zaległy termin' };
 
-function VisitRow({ visit, order, timeOnly, urgent, reason, next }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean; reason?: TodoReason; next?: boolean }) {
+function VisitRow({ visit, order, timeOnly, urgent, reason, next, pos }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean; reason?: TodoReason; next?: boolean; pos?: { n: number; of: number } }) {
   return (
     <Row
       to={`/zabieg/${visit.id}`}
       className={next ? 'row-next' : undefined}
       title={
         <>
+          {pos && <span className="day-pos" title={`Zabieg ${pos.n} z ${pos.of} tego dnia`}>{pos.n}/{pos.of}</span>}
           {visit.start && <span className="row-time">{timeOnly ? formatTime(visit.start) : `${formatDate(visit.start)} ${formatTime(visit.start)}`}</span>}
           <span className="order-number">{visitCode(order, visit.seq)}</span> {order.clientName}
         </>
@@ -137,6 +138,8 @@ export function DashboardPage() {
   const todayList = planned.filter(({ visit }) => visit.start!.slice(0, 10) === today);
   // Następny zabieg w kolejce dnia: wyróżniony, żeby nie szukać, gdzie jechać dalej.
   const nextId = nextVisitOfDay(todayList.map((x) => x.visit), nowWarsaw());
+  // Numer zabiegu w dniu („2/5”), liczony ze wszystkich zabiegów dnia.
+  const positions = dayPositions(data.visits);
   // Nowe zlecenia na dziś i jutro dodane przez kogoś innego (np. szefa), jeszcze nieoznaczone jako widziane.
   const fresh = planned.filter(
     ({ visit, order }) =>
@@ -286,7 +289,7 @@ export function DashboardPage() {
       <Group title={`Dzisiaj${todayList.length ? ` (${todayList.length})` : ''}`}>
         {todayList.length === 0 && <Empty title="Brak zabiegów na dziś" />}
         {todayList.map(({ visit, order }) => (
-          <VisitRow key={visit.id} visit={visit} order={order} timeOnly next={visit.id === nextId} />
+          <VisitRow key={visit.id} visit={visit} order={order} timeOnly next={visit.id === nextId} pos={positions.get(visit.id)} />
         ))}
       </Group>
 

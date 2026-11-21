@@ -24,6 +24,8 @@ import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Pa
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 import type { InvoiceType } from '../data/types';
+import { ClientRow } from './client';
+import { clientKey, groupClients } from '../data/clients-view';
 import { ContactBar, NextVisitPill, PayBadge, PinkBadge, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
 
 type StatusFilter = ListFilter;
@@ -132,6 +134,14 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
       });
     return sortOrderRows(filtered, sort, today);
   }, [data, query, status, pay, invoicesOnly, sort, searching, today, mode, archive]);
+  // Szukanie: klienci pasujących zleceń (dane kontaktowe, umówione i wykonane zabiegi, zalecenia).
+  const clients = useMemo(() => {
+    if (!data || !searching) return [];
+    const matched = data.orders.filter((o) => orderMatches(o, query));
+    const keys = new Set(matched.map((o) => clientKey(o)));
+    return groupClients(data.orders, data.visits, orderAddress).filter((g) => keys.has(g.key));
+  }, [data, query, searching]);
+
   const renderRow = (row: { order: Order; visits: Visit[] }) =>
     mode === 'zabiegi' ? (
       <VisitListRow key={row.visits[0].id} order={row.order} visit={row.visits[0]} today={today} />
@@ -155,6 +165,13 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
         <>
           <Search value={query} onChange={setQuery} placeholder={archive ? 'Szukaj w archiwum: telefon, nazwisko, adres, kod' : 'Szukaj: telefon, nazwisko, adres, kod, fv23, fv, prot'} />
           {searching && <p className="field-hint">{archive ? 'Szukam w archiwum' : 'Szukam we wszystkich zleceniach, także zakończonych i w archiwum'}. Znalezione: {rows.length}.</p>}
+          {searching && !archive && clients.length > 0 && (
+            <Group title={`Klienci (${clients.length})`}>
+              {clients.slice(0, 5).map((c) => (
+                <ClientRow key={c.key} client={c} />
+              ))}
+            </Group>
+          )}
           {!archive && (
           <>
           <Chips

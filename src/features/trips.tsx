@@ -4,7 +4,7 @@ import { normalizeCity } from '../data/cities';
 import { useEffect, useState } from 'react';
 import { restoreRecord } from '../data/domain';
 import { driverSummary, mileageSheets, normalizePlate, routeText, suggestRoutes } from '../data/mileage';
-import { lastOdometer, tripKm } from '../data/orders';
+import { lastOdometer, odometerAround, tripKm } from '../data/orders';
 import { trips, orders, visits } from '../data/repo';
 import { COMPANY_NAME, DEFAULT_BASE, getCompany, getProfile, getUiSyncState, getVehicle, ownedBy, saveVehicle, type VehicleSettings } from '../data/settings';
 import { DayCard } from './day-card';
@@ -95,10 +95,16 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
 
   // Licznik startowy to stan po ostatnim przejeździe tym autem, służbowym albo prywatnym: jeden licznik dla obu.
   // Odświeża się, gdy dojdzie przejazd (także z innego urządzenia).
+  const [privateKm, setPrivateKm] = useState('');
   const last = useLiveQuery(async () => {
     const count = await trips.all();
-    return { value: await lastOdometer((await getProfile()).userId, vehicle.plate), count: count.length };
-  }, [vehicle.plate]);
+    const me = (await getProfile()).userId;
+    const latest = await lastOdometer(me, vehicle.plate);
+    const around = await odometerAround(me, vehicle.plate, date);
+    // Dzień wcześniejszy niż ostatni przejazd: licznik z tamtego dnia (przejazd „wskakuje” na swoje miejsce).
+    const past = around.after !== null;
+    return { value: past ? around.before : latest, after: around.after, past, count: count.length };
+  }, [vehicle.plate, date]);
   useEffect(() => {
     if (last?.value != null) setStart(String(last.value));
   }, [last?.value]);
@@ -129,9 +135,13 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
   const endKm = Number(end);
   const km = effectiveStart && end ? endKm - startKm : null;
   const error = km !== null && km < 0 ? 'Licznik po przejeździe jest mniejszy niż przed' : undefined;
+  // Przejazd z dawnego dnia nie powinien wyjść poza licznik kolejnego przejazdu (ostrzeżenie, nie blokada).
+  const overlap = last?.past && last.after !== null && end && endKm > last.after ? `Licznik po jest większy niż na początku kolejnego przejazdu (${last.after} km). Sprawdź wpis.` : undefined;
+  const priv = privateKm ? Number(privateKm) : 0;
+  const privError = kind === 'sluzbowy' && km !== null && priv > km ? 'Więcej niż cały przejazd' : undefined;
   // Puste „Dokąd”: jazda lokalna (w obrębie miejscowości startu).
   const destination = to.trim() || from.trim();
-  const ready = /^\d+$/.test(effectiveStart) && /^\d+$/.test(end) && !error && from.trim();
+  const ready = /^\d+$/.test(effectiveStart) && /^\d+$/.test(end) && !error && !privError && from.trim();
 
   return (
     <form
@@ -156,8 +166,11 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
             driver: vehicle.driver || profile.name,
             odometerStart: startKm,
             odometerEnd: endKm,
+            // Służbowy z prywatną częścią: w ewidencji VAT cały przejazd, prywatne km osobno w raporcie.
+            ...(kind === 'sluzbowy' && priv > 0 ? { privateKm: priv } : {}),
           });
-          toast(`Zapisano przejazd: ${km} km`);
+          toast(`Zapisano przejazd: ${km} km${kind === 'sluzbowy' && priv > 0 ? ` (w tym prywatnie ${priv} km)` : ''}`);
+          setPrivateKm('');
           setFrom(vehicle.base);
           setVia('');
           setTo('');
@@ -234,6 +247,18 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
           <input inputMode="numeric" value={end} onChange={(e) => setEnd(e.target.value.replace(/\D/g, ''))} />
         </Field>
       </div>
+      {last?.past && (
+        <p className="notice notice-info">
+          <Icon name="calendar" />
+          <span>Przejazd z dawnego dnia: licznik z tamtego dnia{last.value != null ? ` (${last.value} km)` : ''}. Zapisany trafi na swoje miejsce w ewidencji, przed późniejszymi przejazdami.</span>
+        </p>
+      )}
+      {overlap && <p className="field-message">{overlap}</p>}
+      {kind === 'sluzbowy' && (
+        <Field label="W tym prywatnie (km, opcjonalnie)" error={privError} hint="Np. podjazd po prywatnej sprawie w trakcie dnia pracy.">
+          <input inputMode="numeric" value={privateKm} onChange={(e) => setPrivateKm(e.target.value.replace(/\D/g, ''))} />
+        </Field>
+      )}
       {km !== null && !error && (
         <p className="total-line">
           <span>Przejechano</span>

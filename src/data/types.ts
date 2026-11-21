@@ -179,7 +179,7 @@ export interface Expense extends BaseRecord {
 // ---------- Zlecenia Pogromców Insektów (schemat 5) ----------
 
 export type BuildingType = 'dom' | 'blizniak' | 'blok';
-export type PestCategory = 'karaluchy' | 'chrzaszczowate' | 'pluskwy' | 'gryzonie' | 'inne';
+export type PestCategory = 'karaluchy' | 'chrzaszczowate' | 'pluskwy' | 'pchly' | 'gryzonie' | 'inne';
 export type InvoiceType = 'brak' | 'imienna' | 'vat';
 export type PayMethod = 'gotowka' | 'blik' | 'przelew';
 /** Rola konta w firmie: admin (szef), technik albo księgowa. */
@@ -303,10 +303,13 @@ export interface Interview {
   situation: string;
   bites: YesNo;
   seen: YesNo;
-  /** Ile owadów widziano, gdy seen = 'tak', np. „kilka”, „ok. 20”. */
+  /** Skala populacji: ile owadów (wpisane), np. „kilka”, „ok. 20”, „dużo w całym mieszkaniu”. */
   seenCount: string;
   selfTreatment: YesNo;
   other: string;
+  /** Zabieg II, III…: czy widać poprawę i jak jest teraz. */
+  improvement: YesNo;
+  improvementNote: string;
 }
 
 /** Zabieg w ramach zlecenia: pierwszy, drugi, trzeci. */

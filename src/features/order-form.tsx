@@ -301,7 +301,6 @@ function validate(step: StepId, s: FormState): Errors {
     else if (!s.email.trim()) e.email = s.invoice !== 'brak' ? 'Do faktury potrzebny jest e-mail' : 'Do protokołu potrzebny jest e-mail';
     if (s.invoice === 'brak' && s.protocol && !s.clientName.trim()) e.clientName = 'Do protokołu podaj imię i nazwisko';
     if (s.invoice === 'vat') {
-      if (!s.invoiceName.trim()) e.invoiceName = 'Podaj nazwę firmy';
       if (!s.nip.trim()) e.nip = 'Podaj NIP';
       else if (!isValidNip(s.nip)) e.nip = 'NIP jest niepoprawny';
     }
@@ -888,7 +887,10 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
             label="Szkodnik"
             value={s.pest}
             options={Object.entries(PESTS) as Array<[PestCategory, string]>}
-            onChange={(pest) => set({ pest })}
+            onChange={(pest) =>
+              // Pluskwy: od razu oprysk ciśnieniowy, ULV i parowanie (zwykły zestaw); można odznaczyć.
+              set(pest === 'pluskwy' ? { pest, methods: [...new Set([...s.methods, 'oprysk', 'ulv', 'parowanie'] as TreatmentMethod[])] } : { pest })
+            }
           />
           {s.pest === 'inne' && (
             <Field label="Jaki szkodnik" error={errors.pestOther}>
@@ -990,7 +992,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <span className="docs-box-title">{s.invoice !== 'brak' ? (s.protocol ? 'Dane do faktury i protokołu' : 'Dane do faktury') : 'Dane do protokołu'}</span>
               {s.invoice === 'vat' ? (
                 <>
-                  <Field label="Nazwa firmy" error={errors.invoiceName} action={<PasteButton onPaste={(t) => set({ invoiceName: t })} />}>
+                  <Field label="Nazwa firmy (opcjonalnie)" error={errors.invoiceName} action={<PasteButton onPaste={(t) => set({ invoiceName: t })} />}>
                     <input value={s.invoiceName} name="ddd-firma" placeholder="Np. Apt Production sp. z o.o." onChange={(e) => set({ invoiceName: e.target.value })} autoComplete="off" />
                   </Field>
                   <Field label="NIP" error={errors.nip} action={<PasteButton onPaste={(t) => set({ nip: t.replace(/[^\d]/g, '') })} />}>

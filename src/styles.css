@@ -4525,3 +4525,57 @@ a.region-pill {
   color: var(--primary);
   font-weight: 600;
 }
+
+/* Numer zabiegu w dniu: „2/5” */
+.day-pos {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 800;
+  vertical-align: 1px;
+}
+
+.day-pos-wide {
+  margin-left: 8px;
+  font-weight: 700;
+}
+
+.agenda-time .day-pos {
+  align-self: flex-start;
+  margin: 0 0 2px;
+}
+
+/* Strona klienta: wykonane zabiegi do rozwinięcia */
+.client-visit {
+  border-bottom: 1px solid var(--line);
+}
+
+.client-visit:last-child {
+  border-bottom: 0;
+}
+
+.client-visit > summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.client-visit > summary::-webkit-details-marker {
+  display: none;
+}
+
+.client-visit > summary strong {
+  color: var(--primary);
+}
+
+.client-visit-body {
+  padding: 0 0 8px;
+  background: color-mix(in srgb, var(--surface-2) 50%, transparent);
+}

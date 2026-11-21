@@ -213,3 +213,21 @@ export function nextVisitOfDay(list: Visit[], now: string): string | null {
   const nowMin = toMin(now);
   return planned.find((v) => toMin(v.start!) + (v.durationMin || 60) > nowMin)?.id ?? null;
 }
+
+/**
+ * Kolejność zabiegów dnia: zabieg dostaje numer w dniu (1, 2, 3… po godzinie), np. „2 z 5”. Odwołane się nie liczą.
+ * Zwraca mapę: id zabiegu → { n, of }.
+ */
+export function dayPositions(list: Visit[]): Map<string, { n: number; of: number }> {
+  const byDay = new Map<string, Visit[]>();
+  for (const v of list) {
+    if (v.deletedAt || !v.start || v.status === 'odwolany') continue;
+    const day = v.start.slice(0, 10);
+    byDay.set(day, [...(byDay.get(day) ?? []), v]);
+  }
+  const out = new Map<string, { n: number; of: number }>();
+  for (const day of byDay.values()) {
+    day.sort((a, b) => a.start!.localeCompare(b.start!) || a.id.localeCompare(b.id)).forEach((v, i) => out.set(v.id, { n: i + 1, of: day.length }));
+  }
+  return out;
+}

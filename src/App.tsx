@@ -21,6 +21,7 @@ import { ChatButton, ChatPage, NotificationBell, NotificationsPage } from './fea
 import { VisitPage } from './features/visit';
 import { RegionPage } from './features/regions';
 import { PastOrderPage } from './features/past-order';
+import { ClientPage } from './features/client';
 import { FeedbackProvider } from './ui/feedback';
 import { PullToRefresh } from './ui/pull-refresh';
 import { Icon, type IconName } from './ui/icons';
@@ -32,7 +33,7 @@ const CalendarPage = lazy(() => import('./features/calendar'));
 const TABS: Array<{ to: string; label: string; icon: IconName; end?: boolean; also?: string[] }> = [
   { to: '/', label: 'Pulpit', icon: 'home', end: true },
   { to: '/kalendarz', label: 'Kalendarz', icon: 'calendar' },
-  { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard', also: ['/zabieg'] },
+  { to: '/zlecenia', label: 'Zlecenia', icon: 'clipboard', also: ['/zabieg', '/klient'] },
   { to: '/raporty', label: 'Raporty', icon: 'chart' },
   { to: '/wiecej', label: 'Więcej', icon: 'menu', also: ['/koszty', '/kilometry', '/oddzialy', '/ustawienia', '/kopie', '/kosz', '/konto', '/czat', '/powiadomienia', '/archiwum', '/region'] },
 ];
@@ -133,6 +134,7 @@ function AppRoutes() {
       <Route path="/zlecenia/:id" element={<OrderDetailPage />} />
       <Route path="/zlecenia/:id/edycja" element={<OrderEditPage />} />
       <Route path="/zabieg/:id" element={<VisitPage />} />
+      <Route path="/klient/:key" element={<ClientPage />} />
       <Route path="/raporty" element={<ReportsPage />} />
       <Route path="/koszty" element={<CostsPage />} />
       <Route path="/wizytowka" element={<CardPage />} />

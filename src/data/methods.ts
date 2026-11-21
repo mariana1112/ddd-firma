@@ -88,6 +88,7 @@ export const METHOD_RECOMMENDATIONS: Record<TreatmentMethod, string[]> = {
 
 const PEST_RECOMMENDATIONS: Partial<Record<PestCategory, string[]>> = {
   pluskwy: [LAUNDRY],
+  pchly: [LAUNDRY],
 };
 
 /** Obserwacja z raportem jest zawsze w podsumowaniu (osobny wiersz), więc nie trzeba jej zaznaczać. */

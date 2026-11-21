@@ -346,6 +346,23 @@ export async function lastOdometer(ownerId: string | null, vehicle = ''): Promis
   return all.reduce((max, t) => Math.max(max, t.odometerEnd), 0);
 }
 
+/**
+ * Licznik wokół wybranego dnia: stan po ostatnim przejeździe przed tym dniem i stan przed pierwszym po nim. Pozwala
+ * dopisać przejazd z dawnego dnia (np. 11. przy liczniku 5555, gdy dziś jest 6666): trafia na swoje miejsce w ewidencji.
+ */
+export async function odometerAround(ownerId: string | null, vehicle: string, date: string): Promise<{ before: number | null; after: number | null }> {
+  const plate = normalizePlate(vehicle);
+  const list = await trips.all();
+  let all = list.filter((t) => (plate ? normalizePlate(t.vehicle) === plate : ownedBy(t.ownerId, ownerId, true)));
+  if (all.length === 0 && plate) all = list.filter((t) => !normalizePlate(t.vehicle) && ownedBy(t.ownerId, ownerId, true));
+  const earlier = all.filter((t) => t.date <= date);
+  const later = all.filter((t) => t.date > date);
+  return {
+    before: earlier.length ? earlier.reduce((max, t) => Math.max(max, t.odometerEnd), 0) : null,
+    after: later.length ? later.reduce((min, t) => Math.min(min, t.odometerStart), Number.MAX_SAFE_INTEGER) : null,
+  };
+}
+
 export { tripKm };
 
 export { newId };

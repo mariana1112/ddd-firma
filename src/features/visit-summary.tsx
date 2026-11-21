@@ -44,7 +44,9 @@ export function VisitSummary(props: { order: Order; visit: Visit; vatRate: numbe
         {visit.sealing && visit.sealing.length > 0 && <Info label="Do uszczelnienia">{visit.sealing.join(', ')}</Info>}
         {i.situation && <Info label="Sytuacja">{i.situation}</Info>}
         {i.bites && <Info label="Ugryzienia">{yes(i.bites)}</Info>}
-        {i.seen && <Info label="Owady">{i.seen === 'tak' && i.seenCount ? `Tak, ${i.seenCount}` : yes(i.seen)}</Info>}
+        {i.seenCount ? <Info label="Skala populacji">{i.seenCount}</Info> : i.seen && <Info label="Owady">{yes(i.seen)}</Info>}
+        {i.improvement && <Info label="Widać poprawę">{yes(i.improvement)}</Info>}
+        {i.improvementNote && <Info label="Co jest">{i.improvementNote}</Info>}
         {i.selfTreatment && <Info label="Własne środki">{yes(i.selfTreatment)}</Info>}
         {i.other.trim() && <Info label="Uwagi">{i.other.trim()}</Info>}
         {visit.findings && <Info label="Zastano">{visit.findings}</Info>}

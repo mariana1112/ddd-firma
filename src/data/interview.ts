@@ -8,6 +8,8 @@ export const EMPTY_INTERVIEW: Interview = {
   seenCount: '',
   selfTreatment: '',
   other: '',
+  improvement: '',
+  improvementNote: '',
 };
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
@@ -44,5 +46,7 @@ export function normalizeInterview(raw: unknown): Interview {
     seenCount: legacy ? detail(r.seen) : text(r.seenCount),
     selfTreatment: yesNo(r.selfTreatment),
     other: typeof r.other === 'string' ? r.other : '',
+    improvement: yesNo(r.improvement),
+    improvementNote: text(r.improvementNote),
   };
 }
