@@ -4579,3 +4579,12 @@ a.region-pill {
   padding: 0 0 8px;
   background: color-mix(in srgb, var(--surface-2) 50%, transparent);
 }
+
+/* E-mail do protokołu pod zaznaczonym protokołem */
+.protocol-email {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--primary);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}

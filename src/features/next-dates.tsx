@@ -22,6 +22,9 @@ export function NextDates(props: {
   /** Edytowany zabieg: nie liczy się jako zajęty (inaczej propozycja omija jego własną godzinę). */
   exclude?: string;
   onPick: (date: string, time: string) => void;
+  /** Przekazywane do podglądu tygodnia (powrót, bez wyjścia do innej karty). */
+  backLabel?: string;
+  stay?: boolean;
 }) {
   const days = nextVisitDays(props.after);
   const proposals = useLiveQuery(async () => {
@@ -67,7 +70,7 @@ export function NextDates(props: {
         </div>
       )}
       {/* Tydzień wybranego terminu godzinowo: co już jest umówione, gdzie wpada nowy zabieg. */}
-      <WeekPreview date={props.date || days[0]} time={props.time} durationMin={props.durationMin} exclude={props.exclude} onPick={props.onPick} />
+      <WeekPreview date={props.date || days[0]} time={props.time} durationMin={props.durationMin} exclude={props.exclude} onPick={props.onPick} backLabel={props.backLabel} stay={props.stay} />
     </div>
   );
 }

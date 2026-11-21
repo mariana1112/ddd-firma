@@ -257,7 +257,10 @@ export function Sheet(props: { open: boolean; title: string; onClose: () => void
     <dialog
       ref={ref}
       className="sheet"
-      onClose={props.onClose}
+      // Tylko własne zamknięcie: zamknięcie okna otwartego w tym oknie (np. podglądu) nie zamyka tego okna.
+      onClose={(e) => {
+        if (e.target === ref.current) props.onClose();
+      }}
       onClick={(e) => {
         if (e.target === ref.current) props.onClose();
       }}

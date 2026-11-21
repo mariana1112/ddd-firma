@@ -23,7 +23,17 @@ const monday = (date: string) => addDays(date, -((new Date(`${date}T12:00:00Z`).
  * terminem (pomarańczowa ramka). Dotknięcie zabiegu otwiera jego podgląd (i powrót), dotknięcie pustego miejsca
  * ustawia ten dzień i godzinę.
  */
-export function WeekPreview(props: { date: string; time: string; durationMin: number; exclude?: string; onPick?: (date: string, time: string) => void }) {
+export function WeekPreview(props: {
+  date: string;
+  time: string;
+  durationMin: number;
+  exclude?: string;
+  onPick?: (date: string, time: string) => void;
+  /** Napis przycisku powrotu, np. „Wróć do zakończenia zabiegu I”. */
+  backLabel?: string;
+  /** Bez „Otwórz kartę zabiegu” (np. w trakcie kończenia zabiegu, żeby nie wyjść z zakończenia). */
+  stay?: boolean;
+}) {
   const [peek, setPeek] = useState<{ visit: Visit; order: Order } | null>(null);
   const start = monday(props.date || todayWarsaw());
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
@@ -117,11 +127,13 @@ export function WeekPreview(props: { date: string; time: string; durationMin: nu
             {peek.order.phones[0]?.number && <Info label="Telefon">{withCountryCode(peek.order.phones[0].number)}</Info>}
             {peek.order.description.trim() && <Info label="Opis">{peek.order.description.trim()}</Info>}
             <button type="button" className="btn btn-primary btn-block" onClick={() => setPeek(null)}>
-              <Icon name="back" /> Wróć do umawiania
+              <Icon name="back" /> {props.backLabel ?? 'Wróć do umawiania'}
             </button>
-            <Link className="btn btn-block" to={`/zabieg/${peek.visit.id}`} onClick={() => setPeek(null)}>
-              Otwórz kartę zabiegu
-            </Link>
+            {!props.stay && (
+              <Link className="btn btn-block" to={`/zabieg/${peek.visit.id}`} onClick={() => setPeek(null)}>
+                Otwórz kartę zabiegu
+              </Link>
+            )}
           </div>
         )}
       </Sheet>

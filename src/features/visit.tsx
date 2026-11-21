@@ -262,7 +262,7 @@ function PayCard({ visit, order, onOpen }: { visit: Visit; order: Order; onOpen:
   );
 }
 
-function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings; alert: boolean; onClose: () => void }) {
+function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings; alert: boolean; onClose: () => void; onSaved?: () => void }) {
   const { visit, order, company } = props;
   const { run, toast } = useFeedback();
   const agreed = visitPrice(visit, order);
@@ -283,6 +283,7 @@ function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings;
       await visits.update(visit.id, { payMethod: method, amount: value });
       toast(`Płatność zapisana: ${formatPln(value)}, ${payWord(method)}`);
       props.onClose();
+      props.onSaved?.();
     });
   return (
     <div className="form">
@@ -328,6 +329,7 @@ function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings;
         <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
         Protokół z zabiegu
       </label>
+      {order.protocol && order.invoice === 'brak' && <ProtocolEmail order={order} />}
       <div className="choice">
         {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([v, label]) => (
           <button key={v} type="button" className={order.invoice === v ? 'choice-item active' : 'choice-item'} onClick={() => void run(() => orders.update(order.id, { invoice: v }))}>
@@ -339,6 +341,27 @@ function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings;
       <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void save()}>
         <Icon name="check" /> Zapisz płatność
       </button>
+    </div>
+  );
+}
+
+/** E-mail do protokołu: widoczny zawsze po zaznaczeniu protokołu, żeby wpisać albo sprawdzić adres. */
+function ProtocolEmail({ order }: { order: Order }) {
+  const { run } = useFeedback();
+  const value = order.email.trim();
+  const invalid = value && !/^\S+@\S+\.\S+$/.test(value) ? 'Adres e-mail jest niepoprawny. Sprawdź go z klientem.' : undefined;
+  return (
+    <div className="protocol-email">
+      <OrderField
+        label="E-mail do protokołu"
+        value={order.email}
+        inputMode="email"
+        placeholder="np. jan.kowalski@gmail.com"
+        missing={!value}
+        error={invalid}
+        onSave={(email) => void run(() => orders.update(order.id, { email }))}
+      />
+      {value && !invalid && <p className="field-hint">Sprawdź z klientem: {value}</p>}
     </div>
   );
 }
@@ -586,6 +609,8 @@ function FinishSheet(props: {
         {mode === 'umowiony' && (
           <NextDates
             after={doneOn}
+            backLabel={`Wróć do zakończenia zabiegu ${roman(visit.seq)}`}
+            stay
             durationMin={visit.durationMin || 60}
             date={pickedDate}
             time={time}
@@ -677,6 +702,7 @@ export function VisitPage() {
   // Arkusz płatności („Klient płaci od razu?”) i szybkie zakończenie z opisem na później.
   const [paying, setPaying] = useState(false);
   const [finishLater, setFinishLater] = useState(false);
+  const [resumeFinish, setResumeFinish] = useState(false);
   const [rescheduling, setRescheduling] = useState(false);
   const [leavingStarted, setLeavingStarted] = useState(false);
   const [planningNext, setPlanningNext] = useState(false);
@@ -760,7 +786,10 @@ export function VisitPage() {
     if (lacking.length) {
       setInvoiceAlert(true);
       toast(`Do faktury brakuje: ${lacking.map((f) => INVOICE_FIELD_LABEL[f]).join(', ')}`, { tone: 'error' });
-      if (later) setPaying(true);
+      if (later) {
+        setResumeFinish(true);
+        setPaying(true);
+      }
       else scrollToPay();
       return;
     }
@@ -774,7 +803,10 @@ export function VisitPage() {
         cancelLabel: 'Uzupełnię teraz',
       });
       if (!ok) {
-        if (later) setPaying(true);
+        if (later) {
+        setResumeFinish(true);
+        setPaying(true);
+      }
         else scrollToPay();
         return;
       }
@@ -1222,6 +1254,7 @@ export function VisitPage() {
                 <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
                 Klient chce protokół z zabiegu
               </label>
+              {order.protocol && order.invoice === 'brak' && <ProtocolEmail order={order} />}
             </Group>
 
             <div className={order.pink ? 'pink-box active' : 'pink-box'}>
@@ -1406,7 +1439,21 @@ export function VisitPage() {
       </Sheet>
 
       <Sheet open={paying} title={`Płatność · ${visitCode(order, visit.seq)}`} onClose={() => setPaying(false)}>
-        {paying && <PaySheet visit={visit} order={order} company={company} alert={invoiceAlert} onClose={() => setPaying(false)} />}
+        {paying && (
+          <PaySheet
+            visit={visit}
+            order={order}
+            company={company}
+            alert={invoiceAlert}
+            onClose={() => setPaying(false)}
+            onSaved={() => {
+              if (!resumeFinish) return;
+              setResumeFinish(false);
+              // Z powrotem do „Zakończenia zabiegu” (sprawdza jeszcze dane do faktury).
+              setTimeout(() => void requestFinish(true), 200);
+            }}
+          />
+        )}
       </Sheet>
 
       {finishing && (
