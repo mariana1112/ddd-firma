@@ -981,7 +981,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           </Field>
           {/* Rzadziej potrzebne: adres z pozycji telefonu i link do miejsca w Google Maps (zwinięte; rozwija się przy błędzie linku). */}
           <details className="more-actions address-more" open={Boolean(errors.mapsLink) || undefined}>
-            <summary>Więcej: moja pozycja, miejsce w Google Maps</summary>
+            <summary>Więcej</summary>
             <div className="address-more-body">
               <HerePosition set={set} />
               <MapsLinkField state={s} set={set} error={errors.mapsLink} />
