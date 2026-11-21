@@ -262,7 +262,18 @@ function PayCard({ visit, order, onOpen }: { visit: Visit; order: Order; onOpen:
   );
 }
 
-function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings; alert: boolean; onClose: () => void; onSaved?: () => void }) {
+function PaySheet(props: {
+  visit: Visit;
+  order: Order;
+  company: CompanySettings;
+  alert: boolean;
+  onClose: () => void;
+  onSaved?: () => void;
+  /** Kolejny zabieg (jeśli już umówiony, zamiast przycisku jest jego termin). */
+  later?: Visit | null;
+  /** „Umów od razu kolejny zabieg” (tylko w trakcie zabiegu). */
+  onPlanNext?: () => void;
+}) {
   const { visit, order, company } = props;
   const { run, toast } = useFeedback();
   const agreed = visitPrice(visit, order);
@@ -338,6 +349,19 @@ function PaySheet(props: { visit: Visit; order: Order; company: CompanySettings;
         ))}
       </div>
       <InvoiceData order={order} alert={props.alert} onSave={(patch) => void run(() => orders.update(order.id, patch))} />
+      {props.onPlanNext &&
+        (props.later?.start ? (
+          <p className="notice notice-info">
+            <Icon name="calendar" />
+            <span>
+              Kolejny zabieg {roman(props.later.seq)} umówiony: <strong>{formatTerm(props.later.start)}</strong>
+            </span>
+          </p>
+        ) : (
+          <button type="button" className="btn btn-block" onClick={props.onPlanNext}>
+            <Icon name="calendar" /> Umów od razu kolejny zabieg
+          </button>
+        ))}
       <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void save()}>
         <Icon name="check" /> Zapisz płatność
       </button>
@@ -1343,17 +1367,13 @@ export function VisitPage() {
 
             {visit.status === 'w_trakcie' ? (
               <>
-                {later?.start ? (
+                {later?.start && (
                   <p className="notice notice-info">
                     <Icon name="calendar" />
                     <span>
                       Kolejny zabieg {roman(later.seq)} umówiony: <strong>{formatTerm(later.start)}</strong>
                     </span>
                   </p>
-                ) : (
-                  <button type="button" className="btn btn-block" onClick={() => setPlanningNext(true)}>
-                    <Icon name="calendar" /> Umów od razu kolejny zabieg
-                  </button>
                 )}
                 <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => void requestFinish()}>
                   <Icon name="check" /> Zakończ zabieg
@@ -1445,6 +1465,8 @@ export function VisitPage() {
             order={order}
             company={company}
             alert={invoiceAlert}
+            later={later}
+            onPlanNext={visit.status === 'w_trakcie' ? () => setPlanningNext(true) : undefined}
             onClose={() => setPaying(false)}
             onSaved={() => {
               if (!resumeFinish) return;
