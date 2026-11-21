@@ -10,7 +10,7 @@ describe('konta od admina', () => {
     expect(await decryptFields(fromAccount, 'orders', 'r1', sealed)).toEqual({ street: 'Piotrkowska' });
     await expect(rewrapDataKey('zle-haslo-firmy-xx', wrapped, 'x')).rejects.toThrow('Nieprawidłowe hasło firmy');
     await expect(unwrapDataKey('InneHasloTymczas', accountKey)).rejects.toThrow();
-  });
+  }, 20000); // wyprowadzanie kluczy (PBKDF2) przy równoległych testach trwa dłużej niż domyślne 5 s
 
   it('hasło konta dla serwera jest stałe dla hasła tymczasowego i nie jest nim samym', async () => {
     const { accountPassword, newTempLogin, newTempPassword, tempEmail } = await import('./crypto');
@@ -50,5 +50,5 @@ describe('kod weryfikacyjny', () => {
     const fromCode = await unwrapDataKey(codeSecretPassphrase(code.id, code.secret), accountKey);
     expect(await inviteProof(fromCode, code.id)).toBe(await inviteProof(key, code.id));
     await expect(unwrapDataKey(codeSecretPassphrase(code.id, 'AAAAAAAA'), accountKey)).rejects.toThrow();
-  });
+  }, 20000);
 });

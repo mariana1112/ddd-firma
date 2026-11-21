@@ -263,6 +263,16 @@ function PayCard({ visit, order, onOpen }: { visit: Visit; order: Order; onOpen:
   );
 }
 
+/**
+ * Kwoty do szybkiego wyboru: dolna i górna granica ustalonej ceny (widełki z rozmowy). Przy fakturze VAT klient płaci
+ * brutto, więc kwoty są z VAT (+23%). W groszach, bez powtórzeń.
+ */
+function agreedAmounts(visit: Visit, order: Order): number[] {
+  const agreed = visitPrice(visit, order);
+  const vat = order.invoice === 'vat';
+  return [...new Set([agreed.priceMin, agreed.priceMax].filter((x): x is number => typeof x === 'number' && x > 0).map((x) => (vat ? Math.round((x * (100 + VAT_RATE)) / 100) : x)))];
+}
+
 function PaySheet(props: {
   visit: Visit;
   order: Order;
@@ -277,10 +287,9 @@ function PaySheet(props: {
 }) {
   const { visit, order, company } = props;
   const { run, toast } = useFeedback();
-  const agreed = visitPrice(visit, order);
   // Klient płaci brutto: przy fakturze VAT podpowiedzi to ustalona cena z VAT.
   const vat = order.invoice === 'vat';
-  const options = [...new Set([agreed.priceMin, agreed.priceMax].filter((x): x is number => typeof x === 'number' && x > 0).map((x) => (vat ? Math.round((x * (100 + VAT_RATE)) / 100) : x)))];
+  const options = agreedAmounts(visit, order);
   const toText = (grosze: number) => moneyToInput(grosze).replace(/,00$/, '');
   // Przy widełkach od razu górna granica (najczęściej tyle klient płaci); kwotę można zmienić albo wybrać dolną.
   const [text, setText] = useState(() => (visit.amount ? toText(visit.amount) : options.length ? toText(Math.max(...options)) : ''));
@@ -395,26 +404,49 @@ function ProtocolEmail({ order }: { order: Order }) {
  * Wybór kilku pozycji. Zaznaczenie zmienia się od razu na ekranie, a zapis idzie w tle: szybkie stukanie jedno po
  * drugim nie gubi zaznaczeń (wcześniej każde stuknięcie liczyło się od stanu sprzed zapisu poprzedniego).
  */
+/** Przez tyle ms od ostatniego stuknięcia w opcję stan z bazy nie nadpisuje zaznaczeń na ekranie. */
+const CHIPS_GRACE_MS = 1500;
+
 function ToggleChips(props: { options: string[]; selected: string[]; onChange: (selected: string[]) => unknown; addLabel: string }) {
   const [custom, setCustom] = useState('');
   const [selected, setSelected] = useState(props.selected);
   const pending = useRef(0);
   const latest = useRef(props.selected);
-  // Stan z bazy przyjmujemy dopiero, gdy nic nie czeka na zapis (inaczej starszy odczyt cofnąłby świeże stuknięcie).
+  const lastTap = useRef(0);
+  const fromDbRef = useRef(props.selected);
+  const syncTimer = useRef<number | undefined>(undefined);
+  // Stan z bazy przyjmujemy dopiero, gdy nic nie czeka na zapis i od ostatniego stuknięcia minęła chwila. Przy szybkim
+  // stukaniu baza potrafi oddać odczyt sprzed ostatniego zapisu już po jego zakończeniu, a taki odczyt cofnąłby
+  // świeże zaznaczenie (i następne stuknięcie zapisałoby listę bez niego).
   const fromDb = props.selected.join('\u0000');
+  const adopt = () => {
+    if (pending.current > 0 || Date.now() - lastTap.current < CHIPS_GRACE_MS) return false;
+    latest.current = fromDbRef.current;
+    setSelected(fromDbRef.current);
+    return true;
+  };
   useEffect(() => {
-    if (pending.current === 0) {
-      latest.current = props.selected;
-      setSelected(props.selected);
-    }
+    fromDbRef.current = props.selected;
+    adopt();
   }, [fromDb]);
+  useEffect(() => () => clearTimeout(syncTimer.current), []);
+  /** Po przerwie w stukaniu: ostatni stan z bazy (np. zmiana z innego telefonu), gdy wszystko już zapisane. */
+  const syncLater = () => {
+    clearTimeout(syncTimer.current);
+    const retry = () => {
+      if (!adopt()) syncTimer.current = window.setTimeout(retry, 300);
+    };
+    syncTimer.current = window.setTimeout(retry, CHIPS_GRACE_MS + 50);
+  };
   const change = (next: string[]) => {
     latest.current = next;
+    lastTap.current = Date.now();
     setSelected(next);
     pending.current += 1;
     void Promise.resolve(props.onChange(next)).finally(() => {
       pending.current -= 1;
     });
+    syncLater();
   };
   const all = [...props.options, ...selected.filter((s) => !props.options.includes(s))];
   const toggle = (item: string) => {
@@ -1419,7 +1451,7 @@ export function VisitPage() {
                   <CopyRow label="BLIK na telefon" value={company.blikPhone.trim()} copyValue={company.blikPhone.replace(/\s/g, '')} />
                 </div>
               )}
-              <AmountField value={visit.amount} missing={payAlert && !visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
+              <AmountField value={visit.amount} options={agreedAmounts(visit, order)} vat={order.invoice === 'vat'} missing={payAlert && !visit.amount} hint={price ? (price.gross ? `Ustalona cena: ${price.net}, ${price.gross}` : `Ustalona cena: ${price.net}`) : undefined} onSave={(amount) => save({ amount })} />
               <div className="choice">
                 {(Object.entries(INVOICES) as Array<[InvoiceType, string]>).map(([value, label]) => (
                   <button
@@ -1613,7 +1645,7 @@ function EditTerms(props: { initial: VisitTerms; invoice: Order['invoice']; onSa
 /** Najwyższa kwota jednego zabiegu (w groszach): 30 000 zł. Więcej to prawie na pewno pomyłka. */
 const MAX_VISIT_AMOUNT = 3_000_000;
 
-function AmountField(props: { value: number | null; hint?: string; missing?: boolean; onSave: (value: number | null) => void }) {
+function AmountField(props: { value: number | null; hint?: string; missing?: boolean; onSave: (value: number | null) => void; options?: number[]; vat?: boolean }) {
   const [text, setText] = useState(props.value !== null ? moneyToInput(props.value) : '');
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   // Nierealna kwota (np. wklejony numer telefonu) nie zapisuje się: zepsułaby raporty firmy.
@@ -1626,25 +1658,47 @@ function AmountField(props: { value: number | null; hint?: string; missing?: boo
     if (value !== props.value) props.onSave(value);
   };
   return (
-    <Field
-      label="Kwota pobrana (zł)"
-      error={invalid ? (tooBig(text) ? 'Kwota wygląda na pomyłkę (np. numer telefonu). Sprawdź.' : 'Podaj kwotę, np. 350') : props.missing && !text.trim() ? 'Wpisz kwotę pobraną od klienta' : undefined}
-      hint={props.hint}
-    >
-      <input
-        inputMode="decimal"
-        autoComplete="off"
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          // Zapis po chwili bez pisania, żeby „Zakończ zabieg” widział kwotę bez wychodzenia z pola.
-          const raw = e.target.value;
-          clearTimeout(timer.current);
-          timer.current = setTimeout(() => commit(raw), 500);
-        }}
-        onBlur={() => commit(text)}
-      />
-    </Field>
+    <>
+      <Field
+        label="Kwota pobrana (zł)"
+        error={invalid ? (tooBig(text) ? 'Kwota wygląda na pomyłkę (np. numer telefonu). Sprawdź.' : 'Podaj kwotę, np. 350') : props.missing && !text.trim() ? 'Wpisz kwotę pobraną od klienta' : undefined}
+        hint={props.hint}
+      >
+        <input
+          inputMode="decimal"
+          autoComplete="off"
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            // Zapis po chwili bez pisania, żeby „Zakończ zabieg” widział kwotę bez wychodzenia z pola.
+            const raw = e.target.value;
+            clearTimeout(timer.current);
+            timer.current = setTimeout(() => commit(raw), 500);
+          }}
+          onBlur={() => commit(text)}
+        />
+      </Field>
+      {/* Jedno stuknięcie: kwota z widełek ustalonych przy umawianiu (przy fakturze VAT z VAT-em). */}
+      {props.options && props.options.length > 0 && (
+        <div className="chips amount-chips" role="group" aria-label="Ustalona cena">
+          {props.options.map((o) => (
+            <button
+              key={o}
+              type="button"
+              className={parseMoney(text) === o ? 'chip active' : 'chip'}
+              onClick={() => {
+                const raw = moneyToInput(o);
+                setText(raw);
+                commit(raw);
+              }}
+            >
+              {formatPln(o)}
+              {props.vat ? ' brutto' : ''}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
