@@ -22,7 +22,9 @@ alter table public.record_grants enable row level security;
 create policy "Admin i technik widzą swoje udostępnienia" on public.record_grants
   for select to authenticated
   using (user_id = (select auth.uid()) or private.has_role(org_id, array['owner']));
-revoke insert, update, delete on public.record_grants from anon, authenticated;
+-- Czytanie tylko przez zasadę wyżej (technik: własne udostępnienia); zapis wyłącznie przez set_record_access.
+revoke all on public.record_grants from anon, authenticated;
+grant select on public.record_grants to authenticated;
 
 -- Czy zalogowane konto ma udostępniony ten rekord.
 create function private.has_record_grant(p_org uuid, p_tbl text, p_id text)
