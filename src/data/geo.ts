@@ -25,9 +25,9 @@ export function haversineKm(a: LatLng, b: LatLng): number {
   return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
 
-/** Szacowany czas przejazdu: drogi są ok. 45% dłuższe niż linia prosta, średnio 45 km/h. */
+/** Szacowany czas przejazdu: drogi są ok. 30% dłuższe niż linia prosta, średnio 45 km/h. */
 export function travelMinutes(km: number): number {
-  return Math.max(10, Math.round(((km * 1.45) / 45) * 60));
+  return Math.max(10, Math.round(((km * 1.3) / 45) * 60));
 }
 
 const geoKey = (city: string, postalCode: string) => `geo:${normalizeForSearch(`${postalCode.trim()} ${city.trim()}`)}`;
