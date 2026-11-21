@@ -39,6 +39,8 @@ interface FormState {
   date: string;
   time: string;
   duration: string;
+  /** Klient poda adres później: zlecenie zapisuje się bez adresu, a aplikacja przypomina o uzupełnieniu. */
+  addressLater: boolean;
   second: 'technik' | 'umowiony' | 'brak';
   /** Co pryskamy przy pierwszym zabiegu; drugi dostaje to samo, do zmiany przed zabiegiem. */
   scopeKind: ScopeKind;
@@ -70,6 +72,7 @@ interface FormState {
 }
 
 const EMPTY: FormState = {
+  addressLater: false,
   building: 'blok',
   street: '',
   houseNo: '',
@@ -149,6 +152,8 @@ function saveDraft(state: FormState | null) {
 function fromOrder(order: Order): FormState {
   return {
     ...EMPTY,
+    // Zlecenie bez adresu: w edycji zaznaczone „Klient poda adres później”, żeby dało się zapisać inne zmiany.
+    addressLater: !order.street.trim() || !order.city.trim(),
     building: order.building,
     street: order.street,
     houseNo: order.houseNo,
@@ -239,7 +244,7 @@ type Errors = Partial<Record<keyof FormState, string>>;
  */
 function missing(step: StepId, s: FormState): Array<[keyof FormState, string]> {
   const m: Array<[keyof FormState, string]> = [];
-  if (step === 'adres' && s.building === 'blok' && !s.flatNo.trim()) m.push(['flatNo', 'numer lokalu']);
+  if (step === 'adres' && !s.addressLater && s.building === 'blok' && !s.flatNo.trim()) m.push(['flatNo', 'numer lokalu']);
   return m;
 }
 
@@ -255,10 +260,12 @@ const needsDocuments = (s: Pick<FormState, 'invoice' | 'protocol'>) => s.invoice
  */
 function validate(step: StepId, s: FormState): Errors {
   const e: Errors = {};
-  if (step === 'adres') {
+  if (step === 'adres' && !s.addressLater) {
     if (!s.street.trim()) e.street = 'Podaj ulicę';
     if (!s.houseNo.trim()) e.houseNo = 'Podaj numer';
     if (!s.city.trim()) e.city = 'Podaj miejscowość';
+  }
+  if (step === 'adres') {
     if (s.postalCode.trim() && !/^\d{2}-\d{3}$/.test(s.postalCode.trim())) e.postalCode = 'Kod w formacie 00-000';
     if (s.mapsLink.trim() && !isMapsLink(s.mapsLink)) e.mapsLink = 'Wklej link z Google Maps (Udostępnij → Kopiuj link)';
   }
@@ -818,6 +825,14 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
     case 'adres':
       return (
         <div className="form">
+          {/* Termin rezerwujemy od razu, a adres klient poda później: zlecenie czeka w „Pilnych”. */}
+          <label className={s.addressLater ? 'check check-later active' : 'check check-later'}>
+            <input type="checkbox" checked={s.addressLater} onChange={(e) => set({ addressLater: e.target.checked })} />
+            <span>
+              <strong>Klient poda adres później</strong>
+              <span className="field-hint">Zlecenie zapisze się bez adresu i będzie w „Pilnych”, dopóki go nie uzupełnisz.</span>
+            </span>
+          </label>
           <HerePosition set={set} />
           <Choice
             label="Rodzaj budynku"
@@ -1005,7 +1020,11 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
       const draft = toDraft(s);
       return (
         <Group>
-          <Info label="Adres">{`${orderAddress(draft)}${draft.postalCode ? `, ${draft.postalCode}` : ''} (${BUILDINGS[draft.building].toLowerCase()})`}</Info>
+          <Info label="Adres">
+            {draft.street.trim() || draft.city.trim()
+              ? `${orderAddress(draft)}${draft.postalCode ? `, ${draft.postalCode}` : ''} (${BUILDINGS[draft.building].toLowerCase()})`
+              : 'Klient poda adres później (przypomnienie w „Pilnych”)'}
+          </Info>
           <Info label="Co robimy">{s.methods.map((m) => (m === 'inne' ? s.methodOther.trim() || METHOD_LABEL[m] : METHOD_LABEL[m])).join(', ')}</Info>
           <Info label="Szkodnik">{draft.pest === 'inne' ? draft.pestOther : PESTS[draft.pest]}</Info>
           {draft.description.trim() && <Info label="Opis">{draft.description.trim()}</Info>}

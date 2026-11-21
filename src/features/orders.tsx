@@ -271,6 +271,7 @@ export function VisitListRow({ order, visit, today }: { order: Order; visit: Vis
       meta={
         <>
           {date ? <strong className="row-when">{formatDate(date)}{visit.start && visit.status !== 'wykonany' ? `, godz. ${visit.start.slice(11, 16)}` : ''}</strong> : 'termin do umówienia'}
+          {visit.assignedName && visit.status === 'zaplanowany' ? ` · dla: ${visit.assignedName.split(' ')[0]}` : ''}
           <span className="row-tags">
             {urgent && urgent !== 'w_trakcie' && <Badge tone="danger">{URGENT_LABEL[urgent]}</Badge>}
             {visit.payMethod && <PayBadge method={visit.payMethod} />}

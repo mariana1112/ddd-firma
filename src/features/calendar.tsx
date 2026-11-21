@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { orders, visits } from '../data/repo';
 import { pestName } from '../data/texts';
 import { methodNames } from '../data/methods';
-import { URGENT_LABEL, visitUrgent } from '../data/order-list';
+import { nextVisitOfDay, URGENT_LABEL, visitUrgent } from '../data/order-list';
 import type { VisitStatus } from '../data/types';
 import { addDays, addMinutes, formatTerm, nowWarsaw, todayWarsaw } from '../lib/dates';
 import { getProfile } from '../data/settings';
@@ -48,7 +48,7 @@ interface AgendaEvent {
   id: string;
   start: string;
   color: string;
-  extendedProps: { number: string; street: string; city: string; what: string; durationMin: number; pink: boolean; pinkNote: string; urgent: string | null; problem: string | null };
+  extendedProps: { number: string; street: string; city: string; what: string; durationMin: number; pink: boolean; pinkNote: string; urgent: string | null; problem: string | null; next?: boolean; assigned?: string | null };
 }
 
 /**
@@ -101,7 +101,7 @@ function WeekAgenda(props: { events: AgendaEvent[]; custom: CalendarEvent[]; me:
               const x = e.extendedProps;
               const dur = x.durationMin >= 60 ? `${String(x.durationMin / 60).replace('.', ',')} h` : `${x.durationMin} min`;
               return (
-                <button key={e.id} type="button" className="agenda-row" onClick={() => props.onOpen(e.id)}>
+                <button key={e.id} type="button" className={x.next ? 'agenda-row agenda-next' : 'agenda-row'} onClick={() => props.onOpen(e.id)}>
                   <span className="agenda-time">
                     {e.start.slice(11, 16)}
                     <small>{dur}</small>
@@ -109,10 +109,12 @@ function WeekAgenda(props: { events: AgendaEvent[]; custom: CalendarEvent[]; me:
                   <span className="agenda-bar" style={{ background: e.color }} />
                   <span className="agenda-text">
                     <span>
-                      <b>{x.number}</b> · {x.street || x.city}
+                      <b>{x.number}</b> · {x.street || x.city || 'brak adresu'}
+                      {x.assigned ? <span className="agenda-assigned"> · {x.assigned.split(' ')[0]}</span> : null}
                     </span>
-                    {(x.pink || x.urgent || x.problem !== null) && (
+                    {(x.pink || x.urgent || x.problem !== null || x.next) && (
                       <span className="agenda-tags">
+                        {x.next && <span className="next-badge">Następny</span>}
                         {x.pink && <span className="agenda-pink">PINK</span>}
                         {x.urgent && <span className="agenda-tag agenda-urgent">{x.urgent}</span>}
                         {x.problem !== null && <span className="agenda-tag agenda-problem">Księgowa</span>}
@@ -238,6 +240,8 @@ export default function CalendarPage() {
     if (!rows) return [];
     const orderById = new Map(rows.orders.map((o) => [o.id, o]));
     const today = todayWarsaw();
+    // Następny zabieg dnia: pomarańczowe wyróżnienie i znaczek „Następny”.
+    const nextId = nextVisitOfDay(rows.visits, nowWarsaw());
     return rows.visits
       .filter((v) => v.start && v.status !== 'odwolany' && orderById.has(v.orderId))
       .map((v) => {
@@ -267,7 +271,7 @@ export default function CalendarPage() {
           color: STATUS_COLOR[v.status],
           textColor: v.status === 'zaplanowany' ? '#ffffff' : 'var(--surface)',
           editable: v.status === 'zaplanowany',
-          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, pinkNote: order.pinkNote ?? '', urgent, problem, place, city: order.city, what, phone, short, street, status: v.status, durationMin: v.durationMin },
+          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, next: v.id === nextId, assigned: v.status === 'zaplanowany' ? (v.assignedName ?? null) : null, pinkNote: order.pinkNote ?? '', urgent, problem, place, city: order.city, what, phone, short, street, status: v.status, durationMin: v.durationMin },
         };
       });
   }, [rows]);
@@ -392,8 +396,9 @@ export default function CalendarPage() {
           // cztery cyfry, a numer kolejnego zabiegu (II, III) jest w osobnej, małej linii.
           eventDisplay="block"
           eventClass={(arg) => {
-            const x = arg.event.extendedProps as { pink?: boolean; custom?: boolean };
-            return x.custom ? 'cal-event cal-event-custom' : x.pink ? 'cal-event cal-event-pink' : 'cal-event';
+            const x = arg.event.extendedProps as { pink?: boolean; custom?: boolean; next?: boolean };
+            if (x.custom) return 'cal-event cal-event-custom';
+            return `cal-event${x.pink ? ' cal-event-pink' : ''}${x.next ? ' cal-event-next' : ''}`;
           }}
           dayCellClass="cal-day"
           views={{
@@ -432,6 +437,17 @@ export default function CalendarPage() {
           moreLinkContent={(arg) => `+${arg.num}`}
           moreLinkHint={(num) => `Jeszcze ${num}: otwórz dzień`}
           eventContent={(arg) => {
+            // Przeciąganie zabiegu: kopia pod palcem pokazuje dużą godzinę (w miesiącu dzień), na którą trafi.
+            if (arg.isMirror && arg.event.start) {
+              const at = stripZone(arg.event.start);
+              const label = arg.view.type === 'dayGridMonth' ? `${at.slice(8, 10)}.${at.slice(5, 7)}` : at.slice(11, 16);
+              return (
+                <span className="cal-drag">
+                  <b>{label}</b>
+                  <span>{(arg.event.extendedProps as { digits?: string }).digits ?? arg.event.title}</span>
+                </span>
+              );
+            }
             if ((arg.event.extendedProps as { custom?: boolean }).custom) {
               const time = arg.event.allDay || !arg.event.start ? '' : stripZone(arg.event.start).slice(11, 16);
               return arg.view.type === 'dayGridMonth' || arg.event.allDay ? (

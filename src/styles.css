@@ -4194,3 +4194,334 @@ a.region-pill {
     min-height: 88px;
   }
 }
+
+/* Dwa telefony klienta: drugi numer pod pierwszym, wybór numeru przy dzwonieniu */
+.client-phone-label {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: 3px;
+}
+
+.client-phone-2 {
+  font-size: 1rem;
+  opacity: 0.95;
+}
+
+.call-choice {
+  justify-content: flex-start;
+  gap: 12px;
+  text-align: left;
+}
+
+.call-choice > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.call-choice small {
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.info-phone {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.info-phone-label {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Następny zabieg dnia: pomarańczowe wyróżnienie */
+.next-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #f79009;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.row-next {
+  box-shadow: inset 4px 0 0 #f79009;
+  background: color-mix(in srgb, #f79009 10%, transparent);
+}
+
+.agenda-next {
+  background: color-mix(in srgb, #f79009 10%, transparent);
+  box-shadow: inset 4px 0 0 #f79009;
+  padding-left: 8px;
+}
+
+.calendar .cal-event-next {
+  outline: 2.5px solid #f79009;
+  outline-offset: 1px;
+}
+
+/* Kreator: „Klient poda adres później” */
+.check-later {
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
+
+.check-later.active {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+}
+
+.check-later > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Kalendarz: przeciągany zabieg pokazuje godzinę, na którą trafi */
+.calendar .cal-drag {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  overflow: visible;
+  padding: 2px 4px;
+  line-height: 1.1;
+}
+
+.calendar .cal-drag b {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #101828;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+
+.calendar .cal-drag > span {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* Podgląd tygodnia przy umawianiu terminu */
+.week-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wp-grid {
+  display: grid;
+  grid-template-columns: 22px repeat(7, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.wp-hours {
+  display: flex;
+  flex-direction: column;
+}
+
+.wp-hour {
+  box-sizing: border-box;
+  padding-right: 3px;
+  color: var(--muted);
+  font-size: 0.6rem;
+  text-align: right;
+  transform: translateY(-5px);
+}
+
+.wp-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 34px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+
+.wp-head b {
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.wp-head-picked b {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #f79009;
+  color: #fff;
+}
+
+.wp-col {
+  min-width: 0;
+  border-left: 1px solid var(--line);
+}
+
+.wp-body {
+  position: relative;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 23px, var(--line) 23px, var(--line) 24px);
+  cursor: pointer;
+}
+
+.wp-block {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 2px;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.wp-visit {
+  background: var(--planned);
+  cursor: pointer;
+}
+
+.wp-wykonany {
+  background: var(--ok);
+}
+
+.wp-w_trakcie {
+  background: var(--warn);
+}
+
+.wp-event {
+  opacity: 0.85;
+}
+
+.wp-picked {
+  z-index: 2;
+  border: 2px dashed #f79009;
+  background: color-mix(in srgb, #f79009 30%, transparent);
+  color: var(--text);
+  pointer-events: none;
+}
+
+/* Możliwe duplikaty: dwa zlecenia obok siebie */
+.dup-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.dup-side {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.dup-side strong {
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+.dup-desc {
+  color: var(--muted);
+}
+
+/* Przydział technika do zabiegu */
+.assign-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assign-person.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.assign-person > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.assign-person small {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.assign-other {
+  border-style: dashed;
+}
+
+.assign-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--planned);
+  color: #fff;
+  font-weight: 800;
+}
+
+.assign-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.assign-text {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.btn-whatsapp {
+  background: #25d366;
+  border-color: #25d366;
+  color: #062b14;
+}
+
+.agenda-assigned {
+  color: var(--primary);
+  font-weight: 600;
+}

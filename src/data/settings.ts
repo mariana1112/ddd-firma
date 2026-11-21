@@ -27,7 +27,7 @@ export const DEFAULT_COMPANY: CompanySettings = {
 };
 
 /** Klucze meta wspólne dla wszystkich urządzeń firmy. */
-export const SYNCED_META_KEYS = ['company', 'app', 'regions'];
+export const SYNCED_META_KEYS = ['company', 'app', 'regions', 'substitutions'];
 
 /** Klucze opisujące to jedno urządzenie. Nie trafiają do kopii zapasowej ani na serwer. */
 export function isDeviceMetaKey(key: string): boolean {
@@ -77,6 +77,37 @@ export async function markBackupDone(at = new Date().toISOString()): Promise<voi
 
 export async function getSyncState(): Promise<SyncState | null> {
   return (await getMeta<SyncState>('sync')) ?? null;
+}
+
+// ---------- Zastępstwa: technik z innego regionu ----------
+
+/**
+ * Technik na zastępstwie w innym regionie: skąd (żeby po zakończeniu wrócił do swojego regionu), dokąd i od kiedy.
+ * Wspólne ustawienie firmy; serwer przyjmuje jego zmiany tylko od admina.
+ */
+export interface Substitution {
+  userId: string;
+  name: string;
+  home: string | null;
+  homeName: string;
+  to: string;
+  toName: string;
+  since: string;
+}
+
+export async function getSubstitutions(): Promise<Substitution[]> {
+  return (await getMeta<Substitution[]>('substitutions')) ?? [];
+}
+
+export async function saveSubstitution(sub: Substitution): Promise<void> {
+  const list = (await getSubstitutions()).filter((s) => s.userId !== sub.userId);
+  // Kolejne zastępstwo tej samej osoby zachowuje jej prawdziwy region domowy.
+  const previous = (await getSubstitutions()).find((s) => s.userId === sub.userId);
+  await setMeta('substitutions', [...list, previous ? { ...sub, home: previous.home, homeName: previous.homeName } : sub]);
+}
+
+export async function endSubstitution(userId: string): Promise<void> {
+  await setMeta('substitutions', (await getSubstitutions()).filter((s) => s.userId !== userId));
 }
 
 /** Tryb admina wyłączony na tym telefonie („po służbie”): admin pracuje jak technik, bez funkcji admina. */

@@ -11,7 +11,7 @@ import { addDays, formatTime } from '../lib/dates';
  * - nowe wiadomości na czacie i oznaczenia mnie (@Imię) w nieprzeczytanych wiadomościach,
  * - nowe zlecenia na dziś i jutro dodane przez kogoś innego.
  */
-export type NotificationKind = 'usuniecie' | 'decyzja' | 'czat' | 'oznaczenie' | 'nowe';
+export type NotificationKind = 'usuniecie' | 'decyzja' | 'czat' | 'oznaczenie' | 'nowe' | 'przydzial';
 
 export interface AppNotification {
   id: string;
@@ -38,6 +38,24 @@ export function buildNotifications(input: {
 }): AppNotification[] {
   const out: AppNotification[] = [];
   const { me } = input;
+
+  // Zabiegi przydzielone mi przez kogoś innego (ostatnie 14 dni), dopóki są do zrobienia.
+  if (me) {
+    const since = new Date(Date.now() - 14 * 86400000).toISOString();
+    const byId = new Map(input.orders.map((o) => [o.id, o]));
+    for (const v of input.visits) {
+      const o = byId.get(v.orderId);
+      if (!o || v.assignedId !== me || v.assignedById === me || v.status !== 'zaplanowany' || !v.assignedAt || v.assignedAt < since) continue;
+      out.push({
+        id: `przydzial:${v.id}:${v.assignedAt}`,
+        kind: 'przydzial',
+        title: `Przydzielono Ci zlecenie ${visitCode(o, v.seq)}`,
+        text: `${v.start ? formatTime(v.start) + ', ' + v.start.slice(8, 10) + '.' + v.start.slice(5, 7) : 'termin do umówienia'} · ${orderAddress(o) || 'adres później'}${v.assignedBy ? ` · przydzielił: ${v.assignedBy}` : ''}`,
+        at: v.assignedAt,
+        to: `/zabieg/${v.id}`,
+      });
+    }
+  }
 
   if (input.owner) {
     for (const o of input.orders) {

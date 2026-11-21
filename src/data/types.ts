@@ -245,6 +245,8 @@ export interface Order extends BaseRecord {
   protocol?: boolean;
   /** Folder w archiwum, np. „Usunięty region: Gdańsk”. */
   archivedNote?: string;
+  /** Zlecenia z tym samym telefonem oznaczone jako „to dwa różne zlecenia” (nie pokazujemy ich jako duplikat). */
+  notDuplicateOf?: string[];
   /** Zlecenie z usuniętego regionu: w archiwum, poza raportami i rankingiem. */
   regionDeleted?: boolean;
   /** Prośba technika o usunięcie zlecenia; usuwa i zatwierdza tylko admin. */
@@ -345,6 +347,12 @@ export interface Visit extends BaseRecord {
    */
   priceMin?: number | null;
   priceMax?: number | null;
+  /** Technik przydzielony do zabiegu (przez szefa albo admina) i kto, kiedy przydzielił. */
+  assignedId?: string | null;
+  assignedName?: string | null;
+  assignedAt?: string | null;
+  assignedById?: string | null;
+  assignedBy?: string | null;
   /**
    * Zabieg zakończony na szybko („Zakończ teraz, opiszę później”): płatność jest, a wywiad, wykonane prace i zdjęcia
    * technik dopisuje później (w aucie, w domu). Do tego czasu zabieg jest w „Pilnych” jako „Do opisania”.

@@ -105,6 +105,7 @@ export function NotificationBell() {
 
 const KIND_LABEL: Record<AppNotification['kind'], string> = {
   usuniecie: 'Do zatwierdzenia',
+  przydzial: 'Dla Ciebie',
   decyzja: 'Decyzja admina',
   czat: 'Czat',
   oznaczenie: 'Oznaczenie',

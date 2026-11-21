@@ -8,7 +8,7 @@ import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom'
 import { cancelVisit, defaultDoneOn, finishVisit, normalizeInterview, orderVisits, restoreOrder, revertStartedVisit, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
 import { googleCalendarUrl } from '../data/calendar';
 import { ScheduleNext } from './orders';
-import { paymentMissing } from '../data/order-list';
+import { addressMissing, paymentMissing } from '../data/order-list';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getCompany, type AppSettings } from '../data/settings';
 import { formatAccount } from '../data/card';
@@ -31,9 +31,10 @@ import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect, goBack, PasteButton } from '../ui/kit';
-import { ContactBar, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
+import { ContactBar, useCallPicker, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
 import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, recommendationsFor, SEALING_OPTIONS, methodNames } from '../data/methods';
 import { Photos } from './photos';
+import { AssignSheet } from './assign';
 import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
 import { isValidNip } from '../lib/validators';
 import { VisitSummary } from './visit-summary';
@@ -207,6 +208,34 @@ function InvoiceData({ order, alert, onSave }: { order: Order; alert: boolean; o
       )}
       <OrderField label="E-mail" value={order.email} inputMode="email" missing={flag('email')} onSave={(email) => onSave({ email })} />
       <OrderField label="Adres do faktury (puste: adres zlecenia)" value={order.invoiceAddress} missing={false} onSave={(invoiceAddress) => onSave({ invoiceAddress })} />
+    </div>
+  );
+}
+
+/** Opis po zakończeniu: sytuacja z wywiadu (ten zabieg) i opis zlecenia od przyjmującego. */
+function DescriptionForm({ order, visit, onDone }: { order: Order; visit: Visit; onDone: () => void }) {
+  const { run, toast } = useFeedback();
+  const [situation, setSituation] = useState(() => normalizeInterview(visit.interview).situation);
+  const [description, setDescription] = useState(order.description);
+  const save = () =>
+    run(async () => {
+      const current = await visits.get(visit.id);
+      if (current) await visits.update(visit.id, { interview: { ...normalizeInterview(current.interview), situation: situation.trim() } });
+      if (description.trim() !== order.description.trim()) await orders.update(order.id, { description: description.trim() });
+      toast('Zapisano opis');
+      onDone();
+    });
+  return (
+    <div className="form">
+      <Field label="Opis sytuacji (z tego zabiegu)">
+        <textarea rows={5} value={situation} placeholder="Co się dzieje, gdzie, od kiedy" onChange={(e) => setSituation(e.target.value)} />
+      </Field>
+      <Field label="Opis zlecenia (od przyjmującego)">
+        <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+      </Field>
+      <button type="button" className="btn btn-primary btn-block" onClick={() => void save()}>
+        <Icon name="check" /> Zapisz opis
+      </button>
     </div>
   );
 }
@@ -393,7 +422,7 @@ function History({ list, current, order, vatRate }: { list: Visit[]; current: Vi
  * przyjmujący, np. szef), co robimy, szkodnik, zakres i cena, faktura, protokół i telefony. Same informacje: opcje
  * zlecenia (PDF, edycja danych, wszystkie zabiegi) są pod „Więcej opcji”.
  */
-function OrderInfo(props: { order: Order; vatRate: number; terms?: string }) {
+function OrderInfo(props: { order: Order; vatRate: number; terms?: string; assigned?: string | null }) {
   const { order } = props;
   const price = priceRange({ priceMin: order.priceMin, priceMax: order.priceMax, invoice: order.invoice }, props.vatRate);
   const methods = methodNames(order);
@@ -413,13 +442,18 @@ function OrderInfo(props: { order: Order; vatRate: number; terms?: string }) {
       <Info label="Faktura">{INVOICES[order.invoice]}</Info>
       {invoiceData && <Info label="Dane do faktury">{invoiceData}</Info>}
       {order.protocol && <Info label="Protokół">Tak</Info>}
-      {order.phones.map((p, i) => (
-        <Info key={i} label={i === 0 ? 'Telefon' : 'Drugi telefon'}>
-          {withCountryCode(p.number)}
-          {p.label ? ` (${p.label})` : ''}
-        </Info>
-      ))}
+      {order.phones
+        .filter((p) => p.number.trim())
+        .map((p, i) => (
+          <Info key={i} label={i === 0 ? 'Telefon' : 'Drugi telefon'}>
+            <a className="info-phone" href={telUrl(p.number)}>
+              {withCountryCode(p.number)}
+            </a>
+            {p.label ? <span className="info-phone-label">{p.label}</span> : null}
+          </Info>
+        ))}
       {order.email && <Info label="E-mail">{order.email}</Info>}
+      {props.assigned && <Info label="Technik">{props.assigned}</Info>}
       {order.ownerName && <Info label="Przyjął">{`${order.ownerName}, ${formatDate(order.createdAt)}`}</Info>}
     </Group>
   );
@@ -599,7 +633,8 @@ const WORK_STEPS = ['Wywiad', 'Co wykonano', 'Zdjęcia i protokół', 'Płatnoś
  * pozostałe dane zlecenia są na karcie zabiegu przed rozpoczęciem i po zakończeniu.
  */
 function WorkHeader({ order, visit }: { order: Order; visit: Visit }) {
-  const phone = order.phones[0];
+  const phone = order.phones.find((p) => p.number.trim());
+  const picker = useCallPicker(order);
   return (
     <div className="work-head">
       <div className="work-head-top">
@@ -610,10 +645,11 @@ function WorkHeader({ order, visit }: { order: Order; visit: Visit }) {
           </span>
         </span>
         {phone && (
-          <a className="btn btn-sm" href={telUrl(phone.number)}>
-            <Icon name="phone" /> Zadzwoń
-          </a>
+          <button type="button" className="btn btn-sm" onClick={picker.start}>
+            <Icon name="phone" /> {picker.count > 1 ? 'Zadzwoń (2)' : 'Zadzwoń'}
+          </button>
         )}
+        {picker.sheet}
       </div>
       {order.description.trim() ? (
         <div className="order-note">
@@ -644,6 +680,9 @@ export function VisitPage() {
   const [rescheduling, setRescheduling] = useState(false);
   const [leavingStarted, setLeavingStarted] = useState(false);
   const [planningNext, setPlanningNext] = useState(false);
+  // Edycja opisu wykonanego zabiegu (sytuacja z wywiadu i opis zlecenia) bez przechodzenia całych kroków.
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [editingTerms, setEditingTerms] = useState(false);
   // Próba zakończenia bez płatności: sekcja płatności świeci na czerwono, ekran przewija się do niej.
   const [payAlert, setPayAlert] = useState(false);
@@ -886,6 +925,17 @@ export function VisitPage() {
               <a className="btn btn-sm btn-primary" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer" onClick={() => setParams({}, { replace: true })}>
                 Dodaj do kalendarza
               </a>
+              {/* Zaraz po dodaniu zlecenia: przydział technikowi i powiadomienie (WhatsApp, SMS, dzwoneczek). */}
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  setParams({}, { replace: true });
+                  setAssigning(true);
+                }}
+              >
+                Przydziel technikowi
+              </button>
               <button type="button" className="btn btn-sm" onClick={() => setParams({}, { replace: true })}>
                 Nie teraz
               </button>
@@ -896,6 +946,17 @@ export function VisitPage() {
           <div className="notice notice-info">
             <Icon name="pin" />
             <span>{order.access}</span>
+          </div>
+        )}
+        {addressMissing(order) && visit.status !== 'wykonany' && (
+          <div className="notice notice-danger">
+            <Icon name="pin" />
+            <span>
+              <strong>Brak adresu.</strong> Klient miał podać adres później. Uzupełnij go przed zabiegiem.
+            </span>
+            <Link className="btn btn-sm btn-primary" to={`/zlecenia/${order.id}/edycja?zabieg=${visit.id}`}>
+              Uzupełnij
+            </Link>
           </div>
         )}
         {order.accountingProblem && (
@@ -943,6 +1004,9 @@ export function VisitPage() {
             <details className="more-actions">
               <summary>Więcej opcji</summary>
               <div className="btn-stack">
+                <button type="button" className="btn" onClick={() => setAssigning(true)}>
+                  <Icon name="users" /> {visit.assignedName ? `Technik: ${visit.assignedName} (zmień)` : 'Przydziel technika i powiadom'}
+                </button>
                 <OrderOptions order={order} visits={list} vatRate={settings.vatRate} noEdit />
                 {visit.start && (
                   <a className="btn" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer">
@@ -968,7 +1032,7 @@ export function VisitPage() {
             </details>
           </>
         )}
-        <OrderInfo order={order} vatRate={settings.vatRate} terms={summary ? undefined : termsText(terms, order.invoice, settings.vatRate)} />
+        <OrderInfo order={order} vatRate={settings.vatRate} terms={summary ? undefined : termsText(terms, order.invoice, settings.vatRate)} assigned={visit.assignedName} />
 
 
         </>
@@ -1016,6 +1080,9 @@ export function VisitPage() {
               onClick={() => void copyText(centralExport(order, visit, list)).then((ok) => toast(ok ? 'Skopiowano wszystkie dane zabiegu' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
             >
               <Icon name="copy" /> Kopiuj wszystkie dane
+            </button>
+            <button type="button" className="btn" onClick={() => setEditingDesc(true)}>
+              <Icon name="edit" /> Edytuj opis
             </button>
             {!later?.start && (
               <button type="button" className="btn btn-primary" onClick={() => setPlanningNext(true)}>
@@ -1291,6 +1358,11 @@ export function VisitPage() {
       )}
 
       {!active && <History list={list} current={visit} order={order} vatRate={settings.vatRate} />}
+
+      {assigning && <AssignSheet order={order} visit={visit} open={assigning} onClose={() => setAssigning(false)} />}
+      <Sheet open={editingDesc} title={`Opis · ${visitCode(order, visit.seq)}`} onClose={() => setEditingDesc(false)}>
+        {editingDesc && <DescriptionForm order={order} visit={visit} onDone={() => setEditingDesc(false)} />}
+      </Sheet>
 
       <Sheet open={paying} title={`Płatność · ${visitCode(order, visit.seq)}`} onClose={() => setPaying(false)}>
         {paying && <PaySheet visit={visit} order={order} company={company} alert={invoiceAlert} onClose={() => setPaying(false)} />}

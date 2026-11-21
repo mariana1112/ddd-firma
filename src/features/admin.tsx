@@ -12,6 +12,7 @@ import { companyText, regionRanking, regionData, type RegionRef } from '../data/
 import { buildReport, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
 import { expenses, orders, trips, visits } from '../data/repo';
 import { getOwnBranch, setViewScope } from '../data/scope';
+import { endSubstitution, getSubstitutions, saveSubstitution, type Substitution } from '../data/settings';
 import { COMPANY_NAME, getAdminOff, getAppSettings, getDataKey, getRegions, getSyncState, getUiSyncState, matchRegionsToServer, setAdminOff, saveRegions, setSyncState, saveProfile } from '../data/settings';
 import { enterRegion } from './regions';
 import type { SyncState } from '../data/types';
@@ -409,6 +410,117 @@ function MembersSection(props: { state: SyncState; regions: RegionRef[]; regionI
           </button>
         </form>
       </Sheet>
+    </Group>
+  );
+}
+
+// ---------- Zastępstwa ----------
+
+/**
+ * Technik z jednego regionu na zastępstwie w innym: przechodzi do regionu (widzi jego zlecenia, jego zabiegi wpadają
+ * do raportu tego regionu), a „Zakończ” przywraca go do regionu domowego. Raporty z czasu zastępstwa zostają.
+ */
+function SubstitutionsSection(props: { state: SyncState; regions: RegionRef[] }) {
+  const { confirm, run, toast } = useFeedback();
+  const subs = useLiveQuery(() => getSubstitutions()) ?? [];
+  const [members, setMembers] = useState<MemberRow[] | null>(null);
+  const [who, setWho] = useState('');
+  const [where, setWhere] = useState('');
+  useEffect(() => {
+    void supabaseApi()
+      .then((api) => api.listMembers(props.state.orgId))
+      .then((list) => setMembers(list as MemberRow[]))
+      .catch(() => setMembers(null));
+  }, [props.state.orgId]);
+  const regionName = (id: string | null) => props.regions.find((r) => r.id === id)?.name ?? (id ? 'region' : 'bez regionu');
+  const techs = (members ?? []).filter((m) => m.approved && !m.suspended && m.role === 'technik');
+  const person = techs.find((m) => m.userId === who);
+
+  const start = () =>
+    run(async () => {
+      if (!person || !where || where === person.branchId) return;
+      await (await supabaseApi()).setMemberBranch(props.state.orgId, person.userId, where);
+      await saveSubstitution({
+        userId: person.userId,
+        name: person.displayName || person.email,
+        home: person.branchId,
+        homeName: regionName(person.branchId),
+        to: where,
+        toName: regionName(where),
+        since: new Date().toISOString(),
+      });
+      setWho('');
+      setWhere('');
+      toast(`${person.displayName || person.email} na zastępstwie w regionie ${regionName(where)}`);
+    });
+
+  const end = async (s: Substitution) => {
+    const ok = await confirm({
+      title: `Zakończyć zastępstwo: ${s.name}?`,
+      message: `${s.name} wraca do regionu ${s.homeName || 'domowego'}. Zabiegi zrobione w regionie ${s.toName} zostają w jego raportach; nowe nie będą się już do niego liczyć.`,
+      confirmLabel: 'Zakończ zastępstwo',
+    });
+    if (!ok) return;
+    await run(async () => {
+      const api = await supabaseApi();
+      if (s.home) await api.setMemberBranch(props.state.orgId, s.userId, s.home);
+      if (s.home !== s.to) await api.removeMemberBranch(props.state.orgId, s.userId, s.to);
+      await endSubstitution(s.userId);
+      toast(`${s.name} wrócił do regionu ${s.homeName || 'domowego'}`);
+    });
+  };
+
+  return (
+    <Group title={`Zastępstwa${subs.length ? ` (${subs.length})` : ''}`}>
+      {subs.map((s) => (
+        <div key={s.userId} className="member-row">
+          <div className="member-main">
+            <strong>{s.name}</strong>
+            <span className="row-sub">
+              {s.homeName || 'bez regionu'} → {s.toName} · od {formatDate(s.since)}
+            </span>
+          </div>
+          <div className="member-actions">
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => void end(s)}>
+              Zakończ zastępstwo
+            </button>
+          </div>
+        </div>
+      ))}
+      <div className="group-pad form">
+        <p className="field-hint">Technik na zastępstwie widzi zlecenia regionu, do którego go przenosisz, a jego zabiegi liczą się do raportu tego regionu. Po zakończeniu wraca do swojego.</p>
+        {members === null ? (
+          <p className="field-hint">Lista techników wymaga internetu.</p>
+        ) : (
+          <div className="form-row">
+            <Field label="Technik">
+              <select value={who} onChange={(e) => setWho(e.target.value)}>
+                <option value="">Wybierz</option>
+                {techs.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {(m.displayName || m.email) + ' · ' + regionName(m.branchId)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Do regionu">
+              <select value={where} onChange={(e) => setWhere(e.target.value)}>
+                <option value="">Wybierz</option>
+                {props.regions
+                  .filter((r) => r.id !== person?.branchId)
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+          </div>
+        )}
+        <button type="button" className="btn btn-primary btn-block" disabled={!person || !where} onClick={() => void start()}>
+          <Icon name="users" /> Przenieś na zastępstwo
+        </button>
+      </div>
     </Group>
   );
 }
@@ -955,6 +1067,8 @@ export function AdminPage() {
       {screens}
 
       <MembersSection state={state} regions={regionsApi.regions} />
+
+      <SubstitutionsSection state={state} regions={regionsApi.regions} />
 
       <CodesSection state={state} regions={regionsApi.regions} />
 

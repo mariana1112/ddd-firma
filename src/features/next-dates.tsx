@@ -5,6 +5,7 @@ import { orders, visits } from '../data/repo';
 import { formatDate } from '../lib/dates';
 import { dayOff, eventBusy, listEvents } from '../data/events';
 import { getProfile } from '../data/settings';
+import { WeekPreview } from './week-preview';
 
 const weekday = new Intl.DateTimeFormat('pl-PL', { timeZone: 'UTC', weekday: 'short' });
 const dayLabel = (date: string) => `${weekday.format(new Date(`${date}T12:00:00Z`))} ${formatDate(date).slice(0, 5)}`;
@@ -65,6 +66,8 @@ export function NextDates(props: {
           ))}
         </div>
       )}
+      {/* Tydzień wybranego terminu godzinowo: co już jest umówione, gdzie wpada nowy zabieg. */}
+      <WeekPreview date={props.date || days[0]} time={props.time} durationMin={props.durationMin} exclude={props.exclude} onPick={props.onPick} />
     </div>
   );
 }

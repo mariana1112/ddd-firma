@@ -255,11 +255,49 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
   );
 }
 
-export function ContactBar(props: { order: Order; visit?: Visit | null }) {
+/**
+ * „Na który numer dzwonimy?”: przy dwóch telefonach duże przyciski z numerem i opisem (np. „pani Anna”, „syn”).
+ * Przy jednym numerze od razu dzwoni.
+ */
+export function useCallPicker(order: Order) {
   const { call } = useContactActions();
+  const [open, setOpen] = useState(false);
+  const phones = order.phones.filter((p) => p.number.trim());
+  const start = () => {
+    if (phones.length > 1) setOpen(true);
+    else if (phones[0]) void call(phones[0]);
+  };
+  const sheet = (
+    <Sheet open={open} title="Na który numer dzwonimy?" onClose={() => setOpen(false)}>
+      <div className="form">
+        {phones.map((p, i) => (
+          <button
+            key={i}
+            type="button"
+            className={i === 0 ? 'btn btn-primary btn-block btn-big call-choice' : 'btn btn-block btn-big call-choice'}
+            onClick={() => {
+              setOpen(false);
+              void call(p);
+            }}
+          >
+            <Icon name="phone" />
+            <span>
+              <strong>{withCountryCode(p.number)}</strong>
+              <small>{p.label.trim() || (i === 0 ? 'Główny numer' : 'Drugi numer')}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </Sheet>
+  );
+  return { start, sheet, count: phones.length };
+}
+
+export function ContactBar(props: { order: Order; visit?: Visit | null }) {
   const [navOpen, setNavOpen] = useState(false);
   const [smsOpen, setSmsOpen] = useState(false);
   const phone = props.order.phones.find((p) => p.number.trim());
+  const picker = useCallPicker(props.order);
   return (
     <div className="contact-bar">
       <button type="button" className="contact-btn" onClick={() => setNavOpen(true)}>
@@ -267,10 +305,11 @@ export function ContactBar(props: { order: Order; visit?: Visit | null }) {
         <span>Nawiguj</span>
       </button>
       <NavigateSheet order={props.order} open={navOpen} onClose={() => setNavOpen(false)} />
-      <button type="button" className="contact-btn" disabled={!phone} onClick={() => phone && void call(phone)}>
+      <button type="button" className="contact-btn" disabled={!phone} onClick={picker.start}>
         <Icon name="phone" />
-        <span>Zadzwoń</span>
+        <span>{picker.count > 1 ? 'Zadzwoń (2)' : 'Zadzwoń'}</span>
       </button>
+      {picker.sheet}
       <button type="button" className="contact-btn" disabled={!phone} onClick={() => setSmsOpen(true)}>
         <Icon name="message" />
         <span>SMS</span>
@@ -340,16 +379,25 @@ export function AddressBlock({ order }: { order: Order }) {
 
 /** Nagłówek zlecenia i zabiegu: numer telefonu z +48 (dotknięcie dzwoni), imię lub firma mniejszym pod spodem. */
 export function ClientHeading({ order }: { order: Order }) {
-  const phone = order.phones.find((p) => p.number.trim());
+  const phones = order.phones.filter((p) => p.number.trim());
+  const phone = phones[0];
   return (
     <div className="client-heading">
       {phone ? (
         <a className="client-phone" href={telUrl(phone.number)}>
           <Icon name="phone" size={20} /> {withCountryCode(phone.number)}
+          {phone.label.trim() && <span className="client-phone-label">{phone.label.trim()}</span>}
         </a>
       ) : (
         <h2>{order.clientName || 'Klient'}</h2>
       )}
+      {/* Drugi numer pod pierwszym, mniejszy, też do dotknięcia. */}
+      {phones.slice(1).map((p, i) => (
+        <a key={i} className="client-phone client-phone-2" href={telUrl(p.number)}>
+          <Icon name="phone" size={16} /> {withCountryCode(p.number)}
+          <span className="client-phone-label">{p.label.trim() || 'drugi numer'}</span>
+        </a>
+      ))}
       {phone && order.clientName.trim() && <span className="client-name">{order.clientName.trim()}</span>}
     </div>
   );

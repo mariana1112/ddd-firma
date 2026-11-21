@@ -7,21 +7,30 @@ export function paymentMissing(visit: Pick<Visit, 'status' | 'payMethod' | 'amou
 }
 
 /** Dlaczego zlecenie jest pilne: zabieg rozpoczęty i niezakończony, brak płatności albo zaległy termin. */
-export type UrgentReason = 'w_trakcie' | 'platnosc' | 'opis' | 'zalegly';
+export type UrgentReason = 'w_trakcie' | 'platnosc' | 'opis' | 'adres' | 'zalegly';
 
 export const URGENT_LABEL: Record<UrgentReason, string> = {
   w_trakcie: 'Niedokończony',
   platnosc: 'Brak płatności',
   opis: 'Do opisania',
+  adres: 'Brak adresu',
   zalegly: 'Zaległy termin',
 };
 
 /** Pierwszy powód pilności zlecenia albo null. Zlecenia w archiwum nie są pilne. */
-export function urgentReason(order: Pick<Order, 'archived'>, list: Visit[], today: string): UrgentReason | null {
+/** Zlecenie przyjęte bez adresu („klient poda adres później”): trzeba go uzupełnić przed zabiegiem. */
+export function addressMissing(order: Partial<Pick<Order, 'street' | 'city'>>): boolean {
+  // Obiekt bez pól adresu (np. sam stan archiwum) nie jest „bez adresu”.
+  if (order.street === undefined && order.city === undefined) return false;
+  return !(order.street ?? '').trim() || !(order.city ?? '').trim();
+}
+
+export function urgentReason(order: Pick<Order, 'archived'> & Partial<Pick<Order, 'street' | 'city'>>, list: Visit[], today: string): UrgentReason | null {
   if (isArchived(order, list)) return null;
   if (list.some((v) => v.status === 'w_trakcie')) return 'w_trakcie';
   if (list.some(paymentMissing)) return 'platnosc';
   if (list.some((v) => v.status === 'wykonany' && v.detailsLater)) return 'opis';
+  if (addressMissing(order) && list.some((v) => v.status === 'zaplanowany' || v.status === 'w_trakcie')) return 'adres';
   if (list.some((v) => v.status === 'zaplanowany' && v.start && v.start.slice(0, 10) < today)) return 'zalegly';
   return null;
 }
@@ -64,11 +73,12 @@ export function currentVisit(list: Visit[]): Visit | undefined {
 export type ListFilter = 'wszystkie' | 'aktywne' | 'wykonane' | 'pilne' | 'archiwum';
 
 /** Dlaczego jeden zabieg jest pilny: niedokończony, bez płatności albo z zaległym terminem. */
-export function visitUrgent(order: Pick<Order, 'archived'>, visit: Visit, today: string): UrgentReason | null {
+export function visitUrgent(order: Pick<Order, 'archived'> & Partial<Pick<Order, 'street' | 'city'>>, visit: Visit, today: string): UrgentReason | null {
   if (order.archived || visit.status === 'odwolany') return null;
   if (visit.status === 'w_trakcie') return 'w_trakcie';
   if (paymentMissing(visit)) return 'platnosc';
   if (visit.status === 'wykonany' && visit.detailsLater) return 'opis';
+  if (visit.status === 'zaplanowany' && addressMissing(order)) return 'adres';
   if (visit.status === 'zaplanowany' && visit.start && visit.start.slice(0, 10) < today) return 'zalegly';
   return null;
 }
@@ -184,4 +194,22 @@ export function nextVisitState(list: Visit[]): NextVisitState {
   if (future) return future.start ? { kind: 'umowiony', seq: future.seq, start: future.start } : { kind: 'do_umowienia', seq: future.seq };
   if (isOpen(present)) return { kind: 'nieumowiony', seq: present.seq + 1, afterSeq: present.seq };
   return { kind: 'brak' };
+}
+
+/**
+ * Następny zabieg w kolejce dnia (do wyróżnienia na Pulpicie i w kalendarzu). Gdy któryś zabieg trwa, następny to
+ * pierwszy umówiony po nim; w przeciwnym razie pierwszy umówiony, którego czas jeszcze nie minął (zaległe pomijamy).
+ * `now` to „YYYY-MM-DDTHH:mm” w czasie warszawskim.
+ */
+export function nextVisitOfDay(list: Visit[], now: string): string | null {
+  const day = now.slice(0, 10);
+  const today = list
+    .filter((v) => !v.deletedAt && v.start && v.start.slice(0, 10) === day && (v.status === 'zaplanowany' || v.status === 'w_trakcie'))
+    .sort((a, b) => a.start!.localeCompare(b.start!));
+  const running = today.filter((v) => v.status === 'w_trakcie').sort((a, b) => b.start!.localeCompare(a.start!))[0];
+  const planned = today.filter((v) => v.status === 'zaplanowany');
+  if (running) return planned.find((v) => v.start! > running.start!)?.id ?? planned[0]?.id ?? null;
+  const toMin = (t: string) => Number(t.slice(11, 13)) * 60 + Number(t.slice(14, 16));
+  const nowMin = toMin(now);
+  return planned.find((v) => toMin(v.start!) + (v.durationMin || 60) > nowMin)?.id ?? null;
 }

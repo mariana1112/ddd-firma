@@ -1,7 +1,7 @@
 import { roman, visitCode } from '../data/codes';
 import { scopeText } from '../data/visit-terms';
 import { mainPhone } from '../data/order-search';
-import { paymentMissing } from '../data/order-list';
+import { addressMissing, nextVisitOfDay, paymentMissing } from '../data/order-list';
 import { orderCode } from '../data/codes';
 import { dropEditDraft, listDrafts } from '../lib/drafts';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -11,7 +11,7 @@ import { orders, visits } from '../data/repo';
 import { getLastBackupAt, getProfile, getSyncState } from '../data/settings';
 import { orderAddress, pestName, firstName } from '../data/texts';
 import type { Order, Visit } from '../data/types';
-import { addDays, formatDate, formatDateLong, formatTime, todayWarsaw } from '../lib/dates';
+import { addDays, formatDate, formatDateLong, formatTime, todayWarsaw, nowWarsaw } from '../lib/dates';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Group, Loading, Page, Row } from '../ui/kit';
 import { SyncNotice, SyncStale } from './account';
@@ -19,6 +19,7 @@ import { RegionLine } from './regions';
 import { PinkBadge, VisitBadge } from './common';
 import { TomorrowReminders } from './reminders';
 import { DayCard } from './day-card';
+import { DuplicatesGroup } from './duplicates';
 
 const BACKUP_REMINDER_DAYS = 7;
 
@@ -52,23 +53,25 @@ function QuickSearch() {
 }
 
 /** Powód, dla którego zabieg jest w „Pilnych”. */
-type TodoReason = 'w_trakcie' | 'platnosc' | 'opis' | 'zalegly';
-const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'Niedokończony', platnosc: 'Uzupełnij płatność', opis: 'Do opisania', zalegly: 'Zaległy termin' };
+type TodoReason = 'w_trakcie' | 'platnosc' | 'opis' | 'adres' | 'zalegly';
+const TODO_LABEL: Record<TodoReason, string> = { w_trakcie: 'Niedokończony', platnosc: 'Uzupełnij płatność', opis: 'Do opisania', adres: 'Uzupełnij adres', zalegly: 'Zaległy termin' };
 
-function VisitRow({ visit, order, timeOnly, urgent, reason }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean; reason?: TodoReason }) {
+function VisitRow({ visit, order, timeOnly, urgent, reason, next }: { visit: Visit; order: Order; timeOnly?: boolean; urgent?: boolean; reason?: TodoReason; next?: boolean }) {
   return (
     <Row
       to={`/zabieg/${visit.id}`}
+      className={next ? 'row-next' : undefined}
       title={
         <>
           {visit.start && <span className="row-time">{timeOnly ? formatTime(visit.start) : `${formatDate(visit.start)} ${formatTime(visit.start)}`}</span>}
           <span className="order-number">{visitCode(order, visit.seq)}</span> {order.clientName}
         </>
       }
-      sub={`${orderAddress(order)} · ${pestName(order)}, zabieg ${roman(visit.seq)}${visit.scope && visit.scope.kind !== 'calosc' ? ` · ${scopeText(visit.scope)}` : ''}${mainPhone(order) ? ` · tel. ${mainPhone(order)}` : ''}`}
+      sub={`${visit.assignedName && visit.status === 'zaplanowany' ? `dla: ${visit.assignedName.split(' ')[0]} · ` : ''}${orderAddress(order) || 'brak adresu'} · ${pestName(order)}, zabieg ${roman(visit.seq)}${visit.scope && visit.scope.kind !== 'calosc' ? ` · ${scopeText(visit.scope)}` : ''}${mainPhone(order) ? ` · tel. ${mainPhone(order)}` : ''}`}
       trailing={
         <span className="row-end">
           {order.pink && <PinkBadge />}
+          {next && <span className="next-badge">Następny</span>}
           {reason ? (
             <Badge tone={reason === 'w_trakcie' || reason === 'opis' ? 'warn' : 'danger'}>{TODO_LABEL[reason]}</Badge>
           ) : urgent ? (
@@ -132,6 +135,8 @@ export function DashboardPage() {
     .sort((a, b) => a.visit.start!.localeCompare(b.visit.start!));
   // Dzisiaj: tylko to, co jest jeszcze do zrobienia (wykonane znikają z Pulpitu).
   const todayList = planned.filter(({ visit }) => visit.start!.slice(0, 10) === today);
+  // Następny zabieg w kolejce dnia: wyróżniony, żeby nie szukać, gdzie jechać dalej.
+  const nextId = nextVisitOfDay(todayList.map((x) => x.visit), nowWarsaw());
   // Nowe zlecenia na dziś i jutro dodane przez kogoś innego (np. szefa), jeszcze nieoznaczone jako widziane.
   const fresh = planned.filter(
     ({ visit, order }) =>
@@ -150,7 +155,11 @@ export function DashboardPage() {
     ...withOrder
       .filter(({ visit, order }) => paymentMissing(visit) && !order.archived)
       .map((x) => ({ ...x, reason: 'platnosc' as TodoReason, at: x.visit.finishedAt ?? x.visit.doneOn ?? '' })),
-    ...overdue.map((x) => ({ ...x, reason: 'zalegly' as TodoReason, at: x.visit.start ?? '' })),
+    // Zlecenia przyjęte bez adresu: przypomnienie o uzupełnieniu przed zabiegiem.
+    ...withOrder
+      .filter(({ visit, order }) => visit.status === 'zaplanowany' && !order.archived && addressMissing(order))
+      .map((x) => ({ ...x, reason: 'adres' as TodoReason, at: x.visit.start ?? x.visit.createdAt })),
+    ...overdue.filter(({ order }) => !addressMissing(order)).map((x) => ({ ...x, reason: 'zalegly' as TodoReason, at: x.visit.start ?? '' })),
   ].sort((a, b) => b.at.localeCompare(a.at));
   // Zakończone na szybko („opiszę później”): osobna grupa, czekają na dopisanie wywiadu, prac i zdjęć.
   const toDescribe = withOrder
@@ -272,10 +281,12 @@ export function DashboardPage() {
         </Group>
       )}
 
+      <DuplicatesGroup />
+
       <Group title={`Dzisiaj${todayList.length ? ` (${todayList.length})` : ''}`}>
         {todayList.length === 0 && <Empty title="Brak zabiegów na dziś" />}
         {todayList.map(({ visit, order }) => (
-          <VisitRow key={visit.id} visit={visit} order={order} timeOnly />
+          <VisitRow key={visit.id} visit={visit} order={order} timeOnly next={visit.id === nextId} />
         ))}
       </Group>
 
