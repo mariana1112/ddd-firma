@@ -941,7 +941,6 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
             </span>
           </label>
           <AddressSearch state={s} set={set} />
-          <HerePosition set={set} />
           <Choice
             label="Rodzaj budynku"
             value={s.building}
@@ -977,10 +976,17 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <input value={s.city} onChange={(e) => set({ city: e.target.value })} onBlur={() => set({ city: normalizeCity(s.city) })} autoCapitalize="words" autoComplete="off" />
             </Field>
           </div>
-          <MapsLinkField state={s} set={set} error={errors.mapsLink} />
           <Field label="Jak dotrzeć" hint="Np. wejście od podwórka, domofon nie działa, kod do bramy.">
             <textarea rows={2} value={s.access} onChange={(e) => set({ access: e.target.value })} />
           </Field>
+          {/* Rzadziej potrzebne: adres z pozycji telefonu i link do miejsca w Google Maps (zwinięte; rozwija się przy błędzie linku). */}
+          <details className="more-actions address-more" open={Boolean(errors.mapsLink) || undefined}>
+            <summary>Więcej: moja pozycja, miejsce w Google Maps</summary>
+            <div className="address-more-body">
+              <HerePosition set={set} />
+              <MapsLinkField state={s} set={set} error={errors.mapsLink} />
+            </div>
+          </details>
         </div>
       );
     case 'problem':

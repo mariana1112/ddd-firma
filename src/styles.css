@@ -4685,3 +4685,10 @@ a.region-pill {
   color: var(--muted);
   text-align: right;
 }
+
+/* Adres: zwinięte „Jestem na miejscu” i „Miejsce w Google Maps” */
+.address-more-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
