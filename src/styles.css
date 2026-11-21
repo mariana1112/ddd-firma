@@ -4697,3 +4697,80 @@ a.region-pill {
 .calendar-peek-body {
   padding: 0 8px 8px;
 }
+
+/* Pisanie na telefonie (otwarta klawiatura): dolny pasek schowany, treść i przyklejone elementy schodzą na dół */
+@media (max-width: 899px) and (pointer: coarse) {
+  html[data-typing] .tabs {
+    display: none;
+  }
+
+  html[data-typing] .content {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  html[data-typing] .toast {
+    bottom: calc(env(safe-area-inset-bottom) + 12px);
+  }
+
+  html[data-typing] .chat-form {
+    bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Podgląd tygodnia: dzisiejszy dzień i biała linia godziny przy przeciąganiu terminu */
+.wp-grid {
+  position: relative;
+}
+.wp-head-today,
+.wp-head-today b {
+  color: var(--primary);
+}
+.wp-head-today.wp-head-picked b {
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+.wp-col-today .wp-body {
+  background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.wp-drag-line {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: #fff;
+  box-shadow: 0 0 4px rgb(0 0 0 / 0.6);
+  pointer-events: none;
+}
+.wp-drag-line b {
+  position: absolute;
+  left: 0;
+  top: -8px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #fff;
+  color: #000;
+  font-size: 0.6rem;
+  line-height: 16px;
+}
+
+/* „Zlecenie zapisane. Dodać termin do Kalendarza Google?”: tekst w jednym rzędzie z ikoną, przyciski pod nim
+   (zawijają się na wąskim telefonie zamiast wychodzić poza ekran) */
+.calendar-offer {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.calendar-offer > span:not(.notice-actions) {
+  flex: 1;
+  min-width: 0;
+}
+.calendar-offer > .notice-actions {
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.calendar-offer > .notice-actions > .btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}

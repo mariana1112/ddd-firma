@@ -6,7 +6,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addressAt, currentPosition, freeSlots, locate, locatePlace, placeLabel, pointMapsLink, previousVisitDay, suggestSlots, type DayStop, type LatLng, type Suggestion } from '../data/geo';
 import { newPlacesSession, pickAddress, placesKey, suggestAddresses, type AddressSuggestion } from '../data/places';
 import { NextDates } from './next-dates';
-import { WeekPreview } from './week-preview';
+import { WeekPeek } from './week-preview';
 import { dayOff, eventBusy, listEvents } from '../data/events';
 import { createOrder, orderVisits, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
@@ -657,24 +657,16 @@ function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
  * Dotknięcie wolnego miejsca albo przeciągnięcie pomarańczowego terminu ustawia datę i godzinę.
  */
 function CalendarPeek(props: { state: FormState; set: (patch: Partial<FormState>) => void }) {
-  const [open, setOpen] = useState(false);
   const { date, time, duration } = props.state;
   return (
-    <details className="more-actions calendar-peek" onToggle={(e) => setOpen(e.currentTarget.open)}>
-      <summary>Podgląd kalendarza</summary>
-      {open && (
-        <div className="calendar-peek-body">
-          <WeekPreview
-            date={date && isValidDate(date) ? date : todayWarsaw()}
-            time={time}
-            durationMin={Number(duration) || 60}
-            onPick={(d, t) => props.set({ date: d, time: t })}
-            backLabel="Wróć do nowego zlecenia"
-            stay
-          />
-        </div>
-      )}
-    </details>
+    <WeekPeek
+      date={date && isValidDate(date) ? date : todayWarsaw()}
+      time={time}
+      durationMin={Number(duration) || 60}
+      onPick={(d, t) => props.set({ date: d, time: t })}
+      backLabel="Wróć do nowego zlecenia"
+      stay
+    />
   );
 }
 

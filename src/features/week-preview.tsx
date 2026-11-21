@@ -14,6 +14,8 @@ import { Info, Sheet } from '../ui/kit';
 const H0 = 7;
 const H1 = 20;
 const HOUR_PX = 24;
+/** Wysokość nagłówka dnia (jak .wp-head w CSS): od niej liczymy linię godziny przy przeciąganiu. */
+const HEAD_PX = 34;
 const DAYS = ['pon', 'wt', 'śr', 'czw', 'pt', 'sob', 'nd'];
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 const monday = (date: string) => addDays(date, -((new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7));
@@ -116,6 +118,7 @@ export function WeekPreview(props: {
   const shown = drag ?? { day: props.date, time: props.time };
   const top = (time: string) => ((toMin(time) - H0 * 60) / 60) * HOUR_PX;
   const height = (min: number) => Math.max(14, (min / 60) * HOUR_PX - 2);
+  const today = todayWarsaw();
 
   return (
     <div className="week-preview">
@@ -133,8 +136,8 @@ export function WeekPreview(props: {
           ))}
         </div>
         {days.map((day, i) => (
-          <div key={day} className="wp-col">
-            <span className={day === shown.day ? 'wp-head wp-head-picked' : 'wp-head'}>
+          <div key={day} className={day === today ? 'wp-col wp-col-today' : 'wp-col'}>
+            <span className={['wp-head', day === today && 'wp-head-today', day === shown.day && 'wp-head-picked'].filter(Boolean).join(' ')}>
               {DAYS[i]}
               <b>{Number(day.slice(8, 10))}</b>
             </span>
@@ -193,6 +196,12 @@ export function WeekPreview(props: {
             </div>
           </div>
         ))}
+        {/* Przy przeciąganiu: biała linia przez cały tydzień na godzinie, na którą przesuwasz termin. */}
+        {drag && (
+          <span className="wp-drag-line" style={{ top: HEAD_PX + top(drag.time) }}>
+            <b>{drag.time}</b>
+          </span>
+        )}
       </div>
       <Sheet open={Boolean(peek)} title={peek ? `Podgląd: ${visitCode(peek.order, peek.visit.seq)}` : ''} onClose={() => setPeek(null)}>
         {peek && (
@@ -215,5 +224,23 @@ export function WeekPreview(props: {
         )}
       </Sheet>
     </div>
+  );
+}
+
+/**
+ * Podgląd tygodnia zwinięty pod „Podgląd kalendarza”: rozwija się dopiero po kliknięciu (i dopiero wtedy wczytuje
+ * zabiegi). Nowe zlecenie (krok „Termin”) i „Umów kolejny zabieg”.
+ */
+export function WeekPeek(props: Parameters<typeof WeekPreview>[0]) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="more-actions calendar-peek" onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>Podgląd kalendarza</summary>
+      {open && (
+        <div className="calendar-peek-body">
+          <WeekPreview {...props} />
+        </div>
+      )}
+    </details>
   );
 }

@@ -17,6 +17,7 @@ import { getAppSettings, getProfile } from '../data/settings';
 import { accessDetails, BUILDINGS, INVOICES, orderAddress, orderText, pestName, priceRange, bookedBy, firstName } from '../data/texts';
 import type { Order, PayMethod, Visit } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
+import { WeekPeek } from './week-preview';
 import { normalizeForSearch } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
@@ -406,6 +407,9 @@ export function ScheduleNext(props: {
           durationMin={minutes || 60}
           date={date}
           time={time}
+          peek
+          stay
+          backLabel="Wróć do umawiania zabiegu"
           onPick={(d, t) => {
             setDate(d);
             setTime(t);
@@ -420,6 +424,19 @@ export function ScheduleNext(props: {
           <TimeSelect value={time} onChange={setTime} />
         </Field>
       </div>
+      {!props.after && (
+        <WeekPeek
+          date={date || todayWarsaw()}
+          time={date ? time : ''}
+          durationMin={minutes || 60}
+          stay
+          backLabel="Wróć do umawiania zabiegu"
+          onPick={(d, t) => {
+            setDate(d);
+            setTime(t);
+          }}
+        />
+      )}
       <Field label="Czas trwania (min)">
         <input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/\D/g, ''))} />
       </Field>

@@ -5,6 +5,7 @@ import { initViewScope } from './data/scope';
 import { captureAuthLink } from './lib/auth-link';
 import { startSyncRunner } from './data/sync/runner';
 import { installTapHaptics } from './lib/haptics';
+import { installTypingWatch } from './lib/typing';
 import './styles.css';
 
 // Link z e-maila (reset hasła, zmiana adresu) przechwytujemy przed routerem.
@@ -28,3 +29,6 @@ startSyncRunner();
 
 // Lekka haptyka przy dotknięciu przycisków, opcji i wierszy (np. zlecenia).
 installTapHaptics();
+
+// Na telefonie przy otwartej klawiaturze dolny pasek się chowa (więcej miejsca na pisanie).
+installTypingWatch();

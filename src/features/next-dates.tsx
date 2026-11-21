@@ -5,7 +5,7 @@ import { orders, visits } from '../data/repo';
 import { formatDate } from '../lib/dates';
 import { dayOff, eventBusy, listEvents } from '../data/events';
 import { getProfile } from '../data/settings';
-import { WeekPreview } from './week-preview';
+import { WeekPeek, WeekPreview } from './week-preview';
 
 const weekday = new Intl.DateTimeFormat('pl-PL', { timeZone: 'UTC', weekday: 'short' });
 const dayLabel = (date: string) => `${weekday.format(new Date(`${date}T12:00:00Z`))} ${formatDate(date).slice(0, 5)}`;
@@ -25,6 +25,8 @@ export function NextDates(props: {
   /** Przekazywane do podglądu tygodnia (powrót, bez wyjścia do innej karty). */
   backLabel?: string;
   stay?: boolean;
+  /** Podgląd tygodnia zwinięty, pokazywany po kliknięciu „Podgląd kalendarza”. */
+  peek?: boolean;
 }) {
   const days = nextVisitDays(props.after);
   const proposals = useLiveQuery(async () => {
@@ -70,7 +72,11 @@ export function NextDates(props: {
         </div>
       )}
       {/* Tydzień wybranego terminu godzinowo: co już jest umówione, gdzie wpada nowy zabieg. */}
-      <WeekPreview date={props.date || days[0]} time={props.time} durationMin={props.durationMin} exclude={props.exclude} onPick={props.onPick} backLabel={props.backLabel} stay={props.stay} />
+      {props.peek ? (
+        <WeekPeek date={props.date || days[0]} time={props.time} durationMin={props.durationMin} exclude={props.exclude} onPick={props.onPick} backLabel={props.backLabel} stay={props.stay} />
+      ) : (
+        <WeekPreview date={props.date || days[0]} time={props.time} durationMin={props.durationMin} exclude={props.exclude} onPick={props.onPick} backLabel={props.backLabel} stay={props.stay} />
+      )}
     </div>
   );
 }
