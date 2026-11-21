@@ -64,6 +64,8 @@ interface FormState {
   mapsLink: string;
   /** Co robimy: wymagane przy tworzeniu, od tego zależą zalecenia. */
   methods: TreatmentMethod[];
+  /** Metody zaznaczone automatycznie przy wyborze pluskiew (odznaczane, gdy wybierzesz inny szkodnik). */
+  autoMethods?: TreatmentMethod[];
   methodOther: string;
   /** Klient chce protokół z zabiegu. */
   protocol: boolean;
@@ -887,10 +889,17 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
             label="Szkodnik"
             value={s.pest}
             options={Object.entries(PESTS) as Array<[PestCategory, string]>}
-            onChange={(pest) =>
+            onChange={(pest) => {
               // Pluskwy: od razu oprysk ciśnieniowy, ULV i parowanie (zwykły zestaw); można odznaczyć.
-              set(pest === 'pluskwy' ? { pest, methods: [...new Set([...s.methods, 'oprysk', 'ulv', 'parowanie'] as TreatmentMethod[])] } : { pest })
-            }
+              if (pest === 'pluskwy') {
+                const auto = (['oprysk', 'ulv', 'parowanie'] as TreatmentMethod[]).filter((m) => !s.methods.includes(m));
+                set({ pest, methods: [...s.methods, ...auto], autoMethods: auto });
+              } else {
+                // Inny szkodnik zamiast pluskiew: zdejmujemy to, co zaznaczyło się samo (to, co zaznaczone ręcznie, zostaje).
+                const auto = s.autoMethods ?? [];
+                set({ pest, methods: s.methods.filter((m) => !auto.includes(m)), autoMethods: [] });
+              }
+            }}
           />
           {s.pest === 'inne' && (
             <Field label="Jaki szkodnik" error={errors.pestOther}>

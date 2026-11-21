@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { visitCode } from '../data/codes';
 import { eventOnDay, eventType, listEvents } from '../data/events';
@@ -35,6 +35,9 @@ export function WeekPreview(props: {
   stay?: boolean;
 }) {
   const [peek, setPeek] = useState<{ visit: Visit; order: Order } | null>(null);
+  // Przeciąganie wybranego terminu: przytrzymanie (na telefonie) albo od razu myszką.
+  const [drag, setDrag] = useState<{ day: string; time: string } | null>(null);
+  const bodies = useRef<Array<HTMLDivElement | null>>([]);
   const start = monday(props.date || todayWarsaw());
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const data = useLiveQuery(async () => {
@@ -44,13 +47,73 @@ export function WeekPreview(props: {
   }, [start, props.exclude]);
   if (!data) return null;
 
-  const pick = (day: string, e: React.MouseEvent<HTMLDivElement>) => {
-    if (!props.onPick) return;
-    const y = e.clientY - e.currentTarget.getBoundingClientRect().top;
+  /** Godzina w miejscu y kolumny (co 30 min, tak żeby zabieg mieścił się do 20:00). */
+  const timeAt = (y: number) => {
     const min = Math.max(0, Math.min((H1 - H0) * 60 - (props.durationMin || 60), Math.round(((y / HOUR_PX) * 60) / 30) * 30));
     const t = H0 * 60 + min;
-    props.onPick(day, `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`);
+    return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
   };
+  const pick = (day: string, e: React.MouseEvent<HTMLDivElement>) => {
+    if (!props.onPick) return;
+    props.onPick(day, timeAt(e.clientY - e.currentTarget.getBoundingClientRect().top));
+  };
+  /** Dzień i godzina pod palcem (przy przeciąganiu terminu). */
+  const slotAt = (x: number, y: number) => {
+    const i = bodies.current.findIndex((b) => b && x >= b.getBoundingClientRect().left && x < b.getBoundingClientRect().right);
+    const last = x < (bodies.current[0]?.getBoundingClientRect().left ?? 0) ? 0 : 6;
+    const body = bodies.current[i >= 0 ? i : last];
+    if (!body) return null;
+    // Przy przeciąganiu wskazujemy środek bloku, a nie jego górną krawędź.
+    const offset = ((props.durationMin || 60) / 60) * HOUR_PX * 0.5;
+    return { day: days[i >= 0 ? i : last], time: timeAt(y - body.getBoundingClientRect().top - offset) };
+  };
+  // Ruch i puszczenie śledzimy na całym oknie: blok przeskakuje między kolumnami (nowy element), więc nie może sam
+  // trzymać palca.
+  const startDrag = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!props.onPick) return;
+    e.stopPropagation();
+    const onPick = props.onPick;
+    const from = { day: props.date, time: props.time };
+    let current = from;
+    let on = false;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const begin = () => {
+      on = true;
+      navigator.vibrate?.(15);
+      setDrag(from);
+    };
+    const timer = e.pointerType === 'mouse' ? 0 : window.setTimeout(begin, 300);
+    if (e.pointerType === 'mouse') begin();
+    const move = (ev: PointerEvent) => {
+      if (!on) {
+        // Palec ruszył przed przytrzymaniem: to przewijanie, nie przeciąganie.
+        if (Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 10) stop();
+        return;
+      }
+      ev.preventDefault();
+      const slot = slotAt(ev.clientX, ev.clientY);
+      if (slot && (slot.day !== current.day || slot.time !== current.time)) {
+        current = slot;
+        setDrag(slot);
+      }
+    };
+    const up = () => {
+      stop();
+      if (on && (current.day !== from.day || current.time !== from.time)) onPick(current.day, current.time);
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', stop);
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', stop);
+  };
+  const shown = drag ?? { day: props.date, time: props.time };
   const top = (time: string) => ((toMin(time) - H0 * 60) / 60) * HOUR_PX;
   const height = (min: number) => Math.max(14, (min / 60) * HOUR_PX - 2);
 
@@ -58,6 +121,7 @@ export function WeekPreview(props: {
     <div className="week-preview">
       <span className="field-label">
         Tydzień {formatDate(start).slice(0, 5)}–{formatDate(days[6]).slice(0, 5)}: dotknij zabiegu, żeby go podejrzeć
+        {props.onPick && props.time ? '; przytrzymaj pomarańczowy termin, żeby go przesunąć' : ''}
       </span>
       <div className="wp-grid">
         <div className="wp-hours">
@@ -70,11 +134,18 @@ export function WeekPreview(props: {
         </div>
         {days.map((day, i) => (
           <div key={day} className="wp-col">
-            <span className={day === props.date ? 'wp-head wp-head-picked' : 'wp-head'}>
+            <span className={day === shown.day ? 'wp-head wp-head-picked' : 'wp-head'}>
               {DAYS[i]}
               <b>{Number(day.slice(8, 10))}</b>
             </span>
-            <div className="wp-body" style={{ height: (H1 - H0) * HOUR_PX }} onClick={(e) => pick(day, e)}>
+            <div
+              ref={(el) => {
+                bodies.current[i] = el;
+              }}
+              className="wp-body"
+              style={{ height: (H1 - H0) * HOUR_PX }}
+              onClick={(e) => pick(day, e)}
+            >
               {data.events
                 .filter((ev) => eventOnDay(ev, day))
                 .map((ev) => (
@@ -108,9 +179,15 @@ export function WeekPreview(props: {
                     {String(order.number).padStart(4, '0')}
                   </button>
                 ))}
-              {day === props.date && props.time && (
-                <span className="wp-block wp-picked" style={{ top: top(props.time), height: height(props.durationMin || 60) }}>
-                  {props.time}
+              {day === shown.day && shown.time && (
+                <span
+                  className={drag ? 'wp-block wp-picked wp-dragging' : props.onPick ? 'wp-block wp-picked wp-movable' : 'wp-block wp-picked'}
+                  style={{ top: top(shown.time), height: height(props.durationMin || 60) }}
+                  onPointerDown={startDrag}
+                  onClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => e.preventDefault()}
+                >
+                  {shown.time}
                 </span>
               )}
             </div>
