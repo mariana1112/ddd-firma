@@ -87,3 +87,13 @@ describe('kilometrówka: przejazd z dawnego dnia', () => {
     expect(await odometerAround('u1', '', '2026-11-21')).toEqual({ before: 6666, after: null });
   });
 });
+
+describe('zabieg II i kolejne: „Czy widać poprawę?” wymagane', () => {
+  it('pierwszy zabieg bez pytania; od drugiego bez odpowiedzi nie da się zakończyć', async () => {
+    const { improvementMissing } = await import('./interview');
+    expect(improvementMissing(visit({ seq: 1 }))).toBe(false);
+    expect(improvementMissing(visit({ seq: 2 }))).toBe(true);
+    expect(improvementMissing(visit({ seq: 2, interview: { ...EMPTY_INTERVIEW, improvement: 'nie' } }))).toBe(false);
+    expect(improvementMissing(visit({ seq: 3, interview: { ...EMPTY_INTERVIEW, improvement: 'tak' } }))).toBe(false);
+  });
+});

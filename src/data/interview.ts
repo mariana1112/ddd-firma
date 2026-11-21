@@ -1,6 +1,11 @@
 // Wywiad z klientem przy zabiegu. Czyste funkcje, bez bazy danych.
 import type { Interview, YesNo } from './types';
 
+/** Zabieg II i kolejne: odpowiedź „Czy widać poprawę?” jest wymagana do zakończenia (i do „Gotowe, opisane”). */
+export function improvementMissing(visit: { seq: number; interview?: unknown }): boolean {
+  return visit.seq > 1 && !normalizeInterview(visit.interview).improvement;
+}
+
 export const EMPTY_INTERVIEW: Interview = {
   situation: '',
   bites: '',

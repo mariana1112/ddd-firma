@@ -1,6 +1,7 @@
 import { orderCode, roman, visitCode } from '../data/codes';
 import { nextVisitDays, previousVisitDay } from '../data/geo';
 import { NextDates } from './next-dates';
+import { improvementMissing } from '../data/interview';
 import { withCountryCode } from '../lib/validators';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
@@ -45,11 +46,11 @@ import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 let interviewQueue: Promise<unknown> = Promise.resolve();
 
 /** Pytanie tak/nie. Ponowne dotknięcie zaznaczonej odpowiedzi ją czyści. */
-function YesNoField(props: { label: string; value: YesNo; onChange: (value: YesNo) => void }) {
+function YesNoField(props: { label: string; value: YesNo; onChange: (value: YesNo) => void; missing?: boolean }) {
   return (
-    <div className="field">
+    <div className={props.missing ? 'field field-missing' : 'field'}>
       <span className="field-label">{props.label}</span>
-      <div className="segmented yes-no" role="group" aria-label={props.label}>
+      <div className={props.missing ? 'segmented yes-no missing' : 'segmented yes-no'} role="group" aria-label={props.label}>
         {(['tak', 'nie'] as const).map((v) => (
           <button
             key={v}
@@ -62,6 +63,7 @@ function YesNoField(props: { label: string; value: YesNo; onChange: (value: YesN
           </button>
         ))}
       </div>
+      {props.missing && <span className="field-message">Odpowiedz: przy zabiegu II i kolejnych to jest wymagane</span>}
     </div>
   );
 }
@@ -770,6 +772,8 @@ export function VisitPage() {
   const [invoiceAlert, setInvoiceAlert] = useState(false);
   const payRef = useRef<HTMLDivElement>(null);
   const [workStep, setWorkStep] = useState(0);
+  // „Czy widać poprawę?” bez odpowiedzi przy próbie zakończenia zabiegu II i kolejnych.
+  const [improvementAlert, setImprovementAlert] = useState(false);
   const goStep = (i: number) => {
     setWorkStep(Math.max(0, Math.min(WORK_STEPS.length - 1, i)));
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -823,11 +827,22 @@ export function VisitPage() {
    * „Zakończ zabieg”: forma płatności i kwota są wymagane. Gdy ich brakuje, płatność świeci na czerwono i ekran
    * przewija się do niej; można też zakończyć teraz i uzupełnić później (zabieg trafia do „Pilnych”).
    */
+  const blockImprovement = () => {
+    setImprovementAlert(true);
+    goStep(0);
+    toast(`Zabieg ${roman(visit.seq)}: odpowiedz „Czy widać poprawę?”`, { tone: 'error' });
+  };
+
   const requestFinish = async (later = false) => {
     setFinishLater(later);
     // Kwota zapisuje się przy wyjściu z pola, więc czytamy świeży stan po chwili.
     await new Promise((resolve) => setTimeout(resolve, 150));
     const fresh = (await visits.get(visit.id)) ?? visit;
+    // Zabieg II i kolejne: bez odpowiedzi „Czy widać poprawę?” nie kończymy (przy „opiszę później” wymagane przy opisie).
+    if (!later && improvementMissing(fresh)) {
+      blockImprovement();
+      return;
+    }
     // Faktura wymaga danych klienta: bez nich zabiegu nie da się zakończyć.
     const freshOrder = (await orders.get(order.id)) ?? order;
     const lacking = invoiceMissing(freshOrder);
@@ -1256,7 +1271,12 @@ export function VisitPage() {
               />
               {visit.seq > 1 && (
                 <>
-                  <YesNoField label="Czy widać poprawę?" value={interview.improvement} onChange={(v) => saveInterview('improvement', v)} />
+                  <YesNoField
+                    label="Czy widać poprawę? (wymagane)"
+                    value={interview.improvement}
+                    missing={improvementAlert && !interview.improvement}
+                    onChange={(v) => saveInterview('improvement', v)}
+                  />
                   <AutoText
                     label="Co jest? (jak wygląda sytuacja teraz)"
                     placeholder="Np. dużo mniej, pojedyncze w sypialni"
@@ -1429,6 +1449,11 @@ export function VisitPage() {
                     className="btn btn-primary"
                     onClick={() =>
                       void run(async () => {
+                        // Zabieg II i kolejne: najpierw odpowiedź „Czy widać poprawę?”.
+                        if (improvementMissing((await visits.get(visit.id)) ?? visit)) {
+                          blockImprovement();
+                          return;
+                        }
                         // Dopisany opis: zabieg znika z „Do opisania”.
                         if (visit.detailsLater) await visits.update(visit.id, { detailsLater: false });
                         setEditingId(null);

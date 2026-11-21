@@ -4615,3 +4615,10 @@ a.region-pill {
 .pay-option {
   touch-action: manipulation;
 }
+
+/* Wymagana odpowiedź Tak/Nie bez wyboru (np. „Czy widać poprawę?” przy zabiegu II) */
+.segmented.yes-no.missing {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
