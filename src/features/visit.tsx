@@ -1,7 +1,7 @@
 import { orderCode, roman, visitCode } from '../data/codes';
 import { nextVisitDays, previousVisitDay } from '../data/geo';
 import { NextDates } from './next-dates';
-import { improvementMissing } from '../data/interview';
+import { requiredAnswersMissing, sealedBefore } from '../data/interview';
 import { withCountryCode } from '../lib/validators';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
@@ -797,6 +797,8 @@ export function VisitPage() {
   if (data === undefined) return <Loading />;
   if (data === null) return <NotFound back="/zlecenia" />;
   const { visit, order, list, settings, company } = data;
+  // Uszczelnienie potwierdzone przy wcześniejszym zabiegu: przy kolejnych już o nie nie pytamy.
+  const sealedOn = sealedBefore(visit, list);
   const later = list.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany');
   const phone = order.phones[0];
   // Cena i zakres tego zabiegu; zabiegi sprzed tej opcji mają widełki zlecenia i całe mieszkanie.
@@ -827,10 +829,11 @@ export function VisitPage() {
    * „Zakończ zabieg”: forma płatności i kwota są wymagane. Gdy ich brakuje, płatność świeci na czerwono i ekran
    * przewija się do niej; można też zakończyć teraz i uzupełnić później (zabieg trafia do „Pilnych”).
    */
-  const blockImprovement = () => {
+  /** Zabieg II i kolejne bez wymaganych odpowiedzi (poprawa, uszczelnienie): powrót do wywiadu z zaznaczonymi pytaniami. */
+  const blockImprovement = (missing: string[]) => {
     setImprovementAlert(true);
     goStep(0);
-    toast(`Zabieg ${roman(visit.seq)}: odpowiedz „Czy widać poprawę?”`, { tone: 'error' });
+    toast(`Zabieg ${roman(visit.seq)}: odpowiedz ${missing.map((q) => `„${q}”`).join(' i ')}`, { tone: 'error' });
   };
 
   const requestFinish = async (later = false) => {
@@ -839,8 +842,9 @@ export function VisitPage() {
     await new Promise((resolve) => setTimeout(resolve, 150));
     const fresh = (await visits.get(visit.id)) ?? visit;
     // Zabieg II i kolejne: bez odpowiedzi „Czy widać poprawę?” nie kończymy (przy „opiszę później” wymagane przy opisie).
-    if (!later && improvementMissing(fresh)) {
-      blockImprovement();
+    const unanswered = later ? [] : requiredAnswersMissing(fresh, list);
+    if (unanswered.length) {
+      blockImprovement(unanswered);
       return;
     }
     // Faktura wymaga danych klienta: bez nich zabiegu nie da się zakończyć.
@@ -1284,6 +1288,29 @@ export function VisitPage() {
                     value={interview.improvementNote}
                     onSave={(v) => saveInterview('improvementNote', v)}
                   />
+                  {sealedOn !== null ? (
+                    <p className="field-hint">
+                      <Icon name="check" size={14} /> Mieszkanie uszczelnione (potwierdzone przy zabiegu {roman(sealedOn)})
+                    </p>
+                  ) : (
+                    <>
+                      <YesNoField
+                        label="Czy mieszkanie zostało uszczelnione? (wymagane)"
+                        value={interview.sealed}
+                        missing={improvementAlert && !interview.sealed}
+                        onChange={(v) => saveInterview('sealed', v)}
+                      />
+                      {interview.sealed === 'nie' && (
+                        <AutoText
+                          label="Co nie jest uszczelnione?"
+                          placeholder="Np. kratki wentylacyjne w łazience, klient uszczelni do piątku"
+                          rows={2}
+                          value={interview.sealedNote}
+                          onSave={(v) => saveInterview('sealedNote', v)}
+                        />
+                      )}
+                    </>
+                  )}
                 </>
               )}
             </Group>
@@ -1450,8 +1477,9 @@ export function VisitPage() {
                     onClick={() =>
                       void run(async () => {
                         // Zabieg II i kolejne: najpierw odpowiedź „Czy widać poprawę?”.
-                        if (improvementMissing((await visits.get(visit.id)) ?? visit)) {
-                          blockImprovement();
+                        const unanswered = requiredAnswersMissing((await visits.get(visit.id)) ?? visit, list);
+                        if (unanswered.length) {
+                          blockImprovement(unanswered);
                           return;
                         }
                         // Dopisany opis: zabieg znika z „Do opisania”.

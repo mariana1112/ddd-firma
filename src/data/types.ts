@@ -310,6 +310,9 @@ export interface Interview {
   /** Zabieg II, III…: czy widać poprawę i jak jest teraz. */
   improvement: YesNo;
   improvementNote: string;
+  /** Zabieg II, III…: czy mieszkanie zostało uszczelnione, a jeśli nie, co nie jest. */
+  sealed: YesNo;
+  sealedNote: string;
 }
 
 /** Zabieg w ramach zlecenia: pierwszy, drugi, trzeci. */

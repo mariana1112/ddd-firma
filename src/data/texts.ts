@@ -226,6 +226,8 @@ export function interviewLines(raw: Visit['interview']): string[] {
   else if (i.seen) lines.push(`Widziane owady: ${i.seen}`);
   if (i.improvement) lines.push(`Widać poprawę: ${i.improvement}`);
   if (i.improvementNote) lines.push(`Co jest: ${i.improvementNote}`);
+  if (i.sealed) lines.push(`Mieszkanie uszczelnione: ${i.sealed}`);
+  if (i.sealedNote) lines.push(`Nie jest uszczelnione: ${i.sealedNote}`);
   if (i.selfTreatment) lines.push(`Środki na własną rękę: ${i.selfTreatment}`);
   if (i.other.trim()) lines.push(`Inne uwagi: ${i.other.trim()}`);
   return lines;

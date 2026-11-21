@@ -496,12 +496,14 @@ describe('wywiad', () => {
       other: 'pies',
       improvement: '',
       improvementNote: '',
+      sealed: '',
+      sealedNote: '',
     });
     expect(normalizeInterview(undefined)).toEqual(EMPTY_INTERVIEW);
   });
 
   it('obecny wywiad zostaje bez zmian', () => {
-    const now = { situation: 'Pluskwy w sypialni', bites: 'tak', seen: 'nie', seenCount: '', selfTreatment: 'tak', other: '', improvement: '', improvementNote: '' } as const;
+    const now = { situation: 'Pluskwy w sypialni', bites: 'tak', seen: 'nie', seenCount: '', selfTreatment: 'tak', other: '', improvement: '', improvementNote: '', sealed: '', sealedNote: '' } as const;
     expect(normalizeInterview(now)).toEqual(now);
     expect(interviewLines(now)).toEqual(['Opis: Pluskwy w sypialni', 'Ugryzienia: tak', 'Widziane owady: nie', 'Środki na własną rękę: tak']);
   });

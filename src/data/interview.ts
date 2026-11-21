@@ -6,6 +6,29 @@ export function improvementMissing(visit: { seq: number; interview?: unknown }):
   return visit.seq > 1 && !normalizeInterview(visit.interview).improvement;
 }
 
+type VisitLike = { seq: number; status?: string; interview?: unknown; deletedAt?: string | null };
+
+/** Numer wcześniejszego wykonanego zabiegu, przy którym potwierdzono uszczelnienie mieszkania (albo null). */
+export function sealedBefore(visit: VisitLike, list: VisitLike[]): number | null {
+  const hit = list
+    .filter((v) => v.seq < visit.seq && v.status === 'wykonany' && !v.deletedAt && normalizeInterview(v.interview).sealed === 'tak')
+    .sort((a, b) => a.seq - b.seq)[0];
+  return hit ? hit.seq : null;
+}
+
+/**
+ * Wymagane pytania wywiadu przy zabiegu II i kolejnych: poprawa i uszczelnienie. Uszczelnienie nie jest już wymagane,
+ * gdy potwierdzono je przy wcześniejszym zabiegu. Zwraca pytania bez odpowiedzi.
+ */
+export function requiredAnswersMissing(visit: VisitLike, list: VisitLike[]): string[] {
+  if (visit.seq <= 1) return [];
+  const i = normalizeInterview(visit.interview);
+  const missing: string[] = [];
+  if (!i.improvement) missing.push('Czy widać poprawę?');
+  if (!i.sealed && sealedBefore(visit, list) === null) missing.push('Czy mieszkanie zostało uszczelnione?');
+  return missing;
+}
+
 export const EMPTY_INTERVIEW: Interview = {
   situation: '',
   bites: '',
@@ -15,6 +38,8 @@ export const EMPTY_INTERVIEW: Interview = {
   other: '',
   improvement: '',
   improvementNote: '',
+  sealed: '',
+  sealedNote: '',
 };
 
 const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
@@ -53,5 +78,7 @@ export function normalizeInterview(raw: unknown): Interview {
     other: typeof r.other === 'string' ? r.other : '',
     improvement: yesNo(r.improvement),
     improvementNote: text(r.improvementNote),
+    sealed: yesNo(r.sealed),
+    sealedNote: text(r.sealedNote),
   };
 }

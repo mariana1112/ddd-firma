@@ -47,6 +47,8 @@ export function VisitSummary(props: { order: Order; visit: Visit; vatRate: numbe
         {i.seenCount ? <Info label="Skala populacji">{i.seenCount}</Info> : i.seen && <Info label="Owady">{yes(i.seen)}</Info>}
         {i.improvement && <Info label="Widać poprawę">{yes(i.improvement)}</Info>}
         {i.improvementNote && <Info label="Co jest">{i.improvementNote}</Info>}
+        {i.sealed && <Info label="Uszczelnione">{yes(i.sealed)}</Info>}
+        {i.sealedNote && <Info label="Nie jest uszczelnione">{i.sealedNote}</Info>}
         {i.selfTreatment && <Info label="Własne środki">{yes(i.selfTreatment)}</Info>}
         {i.other.trim() && <Info label="Uwagi">{i.other.trim()}</Info>}
         {visit.findings && <Info label="Zastano">{visit.findings}</Info>}

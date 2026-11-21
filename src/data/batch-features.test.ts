@@ -97,3 +97,21 @@ describe('zabieg II i kolejne: „Czy widać poprawę?” wymagane', () => {
     expect(improvementMissing(visit({ seq: 3, interview: { ...EMPTY_INTERVIEW, improvement: 'tak' } }))).toBe(false);
   });
 });
+
+describe('zabieg II i kolejne: „Czy mieszkanie zostało uszczelnione?”', () => {
+  it('wymagane, chyba że uszczelnienie potwierdzono przy wcześniejszym wykonanym zabiegu', async () => {
+    const { requiredAnswersMissing, sealedBefore } = await import('./interview');
+    const done = (seq: number, sealed: '' | 'tak' | 'nie') => visit({ id: `v${seq}`, seq, status: 'wykonany', interview: { ...EMPTY_INTERVIEW, improvement: 'tak', sealed } });
+    const second = visit({ id: 'v2', seq: 2, status: 'w_trakcie', interview: { ...EMPTY_INTERVIEW, improvement: 'tak' } });
+    expect(requiredAnswersMissing(visit({ seq: 1 }), [])).toEqual([]);
+    expect(requiredAnswersMissing(second, [done(1, '')])).toEqual(['Czy mieszkanie zostało uszczelnione?']);
+    expect(requiredAnswersMissing(visit({ seq: 2, interview: EMPTY_INTERVIEW }), [])).toEqual(['Czy widać poprawę?', 'Czy mieszkanie zostało uszczelnione?']);
+    // Na II „nie” (z opisem): przy III nadal pytamy.
+    const third = visit({ id: 'v3', seq: 3, status: 'w_trakcie', interview: { ...EMPTY_INTERVIEW, improvement: 'tak' } });
+    expect(requiredAnswersMissing(third, [done(1, ''), done(2, 'nie')])).toEqual(['Czy mieszkanie zostało uszczelnione?']);
+    // Na II „tak”: przy III już nie wymagamy.
+    expect(sealedBefore(third, [done(1, ''), done(2, 'tak')])).toBe(2);
+    expect(requiredAnswersMissing(third, [done(1, ''), done(2, 'tak')])).toEqual([]);
+    expect(interviewLines({ ...EMPTY_INTERVIEW, sealed: 'nie', sealedNote: 'kratki w łazience' })).toEqual(['Mieszkanie uszczelnione: nie', 'Nie jest uszczelnione: kratki w łazience']);
+  });
+});
