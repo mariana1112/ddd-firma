@@ -3,7 +3,7 @@ import { isSyncConfigured } from '../data/sync/config';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { addressAt, currentPosition, freeSlots, locate, previousVisitDay, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
+import { addressAt, currentPosition, freeSlots, locatePlace, placeLabel, previousVisitDay, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
 import { NextDates } from './next-dates';
 import { dayOff, eventBusy, listEvents } from '../data/events';
 import { createOrder, orderVisits, type OrderDraft } from '../data/orders';
@@ -487,12 +487,15 @@ function Choice<T extends string>(props: { value: T; options: Array<[T, string]>
 
 function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void }) {
   const [result, setResult] = useState<Suggestion[] | null | 'offline'>(null);
-  const { city, postalCode, duration } = props.state;
+  const { city, postalCode, duration, street, mapsLink } = props.state;
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const target = await locate(city, postalCode);
+      // Chwila po wpisaniu adresu, żeby nie pytać map o każdą literę ulicy.
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      if (cancelled) return;
+      const target = await locatePlace({ street, city, postalCode, mapsLink });
       if (!target) {
         if (!cancelled) setResult('offline');
         return;
@@ -503,7 +506,7 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
       for (const visit of all) {
         const order = orderById.get(visit.orderId);
         if (!order || visit.status !== 'zaplanowany' || !visit.start) continue;
-        planned.push({ order, visit, point: await locate(order.city, order.postalCode) });
+        planned.push({ order, visit, point: await locatePlace(order) });
       }
       const events = await listEvents();
       const me = (await getProfile()).userId;
@@ -522,7 +525,7 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
     return () => {
       cancelled = true;
     };
-  }, [city, postalCode, duration]);
+  }, [city, postalCode, duration, street, mapsLink]);
 
   if (result === null) return <p className="field-hint">Szukam terminów blisko innych zleceń…</p>;
   if (result === 'offline') return <p className="field-hint">Nie udało się ustalić położenia {city}. Propozycje terminów wymagają internetu.</p>;
@@ -536,7 +539,7 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
             {formatDateLong(s.date)}, {s.start.slice(11)}
           </strong>
           <span>
-            {Math.round(s.distanceKm)} km od {orderCode(s.near.order)} ({s.near.order.city}), dojazd ok. {s.travelMin} min
+            {s.distanceKm < 1 ? 'mniej niż 1 km' : `${Math.round(s.distanceKm)} km`} od {orderCode(s.near.order)} ({placeLabel(s.near.order)}), dojazd ok. {s.travelMin} min
           </span>
         </button>
       ))}
@@ -549,7 +552,7 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
  * i wolne godziny z uwzględnieniem dojazdu. Bez internetu dojazd liczy się jako 30 minut.
  */
 function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
-  const { date, time, duration, city, postalCode } = props.state;
+  const { date, time, duration, city, postalCode, street, mapsLink } = props.state;
   const [plan, setPlan] = useState<{ stops: DayStop[]; slots: string[]; off: string | null } | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -565,8 +568,8 @@ function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
           start: v.start!,
           durationMin: v.durationMin || 60,
           label: visitCode(order, v.seq),
-          city: order.city,
-          point: online ? await locate(order.city, order.postalCode) : null,
+          city: placeLabel(order),
+          point: online ? await locatePlace(order) : null,
         });
       }
       // Moje wydarzenia: wolne/urlop blokuje dzień, wydarzenie z godzinami (np. serwis) zajmuje te godziny.
@@ -574,7 +577,7 @@ function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
       const me = (await getProfile()).userId;
       const off = dayOff(events, date, me);
       for (const b of eventBusy(events, date, me)) stops.push({ ...b, city: '', point: null });
-      const target = online && city.trim() ? await locate(city, postalCode) : null;
+      const target = online && city.trim() ? await locatePlace({ street, city, postalCode, mapsLink }) : null;
       const now = nowWarsaw();
       const nowMin = date === now.slice(0, 10) ? Number(now.slice(11, 13)) * 60 + Number(now.slice(14, 16)) : undefined;
       if (!cancelled)
@@ -587,7 +590,7 @@ function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
     return () => {
       cancelled = true;
     };
-  }, [date, duration, city, postalCode]);
+  }, [date, duration, city, postalCode, street, mapsLink]);
   if (!plan) return null;
   // Kolizja: wybrana godzina nachodzi na inny zabieg tego dnia (bez liczenia dojazdu).
   const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -597,7 +600,7 @@ function DayPlan(props: { state: FormState; onPick: (time: string) => void }) {
     return b0 < a0 + st.durationMin && b0 + (Number(duration) || 60) > a0;
   });
   // Trasa z nowym zleceniem wstawionym według wybranej godziny.
-  const route = [...plan.stops.map((s) => ({ time: s.start.slice(11, 16), text: s.city ? `${s.city} · ${s.label}` : s.label, fresh: false })), { time, text: `${city || 'nowe zlecenie'} · nowe`, fresh: true }].sort((a, b) => a.time.localeCompare(b.time));
+  const route = [...plan.stops.map((s) => ({ time: s.start.slice(11, 16), text: s.city ? `${s.city} · ${s.label}` : s.label, fresh: false })), { time, text: `${placeLabel({ city, street }) || 'nowe zlecenie'} · nowe`, fresh: true }].sort((a, b) => a.time.localeCompare(b.time));
   return (
     <div className="day-plan">
       <span className="field-label">Trasa w dniu {formatDateLong(date)}</span>

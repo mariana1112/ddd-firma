@@ -1,12 +1,14 @@
 // Propozycje terminów blisko innych zleceń, żeby nie jeździć dwa razy w tygodniu w to samo miejsce.
 //
-// Położenie liczymy z dokładnością do miejscowości i kodu pocztowego. Do usługi map (OpenStreetMap
-// Nominatim) trafia tylko miejscowość z kodem, nigdy ulica, numer domu ani dane klienta (wyjątek: „Jestem na
-// miejscu” w nowym zleceniu wysyła na żądanie technika same współrzędne jego pozycji). Wynik jest
-// zapamiętywany na urządzeniu, więc każda miejscowość jest sprawdzana raz.
+// Położenie zlecenia: punkt z zapisanego linku Google Maps (bez pytania usługi map), a bez niego ulica z kodem
+// i miejscowością (w Gdańsku Przymorze i Morena to różne miejsca). Do usługi map (OpenStreetMap Nominatim) trafia
+// tylko nazwa ulicy, kod i miejscowość: nigdy numer domu ani dane klienta (wyjątek: „Jestem na miejscu” w nowym
+// zleceniu wysyła na żądanie technika same współrzędne jego pozycji). Gdy ulicy nie da się znaleźć, liczy się
+// miejscowość. Wynik jest zapamiętywany na urządzeniu, więc każda ulica jest sprawdzana raz.
 import { addDays, addMinutes, nowWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
 import { db } from './db';
+import { coordsFromLink } from './maps';
 import { DomainError } from './domain';
 import type { Order, Visit } from './types';
 
@@ -30,17 +32,26 @@ export function travelMinutes(km: number): number {
 
 const geoKey = (city: string, postalCode: string) => `geo:${normalizeForSearch(`${postalCode.trim()} ${city.trim()}`)}`;
 
-/** Współrzędne miejscowości z pamięci urządzenia albo z Nominatim. Null, gdy nie da się ustalić. */
-export async function locate(city: string, postalCode: string): Promise<LatLng | null> {
-  if (!city.trim()) return null;
-  const key = geoKey(city, postalCode);
+// Nominatim pozwala na jedno zapytanie na sekundę: kolejne czekają w kolejce.
+let gate: Promise<unknown> = Promise.resolve();
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function queued<T>(job: () => Promise<T>): Promise<T> {
+  const run = gate.then(job);
+  gate = run.then(
+    () => pause(1100),
+    () => pause(1100),
+  );
+  return run;
+}
+
+/** Zapytanie do Nominatim z pamięcią na urządzeniu (także brak wyniku). Null, gdy nie da się ustalić. */
+async function lookup(key: string, query: Record<string, string>): Promise<LatLng | null> {
   const cached = (await db.meta.get(key))?.value as LatLng | null | undefined;
   if (cached !== undefined) return cached;
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
-  const params = new URLSearchParams({ format: 'json', limit: '1', countrycodes: 'pl', city: city.trim() });
-  if (postalCode.trim()) params.set('postalcode', postalCode.trim());
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
+  const params = new URLSearchParams({ format: 'json', limit: '1', countrycodes: 'pl', ...query });
   try {
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { 'Accept-Language': 'pl' } });
+    const response = await queued(() => fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { 'Accept-Language': 'pl' } }));
     if (!response.ok) return null;
     const [hit] = (await response.json()) as Array<{ lat: string; lon: string }>;
     const point = hit ? { lat: Number(hit.lat), lng: Number(hit.lon) } : null;
@@ -50,6 +61,49 @@ export async function locate(city: string, postalCode: string): Promise<LatLng |
     return null;
   }
 }
+
+/** Współrzędne miejscowości z pamięci urządzenia albo z Nominatim. Null, gdy nie da się ustalić. */
+export async function locate(city: string, postalCode: string): Promise<LatLng | null> {
+  if (!city.trim()) return null;
+  return lookup(geoKey(city, postalCode), { city: city.trim(), ...(postalCode.trim() ? { postalcode: postalCode.trim() } : {}) });
+}
+
+/** Nazwa ulicy bez „ul.” i bez numeru domu (numer nie trafia do usługi map). */
+export function streetName(street: string): string {
+  return street
+    .replace(/^\s*(ul\.?|ulica)\s+/i, '')
+    .replace(/\s+\d+[a-z]?([/-]\d+[a-z]?)?\s*$/i, '')
+    .trim();
+}
+
+export interface Place {
+  street?: string;
+  city: string;
+  postalCode: string;
+  mapsLink?: string;
+}
+
+/**
+ * Położenie miejsca zlecenia: punkt z linku Google Maps, a bez niego ulica (bez numeru) z kodem i miejscowością.
+ * Gdy ulicy nie ma albo nie da się jej znaleźć: środek miejscowości.
+ */
+export async function locatePlace(place: Place): Promise<LatLng | null> {
+  const pin = coordsFromLink(place.mapsLink);
+  if (pin) return pin;
+  const street = streetName(place.street ?? '');
+  if (street && place.city.trim()) {
+    const point = await lookup(`${geoKey(place.city, place.postalCode)}|${normalizeForSearch(street)}`, {
+      street,
+      city: place.city.trim(),
+      ...(place.postalCode.trim() ? { postalcode: place.postalCode.trim() } : {}),
+    });
+    if (point) return point;
+  }
+  return locate(place.city, place.postalCode);
+}
+
+/** Miejscowość z ulicą do opisu trasy: „Gdańsk, Grunwaldzka”. */
+export const placeLabel = (place: Pick<Place, 'street' | 'city'>) => [place.city.trim(), streetName(place.street ?? '')].filter(Boolean).join(', ');
 
 export interface Suggestion {
   start: string;
