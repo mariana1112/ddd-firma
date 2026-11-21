@@ -40,6 +40,11 @@ describe('przydział technika i powiadomienie', () => {
     expect(text).toContain(`#/zabieg/${v.id}`);
     expect(whatsappUrl(text)).toMatch(/^https:\/\/wa\.me\/\?text=/);
     expect(smsTextUrl(text)).toMatch(/^sms:\?&body=/);
+    // Technik z innego regionu (tylko to zlecenie): nie otworzy zlecenia w aplikacji, więc dostaje dane, nie odnośnik.
+    const outside = assignmentText({ ...order, clientName: 'Jan Kowalski', access: 'Domofon 12' }, fresh, 'Anna Nowak', true);
+    expect(outside).toContain('Nazwisko: Jan Kowalski');
+    expect(outside).toContain('Jak dotrzeć: Domofon 12');
+    expect(outside).not.toContain('#/zabieg/');
 
     await assignVisit(v.id, null);
     expect((await visits.get(v.id))!.assignedId).toBeNull();

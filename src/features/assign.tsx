@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { assignmentText, assignVisit, smsTextUrl, whatsappUrl, type Person } from '../data/assign';
 import { visitCode } from '../data/codes';
-import { getRegions, getSyncState, saveSubstitution } from '../data/settings';
+import { getRegions, getSyncState } from '../data/settings';
 import type { Order, SyncState, Visit } from '../data/types';
 import { useFeedback } from '../ui/feedback';
 import { Icon } from '../ui/icons';
@@ -13,17 +13,17 @@ const supabaseApi = () => import('../data/sync/supabase');
 type Member = { userId: string; displayName: string; email: string; role: string; branchId: string | null; approved: boolean; suspended?: boolean };
 
 /**
- * Przydział technika do zabiegu: najpierw technicy regionu zlecenia, a admin widzi też techników z innych regionów
- * (wybór takiej osoby to zastępstwo: technik przechodzi do regionu zlecenia, a po zakończeniu wraca do swojego).
- * Po przydziale: powiadomienie w aplikacji (dzwoneczek) i gotowa wiadomość na WhatsApp albo SMS.
+ * Przydział technika do jednego zlecenia (zabiegu): najpierw technicy regionu zlecenia, a admin widzi też techników
+ * z innych regionów. Ich region się nie zmienia: przydział dotyczy tylko tego zlecenia. Zastępstwo w całym regionie
+ * ustawia się w panelu admina (Zastępstwa). Po przydziale: gotowa wiadomość na WhatsApp albo SMS.
  */
 export function AssignSheet(props: { order: Order; visit: Visit; open: boolean; onClose: () => void }) {
-  const { confirm, run, toast } = useFeedback();
+  const { run, toast } = useFeedback();
   const [state, setState] = useState<SyncState | null | undefined>(undefined);
   const [members, setMembers] = useState<Member[] | null | 'offline'>(null);
   const [access, setAccess] = useState<Array<{ userId: string; branchId: string }>>([]);
   const [regionNames, setRegionNames] = useState<Record<string, string>>({});
-  const [notify, setNotify] = useState<Person | null>(null);
+  const [notify, setNotify] = useState<(Person & { outside?: boolean }) | null>(null);
 
   useEffect(() => {
     if (!props.open) return;
@@ -52,50 +52,30 @@ export function AssignSheet(props: { order: Order; visit: Visit; open: boolean; 
   const others = owner ? people.filter((m) => !inRegion(m)) : [];
   const name = (m: Member) => m.displayName || m.email || 'Technik';
 
-  const assign = (person: Person) =>
+  const assign = (person: Person, outside = false) =>
     run(async () => {
       await assignVisit(props.visit.id, person);
       toast(`Przydzielono: ${person.name}`);
-      setNotify(person);
+      setNotify({ ...person, outside });
     });
 
-  /** Zastępstwo: technik z innego regionu przechodzi do regionu zlecenia (admin), potem przydział. */
-  const substitute = async (m: Member) => {
-    if (!state || !region) return;
-    const toName = regionNames[region] ?? 'tego regionu';
-    const ok = await confirm({
-      title: `Zastępstwo: ${name(m)}`,
-      message: `${name(m)} przejdzie z regionu ${m.branchId ? (regionNames[m.branchId] ?? 'swojego') : 'bez regionu'} do regionu ${toName}. W tym czasie zobaczy zlecenia regionu ${toName}, a jego zabiegi wpadną do raportu tego regionu. Zastępstwo zakończysz w panelu admina (Zastępstwa) i wtedy wróci do swojego regionu.`,
-      confirmLabel: 'Przenieś na zastępstwo',
-    });
-    if (!ok) return;
-    await run(async () => {
-      await (await supabaseApi()).setMemberBranch(state.orgId, m.userId, region);
-      await saveSubstitution({
-        userId: m.userId,
-        name: name(m),
-        home: m.branchId,
-        homeName: m.branchId ? (regionNames[m.branchId] ?? '') : '',
-        to: region,
-        toName,
-        since: new Date().toISOString(),
-      });
-      await assignVisit(props.visit.id, { id: m.userId, name: name(m) });
-      toast(`${name(m)} na zastępstwie w regionie ${toName}`);
-      setNotify({ id: m.userId, name: name(m) });
-    });
-  };
-
-  const text = notify ? assignmentText(props.order, props.visit, notify.name) : '';
+  const text = notify ? assignmentText(props.order, props.visit, notify.name, notify.outside) : '';
 
   return (
     <Sheet open={props.open} title={notify ? `Powiadom: ${notify.name}` : `Przydziel technika · ${visitCode(props.order, props.visit.seq)}`} onClose={props.onClose}>
       {notify ? (
         <div className="form">
-          <p className="notice notice-info">
-            <Icon name="bell" />
-            <span>{notify.name} dostanie powiadomienie w aplikacji (dzwoneczek), gdy jego telefon się zsynchronizuje. Możesz też od razu wysłać wiadomość:</span>
-          </p>
+          {notify.outside ? (
+            <p className="notice notice-warn">
+              <Icon name="alert" />
+              <span>{notify.name} jest w innym regionie i nie zobaczy tego zlecenia w swojej aplikacji. Wyślij mu wiadomość ze wszystkimi danymi:</span>
+            </p>
+          ) : (
+            <p className="notice notice-info">
+              <Icon name="bell" />
+              <span>{notify.name} dostanie powiadomienie w aplikacji (dzwoneczek), gdy jego telefon się zsynchronizuje. Możesz też od razu wysłać wiadomość:</span>
+            </p>
+          )}
           <pre className="assign-text">{text}</pre>
           <a className="btn btn-primary btn-block btn-whatsapp" href={whatsappUrl(text)} target="_blank" rel="noreferrer">
             <Icon name="message" /> Wyślij na WhatsApp
@@ -147,9 +127,14 @@ export function AssignSheet(props: { order: Order; visit: Visit; open: boolean; 
           ))}
           {others.length > 0 && (
             <>
-              <span className="field-label">Z innego regionu (zastępstwo)</span>
+              <span className="field-label">Z innego regionu (tylko to zlecenie)</span>
               {others.map((m) => (
-                <button key={m.userId} type="button" className="assign-person assign-other" onClick={() => void substitute(m)}>
+                <button
+                  key={m.userId}
+                  type="button"
+                  className={props.visit.assignedId === m.userId ? 'assign-person assign-other active' : 'assign-person assign-other'}
+                  onClick={() => void assign({ id: m.userId, name: name(m) }, true)}
+                >
                   <span className="assign-avatar">{name(m).slice(0, 1).toUpperCase()}</span>
                   <span>
                     <strong>{name(m)}</strong>
@@ -157,6 +142,7 @@ export function AssignSheet(props: { order: Order; visit: Visit; open: boolean; 
                   </span>
                 </button>
               ))}
+              <p className="field-hint">Region technika się nie zmienia. Zastępstwo w całym regionie ustawisz w panelu admina (Zastępstwa).</p>
             </>
           )}
         </div>

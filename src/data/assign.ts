@@ -25,8 +25,11 @@ export async function assignVisit(visitId: string, person: Person | null): Promi
 
 const APP_URL = 'https://mariana1112.github.io/ddd-firma/';
 
-/** Wiadomość do technika (WhatsApp, SMS): termin, adres, co robimy, telefon klienta i link do zabiegu w aplikacji. */
-export function assignmentText(order: Order, visit: Visit, name: string): string {
+/**
+ * Wiadomość do technika (WhatsApp, SMS): termin, adres, co robimy, telefon klienta i link do zabiegu w aplikacji. Technik z innego regionu (`outside`) nie otworzy zlecenia w swojej aplikacji,
+ * więc dostaje komplet danych (klient, dojazd) zamiast odnośnika.
+ */
+export function assignmentText(order: Order, visit: Visit, name: string, outside = false): string {
   const first = name.trim().split(/\s+/)[0] ?? '';
   const phone = order.phones.find((p) => p.number.trim());
   const what = [pestName(order), ...methodNames(order)].filter(Boolean).join(', ');
@@ -36,8 +39,11 @@ export function assignmentText(order: Order, visit: Visit, name: string): string
     `Adres: ${orderAddress(order) || 'klient poda później'}`,
     what && `Co: ${what}`,
     phone && `Klient: ${withCountryCode(phone.number)}${phone.label ? ` (${phone.label})` : ''}`,
+    outside && order.clientName.trim() && `Nazwisko: ${order.clientName.trim()}`,
     order.description.trim() && `Opis: ${order.description.trim()}`,
-    `Szczegóły w aplikacji: ${APP_URL}#/zabieg/${visit.id}`,
+    outside && order.access?.trim() && `Jak dotrzeć: ${order.access.trim()}`,
+    outside && order.mapsLink?.trim() && `Mapa: ${order.mapsLink.trim()}`,
+    !outside && `Szczegóły w aplikacji: ${APP_URL}#/zabieg/${visit.id}`,
   ]
     .filter(Boolean)
     .join('\n');
