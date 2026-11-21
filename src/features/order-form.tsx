@@ -697,7 +697,7 @@ function formTerms(s: FormState): VisitTerms {
  * do nawigacji. Numer lokalu, klatkę i piętro technik dopisuje sam.
  */
 /**
- * „Szukaj adresu”: podpowiedzi z Google Maps podczas pisania (od 3 znaków, po chwili przerwy), najpierw w okolicy
+ * „Szukaj adresu”: podpowiedzi z Google Maps podczas pisania (od 3 znaków, 1 s po przerwie w pisaniu), najpierw w okolicy
  * bazy. Wybór wpisuje ulicę, numer, kod, miejscowość i dokładny punkt (link do mapy, gdy pusty). Klucz z ustawień
  * albo wbudowany w aplikację.
  */
@@ -729,7 +729,7 @@ function AddressSearch(props: { state: FormState; set: (patch: Partial<FormState
         .catch((e: unknown) => {
           if ((e as Error).name !== 'AbortError') setError((e as Error).message);
         });
-    }, 450);
+    }, 1000);
     return () => {
       clearTimeout(timer);
       abort.abort();
