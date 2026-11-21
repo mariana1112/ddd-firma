@@ -243,11 +243,10 @@ type Errors = Partial<Record<keyof FormState, string>>;
 
 /**
  * Puste pola nieobowiązkowe, o które warto zapytać: aplikacja pyta, czy na pewno ich nie uzupełnić.
- * Data, telefon, adres, widełki i „Co robimy” są obowiązkowe (validate).
+ * Data, telefon, adres (w bloku także nr lokalu i piętro), widełki i „Co robimy” są obowiązkowe (validate).
  */
-function missing(step: StepId, s: FormState): Array<[keyof FormState, string]> {
+function missing(_step: StepId, _s: FormState): Array<[keyof FormState, string]> {
   const m: Array<[keyof FormState, string]> = [];
-  if (step === 'adres' && !s.addressLater && s.building === 'blok' && !s.flatNo.trim()) m.push(['flatNo', 'numer lokalu']);
   return m;
 }
 
@@ -267,6 +266,10 @@ function validate(step: StepId, s: FormState): Errors {
     if (!s.street.trim()) e.street = 'Podaj ulicę';
     if (!s.houseNo.trim()) e.houseNo = 'Podaj numer';
     if (!s.city.trim()) e.city = 'Podaj miejscowość';
+    if (s.building === 'blok') {
+      if (!s.flatNo.trim()) e.flatNo = 'Podaj numer lokalu';
+      if (!s.floor.trim()) e.floor = 'Podaj piętro (parter: 0)';
+    }
   }
   if (step === 'adres') {
     if (s.postalCode.trim() && !/^\d{2}-\d{3}$/.test(s.postalCode.trim())) e.postalCode = 'Kod w formacie 00-000';
@@ -960,7 +963,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <Field label="Nr lokalu" error={errors.flatNo}>
                 <input value={s.flatNo} onChange={(e) => set({ flatNo: e.target.value })} inputMode="numeric" autoComplete="off" />
               </Field>
-              <Field label="Piętro">
+              <Field label="Piętro" error={errors.floor}>
                 <input value={s.floor} onChange={(e) => set({ floor: e.target.value })} inputMode="numeric" autoComplete="off" />
               </Field>
               <Field label="Klatka">
