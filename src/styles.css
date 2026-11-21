@@ -4622,3 +4622,66 @@ a.region-pill {
   outline-offset: 2px;
   border-radius: var(--radius);
 }
+
+/* Szukaj adresu (podpowiedzi Google) */
+.address-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.address-search-box input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding-left: 0;
+  padding-right: 0;
+  box-shadow: none;
+  outline: none;
+}
+.address-search-box:focus-within {
+  border-color: var(--primary);
+}
+.address-suggestions {
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.address-suggestions button {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  touch-action: manipulation;
+}
+.address-suggestions button:hover,
+.address-suggestions button:focus-visible {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.address-suggestions button span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.address-suggestions small {
+  color: var(--muted);
+}
+.address-attribution {
+  padding: 4px 12px 2px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}

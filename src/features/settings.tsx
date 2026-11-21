@@ -320,6 +320,7 @@ function SettingsForm(props: {
           taxpayerName: (company.taxpayerName ?? '').trim(),
           bankAccount: formatAccount(company.bankAccount),
           blikPhone: (company.blikPhone ?? '').trim(),
+          googlePlacesKey: (company.googlePlacesKey ?? '').trim(),
           nip: company.nip.trim(),
           street: company.street.trim(),
           postalCode: company.postalCode.trim(),
@@ -470,6 +471,12 @@ function SettingsForm(props: {
         </Field>
         <Field label="Telefon do BLIK-a" hint="Numer, na który klient wysyła BLIK na telefon.">
           <input type="tel" inputMode="tel" placeholder="+48 500 600 700" value={company.blikPhone ?? ''} onChange={(e) => setC({ blikPhone: formatPhoneInput(e.target.value) })} />
+        </Field>
+        <Field
+          label="Klucz Google Maps (podpowiedzi adresów)"
+          hint="Z Google Cloud: Places API (New), klucz ograniczony do strony aplikacji. Po zapisaniu każdy telefon w firmie dostaje podpowiedzi adresu przy zleceniu."
+        >
+          <input value={company.googlePlacesKey ?? ''} placeholder="AIza…" autoComplete="off" spellCheck={false} onChange={(e) => setC({ googlePlacesKey: e.target.value.trim() })} />
         </Field>
       </fieldset>
       </details>

@@ -505,6 +505,8 @@ export interface CompanySettings {
   taxpayerName?: string;
   /** Numer telefonu do płatności BLIK na telefon, np. „+48 505 724 090”. */
   blikPhone?: string;
+  /** Klucz Google Maps (Places API (New)) do podpowiedzi adresów; ograniczony do strony aplikacji. Pusty: bez podpowiedzi. */
+  googlePlacesKey?: string;
 }
 
 export interface MetaRow {

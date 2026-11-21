@@ -1,14 +1,15 @@
 import { orderCode, visitCode } from '../data/codes';
 import { isSyncConfigured } from '../data/sync/config';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { addressAt, currentPosition, freeSlots, locatePlace, placeLabel, previousVisitDay, suggestSlots, type DayStop, type Suggestion } from '../data/geo';
+import { addressAt, currentPosition, freeSlots, locate, locatePlace, placeLabel, pointMapsLink, previousVisitDay, suggestSlots, type DayStop, type LatLng, type Suggestion } from '../data/geo';
+import { newPlacesSession, pickAddress, suggestAddresses, type AddressSuggestion } from '../data/places';
 import { NextDates } from './next-dates';
 import { dayOff, eventBusy, listEvents } from '../data/events';
 import { createOrder, orderVisits, type OrderDraft } from '../data/orders';
 import { orders, visits } from '../data/repo';
-import { getAppSettings, getProfile } from '../data/settings';
+import { getAppSettings, getCompany, getProfile, getVehicle } from '../data/settings';
 import { BUILDINGS, INVOICES, PESTS, orderAddress, priceRange, PINK_PLACEHOLDER } from '../data/texts';
 import type { BuildingType, InvoiceType, Order, PestCategory, ScopeKind, TreatmentMethod, Visit } from '../data/types';
 import { METHOD_LABEL, METHODS, orderMethods } from '../data/methods';
@@ -695,6 +696,108 @@ function formTerms(s: FormState): VisitTerms {
  * „Jestem na miejscu”: adres z aktualnej pozycji telefonu (GPS + mapa OpenStreetMap) i dokładny punkt Google Maps
  * do nawigacji. Numer lokalu, klatkę i piętro technik dopisuje sam.
  */
+/**
+ * „Szukaj adresu”: podpowiedzi z Google Maps podczas pisania (od 3 znaków, po chwili przerwy), najpierw w okolicy
+ * bazy. Wybór wpisuje ulicę, numer, kod, miejscowość i dokładny punkt (link do mapy, gdy pusty). Bez klucza Google
+ * w ustawieniach pola nie ma.
+ */
+function AddressSearch(props: { state: FormState; set: (patch: Partial<FormState>) => void }) {
+  const setup = useLiveQuery(async () => {
+    const key = (await getCompany()).googlePlacesKey?.trim() ?? '';
+    const base = key ? await locate((await getVehicle()).base, '').catch(() => null) : null;
+    return { key, near: base as LatLng | null };
+  });
+  const [text, setText] = useState('');
+  const [list, setList] = useState<AddressSuggestion[]>([]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const session = useRef<string | null>(null);
+  useEffect(() => {
+    if (!setup?.key || text.trim().length < 3) {
+      setList([]);
+      return;
+    }
+    const abort = new AbortController();
+    // Pytamy Google dopiero po chwili przerwy w pisaniu (mniej zapytań).
+    const timer = setTimeout(() => {
+      session.current ??= newPlacesSession();
+      suggestAddresses({ key: setup.key, input: text, session: session.current, near: setup.near, signal: abort.signal })
+        .then((found) => {
+          setList(found);
+          setError('');
+        })
+        .catch((e: unknown) => {
+          if ((e as Error).name !== 'AbortError') setError((e as Error).message);
+        });
+    }, 450);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+    // Tylko tekst, klucz i współrzędne (liczby): zapis czegokolwiek innego w aplikacji nie wysyła nowego zapytania.
+  }, [text, setup?.key, setup?.near?.lat, setup?.near?.lng]);
+  if (!setup?.key) return null;
+
+  const choose = async (s: AddressSuggestion) => {
+    setBusy(true);
+    try {
+      const a = await pickAddress({ key: setup.key, placeId: s.placeId, session: session.current ?? newPlacesSession() });
+      props.set({
+        street: a.street,
+        houseNo: a.houseNo,
+        ...(a.flatNo ? { flatNo: a.flatNo } : {}),
+        postalCode: a.postalCode,
+        city: normalizeCity(a.city),
+        // Dokładny punkt: nawigacja i propozycje terminów liczą od domu klienta. Własny link zostaje.
+        ...(a.point && !props.state.mapsLink.trim() ? { mapsLink: pointMapsLink(a.point) } : {}),
+      });
+      setText('');
+      setList([]);
+      setError(a.street || a.city ? '' : 'Google nie podał adresu tego miejsca. Uzupełnij pola ręcznie.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      // Po wyborze zaczyna się nowa sesja (kolejny adres).
+      session.current = null;
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="field address-search">
+      <span className="field-label">Szukaj adresu</span>
+      <div className="address-search-box">
+        <Icon name="search" size={18} />
+        <input
+          type="search"
+          value={text}
+          placeholder="Np. Świętego Jana 5 Gdańsk"
+          autoComplete="off"
+          enterKeyHint="search"
+          onChange={(e) => setText(e.target.value)}
+        />
+      </div>
+      {list.length > 0 && (
+        <ul className="address-suggestions" role="listbox" aria-label="Podpowiedzi adresu">
+          {list.map((s) => (
+            <li key={s.placeId}>
+              <button type="button" disabled={busy} onClick={() => void choose(s)}>
+                <Icon name="pin" size={16} />
+                <span>
+                  <strong>{s.main}</strong>
+                  {s.secondary && <small>{s.secondary}</small>}
+                </span>
+              </button>
+            </li>
+          ))}
+          <li className="address-attribution">Podpowiedzi: Google Maps</li>
+        </ul>
+      )}
+      {error && <span className="field-message">{error}</span>}
+    </div>
+  );
+}
+
 function HerePosition(props: { set: (patch: Partial<FormState>) => void }) {
   const { run, toast } = useFeedback();
   const [busy, setBusy] = useState(false);
@@ -837,6 +940,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <span className="field-hint">Zlecenie zapisze się bez adresu i będzie w „Pilnych”, dopóki go nie uzupełnisz.</span>
             </span>
           </label>
+          <AddressSearch state={s} set={set} />
           <HerePosition set={set} />
           <Choice
             label="Rodzaj budynku"
@@ -1111,7 +1215,6 @@ export function OrderNewPage() {
       setCopied(copyFrom);
       toast(`Powielasz zlecenie ${orderCode(source)}. Sprawdź numer mieszkania i termin.`);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [copyFrom, copyVisit, copied]);
   const steps: StepId[] = [...ALL_STEPS, 'podsumowanie'];
   const step = steps[stepIndex];
@@ -1327,7 +1430,6 @@ export function OrderEditPage() {
     }
     setState(restored ?? base);
     if (restored) toast('Przywrócono niezapisane zmiany');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, state]);
 
   if (loaded === undefined || (loaded && !state)) return <Loading />;
