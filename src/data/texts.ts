@@ -45,10 +45,17 @@ export function orderAddress(order: Pick<Order, 'street' | 'houseNo' | 'flatNo' 
   return [street, order.city.trim()].filter(Boolean).join(', ');
 }
 
+/** Piętro do wyświetlenia: „0” (i „parter”) jako „parter”, inaczej „piętro N”. Puste, gdy nie podano. */
+export function floorText(floor: string): string {
+  const f = floor.trim();
+  if (!f) return '';
+  return /^(0|parter)$/i.test(f) ? 'parter' : `piętro ${f}`;
+}
+
 /** Szczegóły dojścia w bloku: klatka i piętro. */
 export function accessDetails(order: Pick<Order, 'building' | 'staircase' | 'floor'>): string {
   if (order.building !== 'blok') return '';
-  return [order.staircase.trim() && `klatka ${order.staircase.trim()}`, order.floor.trim() && `piętro ${order.floor.trim()}`]
+  return [order.staircase.trim() && `klatka ${order.staircase.trim()}`, floorText(order.floor)]
     .filter(Boolean)
     .join(', ');
 }
@@ -312,7 +319,7 @@ const VISIT_STATE: Record<Visit['status'], string> = {
  */
 export function orderText(order: Order, visits: Visit[], vatRate: number): string {
   const flat = order.building === 'blok'
-    ? [order.staircase.trim() && `klatka ${order.staircase.trim()}`, order.floor.trim() && `piętro ${order.floor.trim()}`].filter(Boolean).join(', ')
+    ? [order.staircase.trim() && `klatka ${order.staircase.trim()}`, floorText(order.floor)].filter(Boolean).join(', ')
     : '';
   const price = priceRange({ priceMin: order.priceMin, priceMax: order.priceMax, invoice: order.invoice }, vatRate);
   const methods = methodNames(order).join(', ');

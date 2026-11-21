@@ -5,7 +5,7 @@ import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interface
 import { FIRST_PAGE_ROWS, NEXT_PAGE_ROWS, paginate, romanMonth, type DriverSummary, type MileageEntry } from '../data/mileage';
 import { byTechnician, formatPln, PAY_METHODS, periodTitle, type Report } from '../data/reports';
 import { COMPANY_NAME } from '../data/settings';
-import { BUILDINGS, INVOICES, interviewLines, orderAddress, PAY_NAMES, pestName, priceRange, workSummary } from '../data/texts';
+import { BUILDINGS, floorText, INVOICES, interviewLines, orderAddress, PAY_NAMES, pestName, priceRange, workSummary } from '../data/texts';
 import { scopeText, visitPrice } from '../data/visit-terms';
 import type { Order, TripKind, Visit } from '../data/types';
 import { formatDate, formatTerm } from '../lib/dates';
@@ -591,7 +591,7 @@ export function orderDocument(order: Order, visits: Visit[], opts: { vatRate: nu
     table: { widths: [110, '*'], body: rows.filter(([, v]) => v.trim()).map(([k, v]) => [{ text: k, color: MUTED }, v]) },
   });
   const flatParts = order.building === 'blok'
-    ? [order.flatNo.trim() && `mieszkanie ${order.flatNo.trim()}`, order.staircase.trim() && `klatka ${order.staircase.trim()}`, order.floor.trim() && `piętro ${order.floor.trim()}`].filter(Boolean).join(', ')
+    ? [order.flatNo.trim() && `mieszkanie ${order.flatNo.trim()}`, order.staircase.trim() && `klatka ${order.staircase.trim()}`, floorText(order.floor)].filter(Boolean).join(', ')
     : '';
   const price = priceRange({ priceMin: order.priceMin, priceMax: order.priceMax, invoice: order.invoice }, opts.vatRate);
   const sorted = [...visits].sort((a, b) => a.seq - b.seq);

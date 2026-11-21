@@ -25,15 +25,25 @@ export function installTypingWatch() {
   };
   const typing = () => root.hasAttribute('data-typing');
 
+  // Pasek wraca z opóźnieniem: stuknięcie przycisku na dole ekranu (np. „Dalej”) zaczyna się, gdy pole traci fokus.
+  // Gdyby pasek pojawił się od razu, przykryłby przycisk w trakcie stuknięcia i stuknięcie by nie zadziałało.
+  let showTimer: number | undefined;
+  const showBarLater = () => {
+    clearTimeout(showTimer);
+    showTimer = window.setTimeout(() => {
+      if (!opensKeyboard(document.activeElement)) set(false);
+    }, 400);
+  };
   document.addEventListener('focusin', (e) => {
     if (!opensKeyboard(e.target as Element)) return;
+    clearTimeout(showTimer);
     shrunk = false;
     set(true);
   });
   document.addEventListener('focusout', (e) => {
     // Przejście do następnego pola: pasek zostaje schowany.
     if (opensKeyboard(e.relatedTarget as Element | null)) return;
-    set(false);
+    showBarLater();
   });
   if (!vv) return;
   vv.addEventListener('resize', () => {
@@ -41,14 +51,22 @@ export function installTypingWatch() {
     if (vv.scale > 1.05) return;
     const open = vv.height < base - 120;
     if (typing()) {
-      if (open) shrunk = true;
+      if (open) {
+        shrunk = true;
+        clearTimeout(showTimer);
+      }
       // Klawiatura zamknięta (np. „wstecz” na Androidzie), a pole dalej zaznaczone: pasek wraca.
-      else if (shrunk) set(false);
+      else if (shrunk) {
+        shrunk = false;
+        clearTimeout(showTimer);
+        showTimer = window.setTimeout(() => set(false), 400);
+      }
       return;
     }
     if (open && opensKeyboard(document.activeElement)) {
       // Ponowne dotknięcie zaznaczonego pola otwiera klawiaturę bez nowego „focusin”.
       shrunk = true;
+      clearTimeout(showTimer);
       set(true);
       return;
     }

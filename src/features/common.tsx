@@ -334,7 +334,7 @@ export function AddressBlock({ order }: { order: Order }) {
       ? ([
           ['Mieszkanie', order.flatNo.trim()],
           ['Klatka', order.staircase.trim()],
-          ['Piętro', order.floor.trim()],
+          ['Piętro', /^(0|parter)$/i.test(order.floor.trim()) ? 'parter' : order.floor.trim()],
         ] as Array<[string, string]>)
       : []),
   ];

@@ -508,9 +508,14 @@ function Suggestions(props: { state: FormState; onPick: (s: Suggestion) => void 
       const all = await visits.all();
       const orderById = new Map((await orders.all()).map((o) => [o.id, o]));
       const planned = [];
+      // Tylko zabiegi z okna propozycji (dziś + 14 dni): położenie każdego nowego adresu to osobne zapytanie do map
+      // (najwyżej jedno na sekundę), więc stare i dalekie zabiegi tylko wydłużałyby „Szukam terminów…”.
+      const from = todayWarsaw();
+      const until = addDays(from, 14);
       for (const visit of all) {
         const order = orderById.get(visit.orderId);
         if (!order || visit.status !== 'zaplanowany' || !visit.start) continue;
+        if (visit.start.slice(0, 10) < from || visit.start.slice(0, 10) > until) continue;
         planned.push({ order, visit, point: await locatePlace(order) });
       }
       const events = await listEvents();
@@ -683,7 +688,7 @@ function ReturningClient(props: { phone: string; onFill: (order: Order) => void;
     <div className="notice notice-info">
       <Icon name="users" />
       <span>
-        Ten numer był już w zleceniu <strong>{orderCode(last)}</strong> ({last.clientName}, {orderAddress(last)}).
+        Ten numer był już w zleceniu <strong>{orderCode(last)}</strong> ({[last.clientName.trim(), orderAddress(last)].filter(Boolean).join(', ') || 'bez adresu'}).
         <span className="notice-actions">
           {filled ? (
             <strong>Uzupełniono. Sprawdź dane w kolejnych krokach.</strong>
@@ -1026,6 +1031,8 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
             options={Object.entries(PESTS) as Array<[PestCategory, string]>}
             onChange={(pest) => {
               // Pluskwy: od razu oprysk ciśnieniowy, ULV i parowanie (zwykły zestaw); można odznaczyć.
+              // Ponowne stuknięcie tego samego szkodnika nic nie zmienia (inaczej „zapomniałoby”, co zaznaczyło się samo).
+              if (pest === s.pest) return;
               if (pest === 'pluskwy') {
                 const auto = (['oprysk', 'ulv', 'parowanie'] as TreatmentMethod[]).filter((m) => !s.methods.includes(m));
                 set({ pest, methods: [...s.methods, ...auto], autoMethods: auto });
@@ -1179,7 +1186,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           <Info label="Co pryskamy">{scopeText(formTerms(s).scope)}</Info>
           {price && <Info label="Widełki">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
           <Info label="Faktura">{INVOICES[draft.invoice]}</Info>
-          {draft.invoice === 'vat' && <Info label="Do faktury">{`${draft.invoiceName}\nNIP ${draft.nip}`}</Info>}
+          {draft.invoice === 'vat' && <Info label="Do faktury">{[(draft.invoiceName ?? '').trim(), `NIP ${draft.nip}`, draft.email.trim()].filter(Boolean).join('\n')}</Info>}
           <Info label="Protokół">{s.protocol ? 'Tak' : 'Nie'}</Info>
           <Info label="Klient">{[draft.clientName.trim(), ...draft.phones.map((p) => (p.label ? `${p.number} (${p.label})` : p.number))].filter(Boolean).join('\n')}</Info>
           {draft.pink && <Info label="Kod pink">{draft.pinkNote || 'Tak'}</Info>}

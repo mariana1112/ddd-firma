@@ -48,3 +48,14 @@ describe('opis zlecenia do skopiowania', () => {
     expect(text).not.toContain('E-mail');
   });
 });
+
+describe('piętro w opisie adresu', () => {
+  it('0 i „parter” to parter, inne piętra z numerem, puste pomija', async () => {
+    const { floorText, accessDetails } = await import('./texts');
+    expect(floorText('0')).toBe('parter');
+    expect(floorText(' Parter ')).toBe('parter');
+    expect(floorText('4')).toBe('piętro 4');
+    expect(floorText('')).toBe('');
+    expect(accessDetails({ building: 'blok', staircase: 'B', floor: '0' })).toBe('klatka B, parter');
+  });
+});
