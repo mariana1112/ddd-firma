@@ -4,7 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addressAt, currentPosition, freeSlots, locate, locatePlace, placeLabel, pointMapsLink, previousVisitDay, suggestSlots, type DayStop, type LatLng, type Suggestion } from '../data/geo';
-import { newPlacesSession, pickAddress, suggestAddresses, type AddressSuggestion } from '../data/places';
+import { newPlacesSession, pickAddress, placesKey, suggestAddresses, type AddressSuggestion } from '../data/places';
 import { NextDates } from './next-dates';
 import { dayOff, eventBusy, listEvents } from '../data/events';
 import { createOrder, orderVisits, type OrderDraft } from '../data/orders';
@@ -698,12 +698,12 @@ function formTerms(s: FormState): VisitTerms {
  */
 /**
  * „Szukaj adresu”: podpowiedzi z Google Maps podczas pisania (od 3 znaków, po chwili przerwy), najpierw w okolicy
- * bazy. Wybór wpisuje ulicę, numer, kod, miejscowość i dokładny punkt (link do mapy, gdy pusty). Bez klucza Google
- * w ustawieniach pola nie ma.
+ * bazy. Wybór wpisuje ulicę, numer, kod, miejscowość i dokładny punkt (link do mapy, gdy pusty). Klucz z ustawień
+ * albo wbudowany w aplikację.
  */
 function AddressSearch(props: { state: FormState; set: (patch: Partial<FormState>) => void }) {
   const setup = useLiveQuery(async () => {
-    const key = (await getCompany()).googlePlacesKey?.trim() ?? '';
+    const key = placesKey((await getCompany()).googlePlacesKey);
     const base = key ? await locate((await getVehicle()).base, '').catch(() => null) : null;
     return { key, near: base as LatLng | null };
   });

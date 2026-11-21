@@ -474,7 +474,7 @@ function SettingsForm(props: {
         </Field>
         <Field
           label="Klucz Google Maps (podpowiedzi adresów)"
-          hint="Z Google Cloud: Places API (New), klucz ograniczony do strony aplikacji. Po zapisaniu każdy telefon w firmie dostaje podpowiedzi adresu przy zleceniu."
+          hint="Puste: działa klucz wbudowany w aplikację. Wpisz inny tylko przy zmianie projektu Google Cloud (Places API (New), klucz ograniczony do strony aplikacji)."
         >
           <input value={company.googlePlacesKey ?? ''} placeholder="AIza…" autoComplete="off" spellCheck={false} onChange={(e) => setC({ googlePlacesKey: e.target.value.trim() })} />
         </Field>

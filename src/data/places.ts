@@ -8,6 +8,16 @@ import type { LatLng } from './geo';
 
 const API = 'https://places.googleapis.com/v1';
 
+/**
+ * Klucz firmy wbudowany w aplikację (projekt Google Cloud „pogromcy-insektow”). Działa tylko ze strony aplikacji
+ * (ograniczenie klucza do mariana1112.github.io) i tylko dla Places API (New). Klucz wpisany w Ustawieniach ma
+ * pierwszeństwo.
+ */
+export const BUILT_IN_PLACES_KEY = 'AIzaSyAKF5S6_l5Pd-Li8OPb4L5JEWt8Mif5nGs';
+
+/** Klucz do podpowiedzi: z Ustawień (dane firmy), a bez niego wbudowany. */
+export const placesKey = (fromSettings: string | undefined) => fromSettings?.trim() || BUILT_IN_PLACES_KEY;
+
 export interface AddressSuggestion {
   placeId: string;
   main: string;
