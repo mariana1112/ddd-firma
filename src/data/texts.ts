@@ -24,6 +24,7 @@ export const PESTS: Record<PestCategory, string> = {
 
 export const INVOICES: Record<InvoiceType, string> = {
   brak: 'Bez faktury',
+  paragon: 'Paragon',
   imienna: 'Faktura imienna',
   vat: 'Faktura VAT',
 };
@@ -251,6 +252,19 @@ export function invoiceCopy(order: Order, visit: Visit, vatRate: number, code: s
   const net = Math.round((gross * 100) / (100 + vatRate));
   const address = order.invoiceAddress.trim() || [orderAddress(order), order.postalCode].filter(Boolean).join(', ');
   const methods = [...new Set(visit.treatments.length ? visit.treatments : [])].join(', ');
+  // Paragon: bez nabywcy i adresu, wystarczy e-mail, na który idzie.
+  if (order.invoice === 'paragon') {
+    return [
+      'Paragon (na e-mail)',
+      `E-mail: ${order.email.trim() || '—'}`,
+      `Usługa: dezynsekcja – ${pestName(order).toLowerCase()}${methods ? ` (${methods})` : ''}, zabieg ${code}`,
+      visit.doneOn && `Data wykonania: ${visit.doneOn.split('-').reverse().join('.')}`,
+      `Kwota: ${zl(gross)} zł`,
+      visit.payMethod && `Płatność: ${PAY_NAMES[visit.payMethod]}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
   return [
     vat ? 'Faktura VAT' : 'Faktura imienna',
     `Nabywca: ${(vat ? order.invoiceName?.trim() : '') || order.clientName.trim() || '—'}`,
@@ -291,9 +305,11 @@ export function centralExport(order: Order, visit: Visit, all: Visit[]): string 
   if (visit.sealing?.length) lines.push(`Do uszczelnienia: ${visit.sealing.join(', ')}`);
   if (visit.recommendations.length) lines.push('Zalecenia:', ...visit.recommendations.map((r) => `- ${r}`));
   const pay = visit.amount ? `${zl(visit.amount)} zł, ${visit.payMethod ? PAY_NAMES[visit.payMethod] : 'forma nieznana'}` : 'brak';
-  lines.push(`Płatność: ${pay}, ${INVOICES[order.invoice].replace(/^\S/, (c) => c.toLowerCase())}${order.invoice !== 'brak' && order.nip ? ` (NIP ${order.nip})` : ''}`);
-  // Dane do faktury, gdy klient jej chce: nazwa albo imię i nazwisko, NIP, adres i e-mail.
-  if (order.invoice !== 'brak') {
+  lines.push(`Płatność: ${pay}, ${INVOICES[order.invoice].replace(/^\S/, (c) => c.toLowerCase())}${order.invoice === 'vat' && order.nip ? ` (NIP ${order.nip})` : ''}`);
+  // Dane do faktury, gdy klient jej chce: nazwa albo imię i nazwisko, NIP, adres i e-mail. Paragon: sam e-mail.
+  if (order.invoice === 'paragon') {
+    if (order.email.trim()) lines.push(`Paragon na e-mail: ${order.email.trim()}`);
+  } else if (order.invoice !== 'brak') {
     const invoice = [order.invoiceName, order.invoice === 'vat' && order.nip && `NIP ${order.nip}`, order.invoiceAddress, order.email].filter(Boolean).join(', ');
     if (invoice) lines.push(`Dane do faktury: ${invoice}`);
   }

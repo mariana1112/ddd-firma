@@ -69,8 +69,9 @@ export function accountingNote(order: DocOrder, list: Visit[]): string | null {
   const waiting: string[] = [];
   if (order.invoice !== 'brak') {
     const pending = pendingInvoices(order, list);
-    if (doneVisits(list).length === 0) waiting.push('faktura (po wykonaniu zabiegu)');
-    else if (pending.length) waiting.push(`faktura za zabieg ${pending.map((v) => romanSeq(v.seq)).join(', ')}`);
+    const doc = order.invoice === 'paragon' ? 'paragon' : 'faktura';
+    if (doneVisits(list).length === 0) waiting.push(`${doc} (po wykonaniu zabiegu)`);
+    else if (pending.length) waiting.push(`${doc} za zabieg ${pending.map((v) => romanSeq(v.seq)).join(', ')}`);
   }
   if (order.protocol && !order.protocolDone) waiting.push('protokół');
   return waiting.length ? `Czeka na księgową: ${waiting.join(', ')}` : 'Księgowa: do zamknięcia';

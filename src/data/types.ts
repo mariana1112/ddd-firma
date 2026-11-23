@@ -180,7 +180,8 @@ export interface Expense extends BaseRecord {
 
 export type BuildingType = 'dom' | 'blizniak' | 'blok';
 export type PestCategory = 'karaluchy' | 'chrzaszczowate' | 'pluskwy' | 'pchly' | 'gryzonie' | 'inne';
-export type InvoiceType = 'brak' | 'imienna' | 'vat';
+/** Dokument dla klienta: bez dokumentu, paragon (na e-mail), faktura imienna albo faktura VAT. */
+export type InvoiceType = 'brak' | 'paragon' | 'imienna' | 'vat';
 export type PayMethod = 'gotowka' | 'blik' | 'przelew';
 /** Rola konta w firmie: admin (szef), technik albo księgowa. */
 export type Role = 'owner' | 'technik' | 'ksiegowosc';

@@ -38,7 +38,7 @@ export function VisitSummary(props: { order: Order; visit: Visit; vatRate: numbe
         <Info label="Co pryskano">{scopeText(visit.scope)}</Info>
         {agreed && <Info label="Ustalona cena">{agreed.net}</Info>}
         <Info label="Płatność">{pay}</Info>
-        {order.invoice !== 'brak' && <Info label="Faktura">{INVOICES[order.invoice]}</Info>}
+        {order.invoice !== 'brak' && <Info label="Dokument">{INVOICES[order.invoice]}</Info>}
         {visit.bonus > 0 && <Info label="Premia">{`${moneyToInput(visit.bonus)} zł`}</Info>}
         <Info label="Zabieg">{workSummary(visit) || 'Nie zaznaczono'}</Info>
         {visit.sealing && visit.sealing.length > 0 && <Info label="Do uszczelnienia">{visit.sealing.join(', ')}</Info>}

@@ -53,7 +53,9 @@ export function googleCalendarUrl(order: Order, visit: Pick<Visit, 'seq' | 'star
   details.push([flat && `Mieszkania ${flat}`, phone].filter(Boolean).join(' , '));
   details.push(`${street}${flat ? `/${flat}` : ''}`);
   details.push(`${weekday} ${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}`, time);
-  if (order.invoice !== 'brak') {
+  if (order.invoice === 'paragon') {
+    details.push('', `Paragon na e-mail: ${order.email.trim()}`);
+  } else if (order.invoice !== 'brak') {
     details.push('', 'Dane do faktury');
     if (order.invoice === 'vat' && order.nip.trim()) details.push(`NIP:${order.nip.replace(/\D/g, '')}`);
     details.push(invoiceHolder(order));

@@ -218,7 +218,7 @@ function toDraft(s: FormState): OrderDraft {
     // NIP i nazwa firmy tylko przy fakturze VAT; imienna ma imię i nazwisko klienta.
     nip: s.invoice === 'vat' ? s.nip.trim() : '',
     invoiceName: s.invoice === 'vat' ? s.invoiceName.trim() : '',
-    invoiceAddress: s.invoice !== 'brak' ? s.invoiceAddress.trim() : '',
+    invoiceAddress: s.invoice === 'vat' || s.invoice === 'imienna' ? s.invoiceAddress.trim() : '',
     phones,
     pink: s.pink,
     pinkNote: s.pink ? s.pinkNote.trim() : '',
@@ -305,8 +305,8 @@ function validate(step: StepId, s: FormState): Errors {
   if (step === 'cena' && needsDocuments(s)) {
     // E-mail oraz imię i nazwisko (albo firma) są wymagane tylko przy fakturze albo protokole.
     if (s.email.trim() && !/^\S+@\S+\.\S+$/.test(s.email.trim())) e.email = 'Adres e-mail jest niepoprawny';
-    else if (!s.email.trim()) e.email = s.invoice !== 'brak' ? 'Do faktury potrzebny jest e-mail' : 'Do protokołu potrzebny jest e-mail';
-    if (s.invoice === 'brak' && s.protocol && !s.clientName.trim()) e.clientName = 'Do protokołu podaj imię i nazwisko';
+    else if (!s.email.trim()) e.email = s.invoice === 'paragon' ? 'Paragon idzie na e-mail: podaj e-mail' : s.invoice !== 'brak' ? 'Do faktury potrzebny jest e-mail' : 'Do protokołu potrzebny jest e-mail';
+    if ((s.invoice === 'brak' || s.invoice === 'paragon') && s.protocol && !s.clientName.trim()) e.clientName = 'Do protokołu podaj imię i nazwisko';
     if (s.invoice === 'vat') {
       if (!s.nip.trim()) e.nip = 'Podaj NIP';
       else if (!isValidNip(s.nip)) e.nip = 'NIP jest niepoprawny';
@@ -1141,7 +1141,17 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           {/* Dane klienta tylko do faktury albo protokołu: rozwijają się tutaj po wyborze, bez osobnego kroku. */}
           {needsDocuments(s) && (
             <div className="docs-box">
-              <span className="docs-box-title">{s.invoice !== 'brak' ? (s.protocol ? 'Dane do faktury i protokołu' : 'Dane do faktury') : 'Dane do protokołu'}</span>
+              <span className="docs-box-title">
+                {s.invoice === 'paragon'
+                  ? s.protocol
+                    ? 'Paragon na e-mail i dane do protokołu'
+                    : 'Paragon na e-mail'
+                  : s.invoice !== 'brak'
+                    ? s.protocol
+                      ? 'Dane do faktury i protokołu'
+                      : 'Dane do faktury'
+                    : 'Dane do protokołu'}
+              </span>
               {s.invoice === 'vat' ? (
                 <>
                   <Field label="Nazwa firmy (opcjonalnie)" error={errors.invoiceName} action={<PasteButton onPaste={(t) => set({ invoiceName: t })} />}>
@@ -1151,7 +1161,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
                     <input inputMode="numeric" name="ddd-nip" value={s.nip} onChange={(e) => set({ nip: e.target.value })} autoComplete="off" />
                   </Field>
                 </>
-              ) : (
+              ) : s.invoice === 'paragon' && !s.protocol ? null : (
                 <Field label="Imię i nazwisko" error={errors.clientName} action={<PasteButton onPaste={(t) => set({ clientName: t })} />}>
                   <input value={s.clientName} name="ddd-klient" onChange={(e) => set({ clientName: e.target.value })} autoComplete="off" />
                 </Field>
@@ -1159,7 +1169,7 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
               <Field label="E-mail" error={errors.email} action={<PasteButton onPaste={(t) => set({ email: t })} />}>
                 <input type="text" inputMode="email" name="ddd-email" autoCapitalize="none" value={s.email} onChange={(e) => set({ email: e.target.value })} autoComplete="off" />
               </Field>
-              {s.invoice !== 'brak' && (
+              {(s.invoice === 'vat' || s.invoice === 'imienna') && (
                 <Field label="Adres do faktury" hint="Puste: adres zlecenia." action={<PasteButton onPaste={(t) => set({ invoiceAddress: t })} />}>
                   <input value={s.invoiceAddress} name="ddd-adres-faktury" onChange={(e) => set({ invoiceAddress: e.target.value })} autoComplete="off" />
                 </Field>
@@ -1185,7 +1195,8 @@ function Steps(props: { state: FormState; set: (patch: Partial<FormState>) => vo
           <Info label="Termin">{formatTerm(`${s.date}T${s.time}`)}</Info>
           <Info label="Co pryskamy">{scopeText(formTerms(s).scope)}</Info>
           {price && <Info label="Widełki">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
-          <Info label="Faktura">{INVOICES[draft.invoice]}</Info>
+          <Info label="Dokument">{INVOICES[draft.invoice]}</Info>
+          {draft.invoice === 'paragon' && <Info label="Paragon na e-mail">{draft.email}</Info>}
           {draft.invoice === 'vat' && <Info label="Do faktury">{[(draft.invoiceName ?? '').trim(), `NIP ${draft.nip}`, draft.email.trim()].filter(Boolean).join('\n')}</Info>}
           <Info label="Protokół">{s.protocol ? 'Tak' : 'Nie'}</Info>
           <Info label="Klient">{[draft.clientName.trim(), ...draft.phones.map((p) => (p.label ? `${p.number} (${p.label})` : p.number))].filter(Boolean).join('\n')}</Info>

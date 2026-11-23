@@ -103,3 +103,22 @@ describe('zabieg II i kolejne: „Czy mieszkanie zostało uszczelnione?”', () 
     expect(interviewLines({ ...EMPTY_INTERVIEW, sealed: 'nie', sealedNote: 'kratki w łazience' })).toEqual(['Mieszkanie uszczelnione: nie', 'Nie jest uszczelnione: kratki w łazience']);
   });
 });
+
+describe('paragon', () => {
+  it('wymaga tylko e-maila; trafia do księgowej jak faktura; dane do paragonu bez nabywcy', async () => {
+    const { accountingTasks, accountingNote } = await import('./accounting');
+    const { documentTags } = await import('./methods');
+    const { documentWord } = await import('./invoice');
+    const p = order({ invoice: 'paragon', clientName: '', nip: '', email: '' });
+    expect(invoiceMissing(p)).toEqual(['email']);
+    expect(invoiceMissing({ ...p, email: 'jan@example.com' })).toEqual([]);
+    expect(accountingTasks(p)).toEqual(['faktura']);
+    expect(accountingNote({ ...p, protocol: false, invoiceDone: false, protocolDone: false, accountingClosedAt: null, archived: false }, [visit({ status: 'wykonany', invoicedAt: null })])).toBe('Czeka na księgową: paragon za zabieg I');
+    expect(documentTags(p)).toEqual(['par']);
+    expect(documentWord('paragon')).toMatchObject({ name: 'Paragon', of: 'paragonu' });
+    const text = invoiceCopy({ ...p, email: 'jan@example.com' }, visit({ amount: 35000 }), 23, 'GDA-0014/I');
+    expect(text).toContain('Paragon (na e-mail)');
+    expect(text).toContain('E-mail: jan@example.com');
+    expect(text).not.toContain('Nabywca');
+  });
+});

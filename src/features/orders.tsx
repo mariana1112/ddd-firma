@@ -709,7 +709,7 @@ export function OrderDetailPage() {
           </Info>
         ))}
         {order.email && <Info label="E-mail">{order.email}</Info>}
-        <Info label="Faktura">{INVOICES[order.invoice]}</Info>
+        <Info label="Dokument">{INVOICES[order.invoice]}</Info>
         {order.invoice === 'vat' && order.invoiceName && <Info label="Firma do faktury">{order.invoiceName}</Info>}
         <Info label="Protokół">{order.protocol ? 'Tak, klient chce protokół' : 'Nie'}</Info>
         {accountingNote(order, data.visits) && <Info label="Księgowość">{accountingNote(order, data.visits)}</Info>}
@@ -722,7 +722,7 @@ export function OrderDetailPage() {
           </Info>
         )}
         {order.accountingNote && <Info label="Uwagi księgowej">{order.accountingNote}</Info>}
-        {order.nip && <Info label="NIP">{order.nip}</Info>}
+        {order.invoice === 'vat' && order.nip && <Info label="NIP">{order.nip}</Info>}
         {order.invoiceAddress && <Info label="Adres do FV">{order.invoiceAddress}</Info>}
       </Group>
 

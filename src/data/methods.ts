@@ -133,11 +133,12 @@ export function tagDone(order: Pick<Order, 'invoiceDone' | 'protocolDone'>, tag:
   return done.length > 0 && done.every((v) => (v.invoicedAt === undefined ? Boolean(order.invoiceDone) : Boolean(v.invoicedAt)));
 }
 
-/** Krótkie oznaczenia dokumentów na liście i w szukaniu: „fv23” (faktura VAT), „fv” (imienna), „prot”. */
+/** Krótkie oznaczenia dokumentów na liście i w szukaniu: „fv23” (faktura VAT), „fv” (imienna), „par” (paragon), „prot”. */
 export function documentTags(order: Pick<Order, 'invoice' | 'protocol'>): string[] {
   const tags: string[] = [];
   if (order.invoice === 'vat') tags.push('fv23');
   if (order.invoice === 'imienna') tags.push('fv');
+  if (order.invoice === 'paragon') tags.push('par');
   if (order.protocol) tags.push('prot');
   return tags;
 }

@@ -36,7 +36,7 @@ import { ContactBar, useCallPicker, PinkBadge, SmsSheet, VisitBadge, visitWhen, 
 import { doneMethods, EXTRA_TREATMENTS, METHOD_LABEL, methodOf, recommendationsFor, SEALING_OPTIONS, methodNames } from '../data/methods';
 import { Photos } from './photos';
 import { AssignSheet } from './assign';
-import { INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
+import { documentWord, INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
 import { isValidNip } from '../lib/validators';
 import { VisitSummary } from './visit-summary';
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
@@ -190,6 +190,14 @@ function InvoiceData({ order, alert, onSave }: { order: Order; alert: boolean; o
   if (order.invoice === 'brak') return null;
   const missing = invoiceMissing(order);
   const flag = (f: InvoiceField) => alert && missing.includes(f);
+  // Paragon idzie do klienta mailem: wystarczy e-mail.
+  if (order.invoice === 'paragon') {
+    return (
+      <div className="invoice-data">
+        <OrderField label="E-mail (paragon idzie mailem)" value={order.email} inputMode="email" missing={flag('email')} onSave={(email) => onSave({ email })} />
+      </div>
+    );
+  }
   return (
     <div className="invoice-data">
       {order.invoice === 'vat' ? (
@@ -544,7 +552,7 @@ function OrderInfo(props: { order: Order; vatRate: number; terms?: string; assig
       <Info label="Szkodnik">{pestName(order)}</Info>
       {order.areaM2 && <Info label="Metraż">{order.areaM2} m²</Info>}
       {props.terms ? <Info label="Zakres i cena">{props.terms}</Info> : price && <Info label="Cena">{price.gross ? `${price.net}\n${price.gross}` : price.net}</Info>}
-      <Info label="Faktura">{INVOICES[order.invoice]}</Info>
+      <Info label="Dokument">{INVOICES[order.invoice]}</Info>
       {invoiceData && <Info label="Dane do faktury">{invoiceData}</Info>}
       {order.protocol && <Info label="Protokół">Tak</Info>}
       {order.phones
@@ -1247,11 +1255,11 @@ export function VisitPage() {
                 className="btn"
                 onClick={() =>
                   void copyText(invoiceCopy(order, visit, settings.vatRate, visitCode(order, visit.seq))).then((ok) =>
-                    toast(ok ? 'Skopiowano dane do faktury' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
+                    toast(ok ? `Skopiowano dane do ${documentWord(order.invoice).of}` : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
                   )
                 }
               >
-                <Icon name="copy" /> Kopiuj do faktury
+                <Icon name="copy" /> Kopiuj do {documentWord(order.invoice).of}
               </button>
             )}
             <button type="button" className="btn" onClick={() => setEditingDesc(true)}>

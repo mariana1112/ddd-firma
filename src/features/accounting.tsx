@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { accountingState, accountingTasks, bankPayments, doneVisits, invoiceAmount, paymentUnchecked, pendingInvoices, readyToClose, TASK_LABEL, taskDone, visitInvoiced } from '../data/accounting';
+import { documentWord } from '../data/invoice';
 import { getProfile, VAT_RATE } from '../data/settings';
 import { methodNames } from '../data/methods';
 import { normalizeInterview } from '../data/interview';
@@ -164,6 +165,8 @@ export function AccountingOrderPage() {
   const { order, list } = data;
   const done = doneVisits(list);
   const wantsInvoice = order.invoice !== 'brak';
+  // „Faktura” albo „Paragon” w napisach: paragon księgowa wystawia i odznacza tak samo jak fakturę.
+  const doc = documentWord(order.invoice);
   const pending = pendingInvoices(order, list);
   const ready = readyToClose(order, list);
   const update = (patch: Partial<Order>) => run(() => orders.update(order.id, patch));
@@ -183,10 +186,10 @@ export function AccountingOrderPage() {
     ...(wantsInvoice
       ? done.length
         ? done.map((v): [string, boolean] => [
-            `Faktura za zabieg ${roman(v.seq)} (${v.amount ? formatPln(v.amount) : 'bez kwoty'})${v.invoiceNumber ? `, nr ${v.invoiceNumber}` : ''}`,
+            `${doc.name} za zabieg ${roman(v.seq)} (${v.amount ? formatPln(v.amount) : 'bez kwoty'})${v.invoiceNumber ? `, nr ${v.invoiceNumber}` : ''}`,
             visitInvoiced(order, v),
           ])
-        : [['Faktura: zabieg jeszcze niewykonany', false] as [string, boolean]]
+        : [[`${doc.name}: zabieg jeszcze niewykonany`, false] as [string, boolean]]
       : []),
     ...(order.protocol ? [['Protokół', Boolean(order.protocolDone)] as [string, boolean]] : []),
   ];
@@ -201,7 +204,7 @@ export function AccountingOrderPage() {
       ) : order.accountingClosedAt ? (
         <div className="notice notice-warn">
           <Icon name="alert" />
-          <span>Zlecenie było zamknięte, ale doszedł zabieg bez faktury. Zaznacz go poniżej.</span>
+          <span>Zlecenie było zamknięte, ale doszedł zabieg bez {doc.of}. Zaznacz go poniżej.</span>
         </div>
       ) : null}
       {order.invoice === 'vat' && !order.nip.trim() && (
@@ -224,12 +227,12 @@ export function AccountingOrderPage() {
         {order.ownerName && <Info label="Przyjął">{`${order.ownerName}, ${formatDate(order.createdAt)}`}</Info>}
       </Group>
 
-      <Group title="Klient i dane do faktury">
+      <Group title={order.invoice === 'paragon' ? 'Klient i e-mail do paragonu' : 'Klient i dane do faktury'}>
         <Info label="Klient">{order.clientName || '—'}</Info>
-        <Info label="Faktura">{INVOICES[order.invoice]}</Info>
+        <Info label="Dokument">{INVOICES[order.invoice]}</Info>
         {order.invoice === 'vat' && <Info label="Firma">{order.invoiceName || '—'}</Info>}
-        {order.nip && <Info label="NIP">{order.nip}</Info>}
-        <Info label="Adres do faktury">{order.invoiceAddress || `${orderAddress(order)}${order.postalCode ? `, ${order.postalCode}` : ''}`}</Info>
+        {order.invoice === 'vat' && order.nip && <Info label="NIP">{order.nip}</Info>}
+        {order.invoice !== 'paragon' && <Info label="Adres do faktury">{order.invoiceAddress || `${orderAddress(order)}${order.postalCode ? `, ${order.postalCode}` : ''}`}</Info>}
         {order.email && <Info label="E-mail">{order.email}</Info>}
         {order.phones.map((p, i) => (
           <Info key={i} label={i === 0 ? 'Telefon' : p.label || 'Telefon'}>
@@ -238,7 +241,7 @@ export function AccountingOrderPage() {
         ))}
       </Group>
 
-      <Group title={wantsInvoice ? `Faktury za zabiegi (${done.length - pending.length} z ${done.length})` : `Wykonane zabiegi (${done.length})`} plain>
+      <Group title={wantsInvoice ? `${doc.plural} za zabiegi (${done.length - pending.length} z ${done.length})` : `Wykonane zabiegi (${done.length})`} plain>
         {done.length === 0 && <Empty title="Zabieg jeszcze niewykonany" />}
         {done.map((v) => (
           <div key={v.id} className={`card form accounting-visit${wantsInvoice && visitInvoiced(order, v) ? ' accounting-visit-done' : ''}`}>
@@ -269,9 +272,9 @@ export function AccountingOrderPage() {
                     checked={visitInvoiced(order, v)}
                     onChange={(e) => void updateVisit(v.id, { invoicedAt: e.target.checked ? new Date().toISOString() : null })}
                   />
-                  Faktura za zabieg {roman(v.seq)} wystawiona
+                  {doc.name} za zabieg {roman(v.seq)} {doc.issued}
                 </label>
-                <SavedText label="Numer faktury" value={v.invoiceNumber ?? ''} placeholder="Np. FV 12/11/2026" onSave={(invoiceNumber) => updateVisit(v.id, { invoiceNumber })} />
+                <SavedText label={`Numer ${doc.of}`} value={v.invoiceNumber ?? ''} placeholder={order.invoice === 'paragon' ? 'Np. 0123/2026' : 'Np. FV 12/11/2026'} onSave={(invoiceNumber) => updateVisit(v.id, { invoiceNumber })} />
               </>
             )}
           </div>
