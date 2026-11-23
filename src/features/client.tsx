@@ -4,6 +4,7 @@ import { groupClients, type ClientGroup } from '../data/clients-view';
 import { roman, visitCode } from '../data/codes';
 import { normalizeInterview } from '../data/interview';
 import { orders, visits } from '../data/repo';
+import { getUiSyncState } from '../data/settings';
 import { orderAddress, PAY_NAMES, pestName, telUrl, workSummary } from '../data/texts';
 import type { Order, Visit } from '../data/types';
 import { formatDate, formatTerm } from '../lib/dates';
@@ -62,8 +63,10 @@ function DoneVisit({ visit, order }: { visit: Visit; order: Order }) {
 export function ClientPage() {
   const { key = '' } = useParams();
   const data = useLiveQuery(async () => {
-    const all = await orders.all();
-    const list = await visits.all();
+    // Admin widzi klienta w całej firmie (jak w wyszukiwarce): także zlecenia z innych regionów.
+    const owner = (await getUiSyncState())?.role === 'owner';
+    const all = owner ? await orders.allRegions() : await orders.all();
+    const list = owner ? await visits.allRegions() : await visits.all();
     const client = groupClients(all, list, orderAddress).find((g) => g.key === key) ?? null;
     return { client, byId: new Map(all.map((o) => [o.id, o])) };
   }, [key]);

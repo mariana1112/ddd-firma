@@ -37,10 +37,10 @@ export function orderMatches(order: Order, query: string): boolean {
     const wanted = phoneDigits(query);
     if (order.phones.some((p) => phoneDigits(p.number).includes(wanted))) return true;
   }
-  // „fv23”, „fv”, „prot”: dokładne oznaczenia dokumentów, więc „fv” nie pokazuje faktur VAT.
+  // „fv23”, „fv”, „par”, „prot”: dokładne oznaczenia dokumentów, więc „fv” nie pokazuje faktur VAT.
   const tags = documentTags(order);
   const words = q.split(/\s+/);
-  const tagWords: string[] = words.filter((w) => w === 'fv' || w === 'fv23' || w === 'prot');
+  const tagWords: string[] = words.filter((w) => w === 'fv' || w === 'fv23' || w === 'prot' || w === 'par');
   if (tagWords.length && !tagWords.every((w) => tags.includes(w))) return false;
   const rest = words.filter((w) => !tagWords.includes(w));
   if (rest.length === 0) return true;

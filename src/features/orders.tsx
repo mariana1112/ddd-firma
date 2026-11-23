@@ -55,6 +55,9 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
     return {
       orders: everywhere ? await orders.allRegions() : await orders.all(),
       visits: everywhere ? await visits.allRegions() : await visits.all(),
+      // Szukanie (np. „Kto dzwoni?” z Pulpitu): admin szuka w całej firmie, także w zleceniach z innych regionów
+      // i sprzed podziału na regiony, jak na początku, gdy region był jeden. Technik i tak ma tylko swój region.
+      firm: !archive && role === 'owner' ? { orders: await orders.allRegions(), visits: await visits.allRegions() } : null,
     };
   }, [archive]);
   // Wyszukiwanie z Pulpitu przychodzi w adresie (?q=…), np. numer osoby, która dzwoni.
@@ -98,11 +101,12 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
 
   const rows = useMemo(() => {
     if (!data) return [];
+    const source = searching && data.firm ? data.firm : data;
     const byOrder = new Map<string, Visit[]>();
-    for (const v of data.visits) byOrder.set(v.orderId, [...(byOrder.get(v.orderId) ?? []), v].sort((a, b) => a.seq - b.seq));
+    for (const v of source.visits) byOrder.set(v.orderId, [...(byOrder.get(v.orderId) ?? []), v].sort((a, b) => a.seq - b.seq));
     if (mode === 'zabiegi') {
       // Każdy zabieg osobno: wiersz ma tylko ten zabieg (jego status, termin i płatność).
-      const perVisit = data.orders.flatMap((order) =>
+      const perVisit = source.orders.flatMap((order) =>
         (byOrder.get(order.id) ?? [])
           .filter((visit) => {
             if (!orderMatches(order, query)) return false;
@@ -116,7 +120,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
       );
       return sortOrderRows(perVisit, sort, today);
     }
-    const filtered = data.orders
+    const filtered = source.orders
       .map((order) => ({ order, visits: byOrder.get(order.id) ?? [] }))
       .filter(({ order, visits: list }) => {
         if (!orderMatches(order, query)) return false;
@@ -138,9 +142,10 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
   // Szukanie: klienci pasujących zleceń (dane kontaktowe, umówione i wykonane zabiegi, zalecenia).
   const clients = useMemo(() => {
     if (!data || !searching) return [];
-    const matched = data.orders.filter((o) => orderMatches(o, query));
+    const source = data.firm ?? data;
+    const matched = source.orders.filter((o) => orderMatches(o, query));
     const keys = new Set(matched.map((o) => clientKey(o)));
-    return groupClients(data.orders, data.visits, orderAddress).filter((g) => keys.has(g.key));
+    return groupClients(source.orders, source.visits, orderAddress).filter((g) => keys.has(g.key));
   }, [data, query, searching]);
 
   const renderRow = (row: { order: Order; visits: Visit[] }) =>
@@ -165,7 +170,7 @@ export function OrdersPage({ archive = false }: { archive?: boolean }) {
       ) : (
         <>
           <Search value={query} onChange={setQuery} placeholder={archive ? 'Szukaj w archiwum: telefon, nazwisko, adres, kod' : 'Szukaj: telefon, nazwisko, adres, kod, fv23, fv, prot'} />
-          {searching && <p className="field-hint">{archive ? 'Szukam w archiwum' : 'Szukam we wszystkich zleceniach, także zakończonych i w archiwum'}. Znalezione: {rows.length}.</p>}
+          {searching && <p className="field-hint">{archive ? 'Szukam w archiwum' : `Szukam we wszystkich zleceniach${data?.firm ? ' całej firmy (wszystkie regiony)' : ''}, także zakończonych i w archiwum`}. Znalezione: {rows.length}.</p>}
           {searching && !archive && clients.length > 0 && (
             <Group title={`Klienci (${clients.length})`}>
               {clients.slice(0, 5).map((c) => (
