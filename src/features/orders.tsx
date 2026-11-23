@@ -10,7 +10,7 @@ import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitSt
 import { documentTags, orderMethods, tagDone, methodNames } from '../data/methods';
 import { accountingNote } from '../data/accounting';
 import { googleCalendarUrl } from '../data/calendar';
-import { archiveOrder, cancelOrderDeletionRequest, decideOrderDeletion, deleteOrder, orderVisits, requestOrderDeletion, restoreOrder, scheduleNextVisit } from '../data/orders';
+import { archiveOrder, cancelOrderDeletionRequest, decideOrderDeletion, deleteOrder, nextVisitSeq, orderVisits, requestOrderDeletion, restoreOrder, scheduleNextVisit } from '../data/orders';
 import { getUiSyncState } from '../data/settings';
 import { orders, visits } from '../data/repo';
 import { getAppSettings, getProfile } from '../data/settings';
@@ -482,7 +482,7 @@ export function OrderDetailPage() {
   const current = currentVisit(data.visits.filter((v) => v.status !== 'odwolany'));
   const currentOpen = current?.status === 'zaplanowany' || current?.status === 'w_trakcie';
   const waiting = data.visits.find((v) => v.status === 'zaplanowany' && !v.start);
-  const nextSeq = waiting?.seq ?? Math.max(0, ...data.visits.map((v) => v.seq)) + 1;
+  const nextSeq = waiting?.seq ?? nextVisitSeq(data.visits);
 
   const remove = async () => {
     const ok = await confirm({

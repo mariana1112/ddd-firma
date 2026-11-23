@@ -138,6 +138,34 @@ describe('zlecenia', () => {
     expect((await visits.get(waiting.id))?.status).toBe('odwolany');
   });
 
+  it('po odwołanym zabiegu II kolejny dostaje numer II (nie III); odwołanie można cofnąć', async () => {
+    const { restoreVisit } = await import('./orders');
+    const { order, visits: [first, second] } = await createOrder(draft(), { start: '2026-11-10T10:00', durationMin: 60 }, { start: '2026-11-24T10:00', durationMin: 60 });
+    await visits.update(first.id, { status: 'wykonany', doneOn: '2026-11-10' });
+    await visits.update(second.id, { remindedAt: '2026-11-23T18:00:00.000Z' });
+    await cancelVisit(second.id);
+    const again = await scheduleNextVisit(order.id, { start: '2026-11-26T09:00', durationMin: 90 });
+    expect(again.seq).toBe(2);
+    // Ten sam zabieg II wraca z nowym terminem (bez starego „przypomnienie wysłane”).
+    expect(again.id).toBe(second.id);
+    const back = await visits.get(second.id);
+    expect(back).toMatchObject({ status: 'zaplanowany', start: '2026-11-26T09:00', durationMin: 90, remindedAt: null });
+    expect((await orderVisits(order.id)).map((v) => v.seq)).toEqual([1, 2]);
+
+    // Cofnięcie odwołania: zabieg wraca, zlecenie z archiwum wraca do otwartych.
+    const other = await createOrder(draft(), { start: '2026-11-12T10:00', durationMin: 60 }, null);
+    expect(await cancelVisit(other.visits[0].id)).toEqual({ archived: true });
+    await restoreVisit(other.visits[0].id);
+    expect((await visits.get(other.visits[0].id))?.status).toBe('zaplanowany');
+    expect((await orders.get(other.order.id))?.archived).toBe(false);
+
+    // Numer umówiony ponownie innym zabiegiem (stare dane): cofnięcie zablokowane, żeby nie było dwóch II.
+    const third = await createOrder(draft(), { start: '2026-11-12T10:00', durationMin: 60 }, { start: '2026-11-20T10:00', durationMin: 60 });
+    await cancelVisit(third.visits[1].id);
+    await visits.create({ ...third.visits[1], id: undefined, status: 'zaplanowany' } as never);
+    await expect(restoreVisit(third.visits[1].id)).rejects.toThrow('umówiono już ponownie');
+  });
+
   it('wykonany zabieg bez płatności jest pilny', async () => {
     const { paymentMissing } = await import('./order-list');
     expect(paymentMissing({ status: 'wykonany', payMethod: null, amount: 30000 })).toBe(true);
@@ -223,7 +251,8 @@ describe('teksty', () => {
     expect(text).toContain('Co zastałem: Duża kolonia za lodówką');
     expect(text).toContain('Problemy: Sąsiad też ma karaluchy');
     expect(text).toContain('- Opis: Karaluchy w kuchni od miesiąca');
-    expect(text).toContain('- Ugryzienia: nie');
+    // Ugryzienia usunięte z wywiadu: nie trafiają do eksportu.
+    expect(text).not.toContain('Ugryzienia');
     expect(text).toContain('- Skala populacji: ok. 20');
     expect(text).not.toContain('Środki na własną rękę');
     expect(text).toContain('Płatność: 350 zł, BLIK, bez faktury');
@@ -466,6 +495,24 @@ describe('propozycje terminów', () => {
     // 10:00 + 60 min zabiegu + dojazd, zaokrąglone w górę do kwadransa.
     expect(first.start).toBe('2026-11-16T11:30');
   });
+
+  it('propozycja nie nachodzi na inne zabiegi tego dnia (ich czas trwania i dojazd)', async () => {
+    const { suggestSlots } = await import('./geo');
+    const gdynia = { lat: 54.5189, lng: 18.5305 };
+    const rumia = { lat: 54.5708, lng: 18.3878 };
+    const { order, visits: [near] } = await createOrder(draft(), { start: '2026-11-16T10:00', durationMin: 60 }, null);
+    // Zaraz po zabiegu w pobliżu jest drugi, dwugodzinny: termin „po” (11:30) nachodziłby na niego.
+    const { visits: [busy] } = await createOrder(draft(), { start: '2026-11-16T11:30', durationMin: 120 }, null);
+    const [first] = suggestSlots(rumia, 60, '2026-11-12', [
+      { order, visit: near, point: gdynia },
+      { order, visit: busy, point: gdynia },
+    ]);
+    const min = (t: string) => Number(t.slice(11, 13)) * 60 + Number(t.slice(14, 16));
+    const s = min(first.start);
+    // Ani w trakcie zabiegu 10:00–11:00, ani 11:30–13:30 (z dojazdem przed i po).
+    expect(s + 60 <= 10 * 60 - 15 || s >= 13 * 60 + 30 + 15).toBe(true);
+    expect(first.start).toBe('2026-11-16T08:30');
+  });
 });
 
 describe('właściciel rekordów', () => {
@@ -505,7 +552,7 @@ describe('wywiad', () => {
   it('obecny wywiad zostaje bez zmian', () => {
     const now = { situation: 'Pluskwy w sypialni', bites: 'tak', seen: 'nie', seenCount: '', selfTreatment: 'tak', other: '', improvement: '', improvementNote: '', sealed: '', sealedNote: '' } as const;
     expect(normalizeInterview(now)).toEqual(now);
-    expect(interviewLines(now)).toEqual(['Opis: Pluskwy w sypialni', 'Ugryzienia: tak', 'Widziane owady: nie', 'Środki na własną rękę: tak']);
+    expect(interviewLines(now)).toEqual(['Opis: Pluskwy w sypialni', 'Widziane owady: nie', 'Środki na własną rękę: tak']);
   });
 });
 

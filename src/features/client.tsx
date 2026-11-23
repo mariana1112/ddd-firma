@@ -46,8 +46,6 @@ function DoneVisit({ visit, order }: { visit: Visit; order: Order }) {
       <div className="client-visit-body">
         {i.situation && <Info label="Opis">{i.situation}</Info>}
         {i.seenCount && <Info label="Skala populacji">{i.seenCount}</Info>}
-        {i.improvement && <Info label="Widać poprawę">{i.improvement === 'tak' ? 'Tak' : 'Nie'}</Info>}
-        {i.improvementNote && <Info label="Co jest">{i.improvementNote}</Info>}
         {i.sealed && <Info label="Uszczelnione">{i.sealed === 'tak' ? 'Tak' : 'Nie'}</Info>}
         {i.sealedNote && <Info label="Nie jest uszczelnione">{i.sealedNote}</Info>}
         {visit.recommendations.length > 0 && <Info label="Zalecenia">{visit.recommendations.map((r) => `• ${r}`).join('\n')}</Info>}

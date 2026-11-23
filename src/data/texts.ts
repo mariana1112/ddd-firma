@@ -228,11 +228,8 @@ export function interviewLines(raw: Visit['interview']): string[] {
   const i = normalizeInterview(raw);
   const lines: string[] = [];
   if (i.situation) lines.push(`Opis: ${i.situation.replace(/\n+/g, '; ')}`);
-  if (i.bites) lines.push(`Ugryzienia: ${i.bites}`);
   if (i.seenCount) lines.push(`Skala populacji: ${i.seenCount}`);
   else if (i.seen) lines.push(`Widziane owady: ${i.seen}`);
-  if (i.improvement) lines.push(`Widać poprawę: ${i.improvement}`);
-  if (i.improvementNote) lines.push(`Co jest: ${i.improvementNote}`);
   if (i.sealed) lines.push(`Mieszkanie uszczelnione: ${i.sealed}`);
   if (i.sealedNote) lines.push(`Nie jest uszczelnione: ${i.sealedNote}`);
   if (i.selfTreatment) lines.push(`Środki na własną rękę: ${i.selfTreatment}`);

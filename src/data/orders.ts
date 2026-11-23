@@ -57,6 +57,24 @@ function newVisit(orderId: string, seq: number, plan: PlannedVisit, technician: 
   };
 }
 
+/**
+ * Zabieg o numerze seq w zleceniu. Gdy ten numer ma odwołany zabieg, wraca on do umówionych z nowym terminem i czystym
+ * przebiegiem: numer zostaje (II po odwołanym II to dalej II), a nie przeskakuje, jakby odwołany się odbył.
+ */
+async function placeVisit(orderId: string, seq: number, plan: PlannedVisit, technician: { id: string | null; name: string }): Promise<Visit> {
+  const fresh = newVisit(orderId, seq, plan, technician);
+  const cancelled = (await orderVisits(orderId))
+    .filter((v) => v.seq === seq && v.status === 'odwolany')
+    .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))[0];
+  if (!cancelled) return visits.create(fresh);
+  const patch: Partial<Visit> = { ...fresh, remindedAt: null, summarySentAt: null, detailsLater: false, sealing: [] };
+  await visits.update(cancelled.id, patch);
+  return { ...cancelled, ...patch };
+}
+
+/** Numer kolejnego zabiegu: po ostatnim nieodwołanym (odwołany numer wraca do użytku). */
+export const nextVisitSeq = (list: Array<Pick<Visit, 'seq' | 'status'>>) => Math.max(0, ...list.filter((v) => v.status !== 'odwolany').map((v) => v.seq)) + 1;
+
 /** Pola zabiegu z ustaleń, do zapisu przy zmianie terminu. */
 function termsPatch(terms: VisitTerms | undefined): Partial<Visit> {
   return terms ? { scope: { ...terms.scope }, priceMin: terms.priceMin, priceMax: terms.priceMax } : {};
@@ -193,17 +211,13 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
         await visits.update(later.id, { start: input.next.start, durationMin: input.next.durationMin, ...termsPatch(input.next.terms), ...booking({ id: profile.userId, name: profile.name }) });
         next = { ...later, start: input.next.start, ...termsPatch(input.next.terms) };
       } else {
-        next = await visits.create(
-          newVisit(visit.orderId, visit.seq + 1, input.next, { id: profile.userId, name: profile.name }),
-        );
+        next = await placeVisit(visit.orderId, visit.seq + 1, input.next, { id: profile.userId, name: profile.name });
       }
       if (visit.seq + 1 === 3) bonus = settings.thirdVisitBonus;
     } else if (input.next.mode === 'technik' && later && input.next.terms) {
       await visits.update(later.id, termsPatch(input.next.terms));
     } else if (input.next.mode === 'technik' && !later) {
-      next = await visits.create(
-        newVisit(visit.orderId, visit.seq + 1, { start: null, durationMin: visit.durationMin, terms: input.next.terms }, { id: profile.userId, name: profile.name }),
-      );
+      next = await placeVisit(visit.orderId, visit.seq + 1, { start: null, durationMin: visit.durationMin, terms: input.next.terms }, { id: profile.userId, name: profile.name });
     }
 
     const finishedAt = new Date().toISOString();
@@ -244,11 +258,10 @@ export async function scheduleNextVisit(orderId: string, plan: PlannedVisit): Pr
       await visits.update(waiting.id, { start: plan.start, durationMin: plan.durationMin, ...termsPatch(plan.terms), ...booked });
       return { ...waiting, start: plan.start, durationMin: plan.durationMin, ...termsPatch(plan.terms), ...booked };
     }
-    const seq = Math.max(0, ...(await orderVisits(orderId)).map((v) => v.seq)) + 1;
+    // Numer po ostatnim nieodwołanym zabiegu: odwołany numer wraca do użytku (placeVisit), zamiast przeskakiwać.
+    const seq = nextVisitSeq(all);
     const last = all[all.length - 1];
-    const created = await visits.create(
-      newVisit(orderId, seq, { ...plan, durationMin: plan.durationMin || last?.durationMin || 60 }, { id: profile.userId, name: profile.name }),
-    );
+    const created = await placeVisit(orderId, seq, { ...plan, durationMin: plan.durationMin || last?.durationMin || 60 }, { id: profile.userId, name: profile.name });
     if (order.closed) await orders.update(orderId, { closed: false });
     return created;
   });
@@ -278,6 +291,26 @@ export async function cancelVisit(id: string): Promise<{ archived: boolean }> {
       return { archived: true };
     }
     return { archived: false };
+  });
+}
+
+/**
+ * Cofnięcie odwołania zabiegu: wraca do umówionych (albo „w trakcie”, jeśli był rozpoczęty), a zlecenie z archiwum
+ * wraca do otwartych. Gdy ten numer umówiono już ponownie, cofnąć się nie da (byłyby dwa zabiegi o tym samym numerze).
+ */
+export async function restoreVisit(id: string): Promise<void> {
+  await writeTransaction([db.orders, db.visits], async () => {
+    const visit = await visits.get(id);
+    if (!visit || visit.deletedAt) throw new DomainError('Nie znaleziono zabiegu.');
+    if (visit.status !== 'odwolany') return;
+    const all = await orderVisits(visit.orderId);
+    if (all.some((v) => v.id !== id && v.seq === visit.seq && v.status !== 'odwolany')) {
+      throw new DomainError('Ten zabieg umówiono już ponownie (nowy termin). Najpierw odwołaj nowy, żeby przywrócić ten.');
+    }
+    await visits.update(id, { status: visit.startedAt && !visit.finishedAt ? 'w_trakcie' : 'zaplanowany' });
+    const order = await orders.get(visit.orderId);
+    if (order?.regionDeleted) throw new DomainError('To zlecenie należało do usuniętego regionu i zostaje w archiwum.');
+    if (order && (order.archived || order.closed)) await orders.update(order.id, { archived: false, closed: false });
   });
 }
 

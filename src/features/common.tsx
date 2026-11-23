@@ -152,6 +152,12 @@ export function NavigateSheet(props: { order: Order; open: boolean; onClose: () 
 }
 
 /**
+ * Wpisane albo poprawione treści SMS-ów (zlecenie i rodzaj wiadomości), dopóki nie zostaną wysłane. Okno zamyka się
+ * po dotknięciu poza nim, więc bez tego wpisana wiadomość przepadała. Trzymane do zamknięcia aplikacji.
+ */
+const smsDrafts = new Map<string, string>();
+
+/**
  * Menu „SMS”: przypomnienie z prośbą o potwierdzenie, „spóźnię się” (ile minut), prośba o przyjazd wcześniej
  * (ile minut) albo własna wiadomość. Tekst można poprawić przed wysłaniem; „Wyślij” otwiera Wiadomości.
  */
@@ -167,7 +173,8 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
     async () => (done ? ((await visitRepo.where('orderId', done.orderId)).find((v) => v.seq === done.seq + 1 && v.status !== 'odwolany') ?? null) : null),
     [done?.id],
   );
-  const [kind, setKind] = useState<SmsKind>(props.initial ?? (done ? 'zalecenia' : planned ? 'przypomnienie' : 'wlasna'));
+  // Przypomnienie proponujemy tylko, gdy jeszcze nie poszło (przesunięcie terminu nie kasuje „wysłane”).
+  const [kind, setKind] = useState<SmsKind>(props.initial ?? (done ? 'zalecenia' : planned && !planned.remindedAt ? 'przypomnienie' : 'wlasna'));
   const [minutes, setMinutes] = useState(15);
   const [text, setText] = useState('');
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -178,9 +185,27 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
     el.style.height = `${Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.5))}px`;
   }, [text]);
 
-  // Treść gotowej wiadomości przelicza się po wyborze rodzaju i minut; własną wpisuje technik.
+  // Treść gotowej wiadomości przelicza się po wyborze rodzaju i minut; własną wpisuje technik. Odświeżenie danych
+  // (synchronizacja, przeciągnięcie ekranu, zapis gdzie indziej) nie rusza tego, co technik już wpisał albo poprawił:
+  // inaczej własna wiadomość znikała w trakcie pisania.
+  const shownFor = useRef('');
+  const edited = useRef(false);
   useEffect(() => {
-    if (!data || !props.open) return;
+    if (!props.open) {
+      shownFor.current = '';
+      return;
+    }
+    if (!data) return;
+    const key = `${kind}|${minutes}`;
+    const fresh = shownFor.current !== key;
+    if (!fresh && (edited.current || kind === 'wlasna')) return;
+    shownFor.current = key;
+    const draft = smsDrafts.get(`${order.id}|${kind}`);
+    edited.current = draft !== undefined;
+    if (draft !== undefined) {
+      setText(draft);
+      return;
+    }
     const who = data.profile.name;
     const base = visit ?? { start: null, seq: 1 };
     if (kind === 'zalecenia' && done) setText(finishSms(done, next ?? null, data.settings, data.profile.name));
@@ -194,7 +219,9 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
   const phone = phones[phoneIdx];
   const options: Array<[SmsKind, string]> = [
     ...(done ? ([['zalecenia', 'Podsumowanie zabiegu i zalecenia']] as Array<[SmsKind, string]>) : []),
-    ...(planned ? ([['przypomnienie', 'Przypomnienie i prośba o potwierdzenie']] as Array<[SmsKind, string]>) : []),
+    ...(planned
+      ? ([['przypomnienie', planned.remindedAt ? `Przypomnienie (wysłane ${formatDate(planned.remindedAt)})` : 'Przypomnienie i prośba o potwierdzenie']] as Array<[SmsKind, string]>)
+      : []),
     ['spoznienie', 'Spóźnię się'],
     ['wczesniej', 'Czy mogę przyjechać wcześniej?'],
     ['wlasna', 'Własna wiadomość'],
@@ -202,6 +229,7 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
   const send = async () => {
     if (!phone) return;
     await copyText(text);
+    smsDrafts.delete(`${order.id}|${kind}`);
     // Przypomnienie znika z listy „do wysłania” na Pulpicie; podsumowanie oznacza zabieg jako „zalecenia wysłane”.
     if (kind === 'przypomnienie' && planned) await visitRepo.update(planned.id, { remindedAt: new Date().toISOString() });
     if (kind === 'zalecenia' && done) await visitRepo.update(done.id, { summarySentAt: new Date().toISOString() });
@@ -245,7 +273,11 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
         <label className="field">
           <span className="field-label">Treść (możesz poprawić)</span>
           {/* Tekst zawija się w dół, a pole rośnie razem z nim: nic nie ucieka w bok przy pisaniu. */}
-          <textarea ref={textRef} className="sms-text" rows={5} wrap="soft" value={text} placeholder="Wpisz wiadomość" onChange={(e) => setText(e.target.value)} />
+          <textarea ref={textRef} className="sms-text" rows={5} wrap="soft" value={text} placeholder="Wpisz wiadomość" onChange={(e) => {
+            edited.current = true;
+            smsDrafts.set(`${order.id}|${kind}`, e.target.value);
+            setText(e.target.value);
+          }} />
         </label>
         <button type="button" className="btn btn-primary btn-block" disabled={!phone || !text.trim()} onClick={() => void send()}>
           <Icon name="message" /> Wyślij {phone ? `do ${phone.number}` : ''}

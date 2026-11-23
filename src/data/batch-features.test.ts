@@ -49,12 +49,8 @@ describe('kopiowanie', () => {
     expect(text).toContain('Nabywca: Jan Kowalski');
     expect(invoiceMissing(order())).toEqual([]);
   });
-  it('wywiad: skala populacji i poprawa przy kolejnym zabiegu', () => {
-    expect(interviewLines({ ...EMPTY_INTERVIEW, seenCount: 'ok. 20', improvement: 'tak', improvementNote: 'pojedyncze' })).toEqual([
-      'Skala populacji: ok. 20',
-      'Widać poprawę: tak',
-      'Co jest: pojedyncze',
-    ]);
+  it('wywiad: skala populacji; dawna „poprawa” już się nie pokazuje', () => {
+    expect(interviewLines({ ...EMPTY_INTERVIEW, seenCount: 'ok. 20', improvement: 'tak', improvementNote: 'pojedyncze' })).toEqual(['Skala populacji: ok. 20']);
   });
 });
 
@@ -88,16 +84,6 @@ describe('kilometrówka: przejazd z dawnego dnia', () => {
   });
 });
 
-describe('zabieg II i kolejne: „Czy widać poprawę?” wymagane', () => {
-  it('pierwszy zabieg bez pytania; od drugiego bez odpowiedzi nie da się zakończyć', async () => {
-    const { improvementMissing } = await import('./interview');
-    expect(improvementMissing(visit({ seq: 1 }))).toBe(false);
-    expect(improvementMissing(visit({ seq: 2 }))).toBe(true);
-    expect(improvementMissing(visit({ seq: 2, interview: { ...EMPTY_INTERVIEW, improvement: 'nie' } }))).toBe(false);
-    expect(improvementMissing(visit({ seq: 3, interview: { ...EMPTY_INTERVIEW, improvement: 'tak' } }))).toBe(false);
-  });
-});
-
 describe('zabieg II i kolejne: „Czy mieszkanie zostało uszczelnione?”', () => {
   it('wymagane, chyba że uszczelnienie potwierdzono przy wcześniejszym wykonanym zabiegu', async () => {
     const { requiredAnswersMissing, sealedBefore } = await import('./interview');
@@ -105,7 +91,9 @@ describe('zabieg II i kolejne: „Czy mieszkanie zostało uszczelnione?”', () 
     const second = visit({ id: 'v2', seq: 2, status: 'w_trakcie', interview: { ...EMPTY_INTERVIEW, improvement: 'tak' } });
     expect(requiredAnswersMissing(visit({ seq: 1 }), [])).toEqual([]);
     expect(requiredAnswersMissing(second, [done(1, '')])).toEqual(['Czy mieszkanie zostało uszczelnione?']);
-    expect(requiredAnswersMissing(visit({ seq: 2, interview: EMPTY_INTERVIEW }), [])).toEqual(['Czy widać poprawę?', 'Czy mieszkanie zostało uszczelnione?']);
+    // „Czy widać poprawę?” i ugryzienia usunięte: nie są wymagane ani nie trafiają do opisu.
+    expect(requiredAnswersMissing(visit({ seq: 2, interview: EMPTY_INTERVIEW }), [])).toEqual(['Czy mieszkanie zostało uszczelnione?']);
+    expect(interviewLines({ ...EMPTY_INTERVIEW, bites: 'tak', improvement: 'nie', improvementNote: 'dużo' })).toEqual([]);
     // Na II „nie” (z opisem): przy III nadal pytamy.
     const third = visit({ id: 'v3', seq: 3, status: 'w_trakcie', interview: { ...EMPTY_INTERVIEW, improvement: 'tak' } });
     expect(requiredAnswersMissing(third, [done(1, ''), done(2, 'nie')])).toEqual(['Czy mieszkanie zostało uszczelnione?']);

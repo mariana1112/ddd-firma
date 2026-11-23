@@ -6,7 +6,7 @@ import { withCountryCode } from '../lib/validators';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
-import { cancelVisit, defaultDoneOn, finishVisit, normalizeInterview, orderVisits, restoreOrder, revertStartedVisit, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
+import { cancelVisit, defaultDoneOn, finishVisit, nextVisitSeq, normalizeInterview, orderVisits, restoreVisit, revertStartedVisit, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
 import { googleCalendarUrl } from '../data/calendar';
 import { ScheduleNext } from './orders';
 import { addressMissing, dayPositions, paymentMissing } from '../data/order-list';
@@ -804,7 +804,7 @@ export function VisitPage() {
   const [invoiceAlert, setInvoiceAlert] = useState(false);
   const payRef = useRef<HTMLDivElement>(null);
   const [workStep, setWorkStep] = useState(0);
-  // „Czy widać poprawę?” bez odpowiedzi przy próbie zakończenia zabiegu II i kolejnych.
+  // Wymagane pytanie (uszczelnienie) bez odpowiedzi przy próbie zakończenia zabiegu II i kolejnych.
   const [improvementAlert, setImprovementAlert] = useState(false);
   const goStep = (i: number) => {
     setWorkStep(Math.max(0, Math.min(WORK_STEPS.length - 1, i)));
@@ -861,7 +861,7 @@ export function VisitPage() {
    * „Zakończ zabieg”: forma płatności i kwota są wymagane. Gdy ich brakuje, płatność świeci na czerwono i ekran
    * przewija się do niej; można też zakończyć teraz i uzupełnić później (zabieg trafia do „Pilnych”).
    */
-  /** Zabieg II i kolejne bez wymaganych odpowiedzi (poprawa, uszczelnienie): powrót do wywiadu z zaznaczonymi pytaniami. */
+  /** Zabieg II i kolejne bez wymaganej odpowiedzi (uszczelnienie): powrót do wywiadu z zaznaczonym pytaniem. */
   const blockImprovement = (missing: string[]) => {
     setImprovementAlert(true);
     goStep(0);
@@ -873,7 +873,7 @@ export function VisitPage() {
     // Kwota zapisuje się przy wyjściu z pola, więc czytamy świeży stan po chwili.
     await new Promise((resolve) => setTimeout(resolve, 150));
     const fresh = (await visits.get(visit.id)) ?? visit;
-    // Zabieg II i kolejne: bez odpowiedzi „Czy widać poprawę?” nie kończymy (przy „opiszę później” wymagane przy opisie).
+    // Zabieg II i kolejne: bez odpowiedzi o uszczelnieniu nie kończymy (przy „opiszę później” wymagane przy opisie).
     const unanswered = later ? [] : requiredAnswersMissing(fresh, list);
     if (unanswered.length) {
       blockImprovement(unanswered);
@@ -921,7 +921,6 @@ export function VisitPage() {
       danger: true,
     });
     if (!ok) return;
-    const previous = visit.status;
     await run(async () => {
       const { archived } = await cancelVisit(visit.id);
       toast(archived ? 'Zabieg odwołany, zlecenie w archiwum' : 'Zabieg odwołany', {
@@ -929,8 +928,7 @@ export function VisitPage() {
           label: 'Cofnij',
           onClick: () =>
             void run(async () => {
-              await visits.update(visit.id, { status: previous });
-              if (archived) await restoreOrder(order.id);
+              await restoreVisit(visit.id);
             }),
         },
       });
@@ -1115,6 +1113,30 @@ export function VisitPage() {
           </div>
         )}
 
+        {/* Odwołany zabieg można przywrócić (np. odwołany przez pomyłkę albo klient jednak chce). */}
+        {visit.status === 'odwolany' && (
+          <div className="notice notice-warn">
+            <Icon name="alert" />
+            <span>
+              <strong>Zabieg {roman(visit.seq)} jest odwołany.</strong> Jeśli to pomyłka albo klient jednak chce ten termin, cofnij odwołanie.
+            </span>
+            <span className="notice-actions">
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() =>
+                  void run(async () => {
+                    await restoreVisit(visit.id);
+                    toast(`Zabieg ${roman(visit.seq)} przywrócony`);
+                  })
+                }
+              >
+                Cofnij odwołanie
+              </button>
+            </span>
+          </div>
+        )}
+
         {visit.status === 'zaplanowany' && (
           <>
             {/* Kolejny zabieg (II, III…) można zacząć dopiero po umówieniu terminu z klientem. */}
@@ -1253,11 +1275,11 @@ export function VisitPage() {
         </>
       )}
 
-      <Sheet open={planningNext} title={`Umów kolejny zabieg · ${visitCode(order, later?.seq ?? Math.max(...list.map((v) => v.seq)) + 1)}`} onClose={() => setPlanningNext(false)}>
+      <Sheet open={planningNext} title={`Umów kolejny zabieg · ${visitCode(order, later?.seq ?? nextVisitSeq(list))}`} onClose={() => setPlanningNext(false)}>
         {planningNext && (
           <ScheduleNext
             durationMin={visit.durationMin || 60}
-            after={previousVisitDay(list, later?.seq ?? Math.max(...list.map((v) => v.seq)) + 1) ?? visit.doneOn ?? visit.start?.slice(0, 10) ?? todayWarsaw()}
+            after={previousVisitDay(list, later?.seq ?? nextVisitSeq(list)) ?? visit.doneOn ?? visit.start?.slice(0, 10) ?? todayWarsaw()}
             initial={proposeTerms(list, order)}
             invoice={order.invoice}
             onSave={(start, durationMin, nextTerms) =>
@@ -1295,9 +1317,6 @@ export function VisitPage() {
                 value={interview.situation}
                 onSave={(v) => saveInterview('situation', v)}
               />
-              {(order.pest === 'pluskwy' || order.pest === 'pchly' || order.pest === 'inne') && (
-                <YesNoField label="Czy są ugryzienia?" value={interview.bites} onChange={(v) => saveInterview('bites', v)} />
-              )}
               <AutoText
                 label="Jaka jest skala populacji? (wpisz ile)"
                 placeholder="Np. kilka, ok. 20, dużo w całym mieszkaniu"
@@ -1307,19 +1326,6 @@ export function VisitPage() {
               />
               {visit.seq > 1 && (
                 <>
-                  <YesNoField
-                    label="Czy widać poprawę? (wymagane)"
-                    value={interview.improvement}
-                    missing={improvementAlert && !interview.improvement}
-                    onChange={(v) => saveInterview('improvement', v)}
-                  />
-                  <AutoText
-                    label="Co jest? (jak wygląda sytuacja teraz)"
-                    placeholder="Np. dużo mniej, pojedyncze w sypialni"
-                    rows={2}
-                    value={interview.improvementNote}
-                    onSave={(v) => saveInterview('improvementNote', v)}
-                  />
                   {sealedOn !== null ? (
                     <p className="field-hint">
                       <Icon name="check" size={14} /> Mieszkanie uszczelnione (potwierdzone przy zabiegu {roman(sealedOn)})
@@ -1508,7 +1514,7 @@ export function VisitPage() {
                     className="btn btn-primary"
                     onClick={() =>
                       void run(async () => {
-                        // Zabieg II i kolejne: najpierw odpowiedź „Czy widać poprawę?”.
+                        // Zabieg II i kolejne: najpierw odpowiedź o uszczelnieniu.
                         const unanswered = requiredAnswersMissing((await visits.get(visit.id)) ?? visit, list);
                         if (unanswered.length) {
                           blockImprovement(unanswered);
@@ -1741,8 +1747,7 @@ function Reschedule({ visit, onDone }: { visit: Visit; onDone: () => void }) {
                   label: 'Cofnij',
                   onClick: () =>
                     void run(async () => {
-                      await visits.update(visit.id, { status: 'zaplanowany' });
-                      if (archived) await restoreOrder(visit.orderId);
+                      await restoreVisit(visit.id);
                     }),
                 },
               });

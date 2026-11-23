@@ -1,11 +1,6 @@
 // Wywiad z klientem przy zabiegu. Czyste funkcje, bez bazy danych.
 import type { Interview, YesNo } from './types';
 
-/** Zabieg II i kolejne: odpowiedź „Czy widać poprawę?” jest wymagana do zakończenia (i do „Gotowe, opisane”). */
-export function improvementMissing(visit: { seq: number; interview?: unknown }): boolean {
-  return visit.seq > 1 && !normalizeInterview(visit.interview).improvement;
-}
-
 type VisitLike = { seq: number; status?: string; interview?: unknown; deletedAt?: string | null };
 
 /** Numer wcześniejszego wykonanego zabiegu, przy którym potwierdzono uszczelnienie mieszkania (albo null). */
@@ -17,14 +12,13 @@ export function sealedBefore(visit: VisitLike, list: VisitLike[]): number | null
 }
 
 /**
- * Wymagane pytania wywiadu przy zabiegu II i kolejnych: poprawa i uszczelnienie. Uszczelnienie nie jest już wymagane,
- * gdy potwierdzono je przy wcześniejszym zabiegu. Zwraca pytania bez odpowiedzi.
+ * Wymagane pytanie wywiadu przy zabiegu II i kolejnych: uszczelnienie. Nie jest już wymagane, gdy potwierdzono je przy
+ * wcześniejszym zabiegu. Zwraca pytania bez odpowiedzi. („Czy widać poprawę?” usunięte na prośbę firmy.)
  */
 export function requiredAnswersMissing(visit: VisitLike, list: VisitLike[]): string[] {
   if (visit.seq <= 1) return [];
   const i = normalizeInterview(visit.interview);
   const missing: string[] = [];
-  if (!i.improvement) missing.push('Czy widać poprawę?');
   if (!i.sealed && sealedBefore(visit, list) === null) missing.push('Czy mieszkanie zostało uszczelnione?');
   return missing;
 }

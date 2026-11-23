@@ -5,7 +5,7 @@
 // tylko nazwa ulicy, kod i miejscowość: nigdy numer domu ani dane klienta (wyjątek: „Jestem na miejscu” w nowym
 // zleceniu wysyła na żądanie technika same współrzędne jego pozycji). Gdy ulicy nie da się znaleźć, liczy się
 // miejscowość. Wynik jest zapamiętywany na urządzeniu, więc każda ulica jest sprawdzana raz.
-import { addDays, addMinutes, nowWarsaw } from '../lib/dates';
+import { addDays, nowWarsaw } from '../lib/dates';
 import { normalizeForSearch } from '../lib/validators';
 import { db } from './db';
 import { coordsFromLink } from './maps';
@@ -117,15 +117,11 @@ const WORK_START = '08:00';
 const WORK_END = '19:00';
 const MAX_DISTANCE_KM = 25;
 
-function roundUpToQuarter(term: string): string {
-  const minutes = Number(term.slice(14, 16));
-  const extra = (15 - (minutes % 15)) % 15;
-  return addMinutes(term, extra);
-}
-
 /**
- * Dni w najbliższych dwóch tygodniach, w które jest już zabieg w pobliżu. Proponowana godzina to
- * koniec tamtego zabiegu plus dojazd, a gdy to za późno, czas przed nim.
+ * Dni w najbliższych dwóch tygodniach, w które jest już zabieg w pobliżu. Proponowana godzina to koniec tamtego
+ * zabiegu (jego czas trwania) plus dojazd, a gdy to za późno albo koliduje: czas przed nim. Godzina musi zmieścić
+ * się w całym planie dnia: nowy zabieg (jego czas trwania) z dojazdami nie może nachodzić na żaden inny zabieg tego
+ * dnia. Gdy przy najbliższym zabiegu się nie da, pierwsza wolna godzina tego dnia.
  */
 export function suggestSlots(
   target: LatLng,
@@ -134,26 +130,42 @@ export function suggestSlots(
   planned: Array<{ order: Order; visit: Visit; point: LatLng | null }>,
 ): Suggestion[] {
   const limit = addDays(today, 14);
+  const nowMin = toMin(nowWarsaw().slice(11, 16));
+  const active = planned.filter(({ visit }) => visit.start && visit.status === 'zaplanowany');
   const best = new Map<string, Suggestion>();
-  for (const item of planned) {
+  for (const item of active) {
     const { visit, point } = item;
-    if (!point || !visit.start || visit.status !== 'zaplanowany') continue;
-    const date = visit.start.slice(0, 10);
+    if (!point) continue;
+    const date = visit.start!.slice(0, 10);
     if (date < today || date > limit) continue;
     const distanceKm = haversineKm(target, point);
     if (distanceKm > MAX_DISTANCE_KM) continue;
-    const travelMin = travelMinutes(distanceKm);
-    let start = roundUpToQuarter(addMinutes(visit.start, visit.durationMin + travelMin));
-    if (start.slice(11) > addMinutes(`${date}T${WORK_END}`, -durationMin).slice(11)) {
-      start = addMinutes(visit.start, -(durationMin + travelMin));
-      start = addMinutes(start, -(Number(start.slice(14, 16)) % 15));
-      if (start.slice(11) < WORK_START) continue;
-    }
-    // Dziś tylko godziny, które jeszcze nie minęły.
-    if (date === today && start.slice(11) < nowWarsaw().slice(11)) continue;
-    const suggestion: Suggestion = { start, date, distanceKm, travelMin, near: { order: item.order, visit } };
     const current = best.get(date);
-    if (!current || distanceKm < current.distanceKm) best.set(date, suggestion);
+    if (current && current.distanceKm <= distanceKm) continue;
+    const travelMin = travelMinutes(distanceKm);
+    // Cały plan dnia: każdy zabieg z jego czasem trwania i położeniem (dojazdy w obie strony).
+    const stops: DayStop[] = active
+      .filter((p) => p.visit.start!.slice(0, 10) === date)
+      .map((p) => ({ start: p.visit.start!, durationMin: p.visit.durationMin || 60, label: '', city: '', point: p.point }));
+    const fits = (startMin: number) => {
+      if (startMin < toMin(WORK_START) || startMin + durationMin > toMin(WORK_END)) return false;
+      if (date === today && startMin < nowMin) return false;
+      return !stops.some((st) => {
+        const s0 = toMin(st.start.slice(11, 16));
+        const s1 = s0 + st.durationMin;
+        return startMin < s1 + drive(st.point, target) && startMin + durationMin + drive(target, st.point) > s0;
+      });
+    };
+    const near0 = toMin(visit.start!.slice(11, 16));
+    const after = Math.ceil((near0 + (visit.durationMin || 60) + travelMin) / 15) * 15;
+    const before = Math.floor((near0 - durationMin - travelMin) / 15) * 15;
+    let startMin = [after, before].find(fits);
+    if (startMin === undefined) {
+      const free = freeSlots(stops, target, durationMin, date === today ? { nowMin } : {})[0];
+      if (!free) continue;
+      startMin = toMin(free);
+    }
+    best.set(date, { start: `${date}T${toHhmm(startMin)}`, date, distanceKm, travelMin, near: { order: item.order, visit } });
   }
   return [...best.values()].sort((a, b) => a.distanceKm - b.distanceKm || a.date.localeCompare(b.date)).slice(0, 5);
 }
