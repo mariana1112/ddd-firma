@@ -4774,3 +4774,9 @@ a.region-pill {
   flex: 1 1 auto;
   white-space: nowrap;
 }
+
+/* Podgląd tygodnia: zabieg poza godzinami 7–20 przy krawędzi siatki, z godziną i przerywaną ramką */
+.wp-block.wp-outside {
+  outline: 1px dashed rgb(255 255 255 / 0.7);
+  outline-offset: -1px;
+}

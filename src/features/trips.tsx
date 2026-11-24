@@ -13,6 +13,7 @@ import { formatDate, formatMonth, monthOf, nowWarsaw, shiftMonth, todayWarsaw } 
 import { mileageDocument } from '../pdf/documents';
 import { renderPdf } from '../pdf/render';
 import { useFeedback } from '../ui/feedback';
+import { useOnce } from '../ui/once';
 import { Icon } from '../ui/icons';
 import { Empty, Field, Group, Loading, Page, Sheet, Stat, Row } from '../ui/kit';
 
@@ -83,6 +84,7 @@ function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileN
 
 function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () => void }) {
   const { run, toast } = useFeedback();
+  const { once, pending } = useOnce();
   const [kind, setKind] = useState<TripKind>('sluzbowy');
   const [date, setDate] = useState(todayWarsaw());
   const [timeFrom, setTimeFrom] = useState(nowWarsaw().slice(11, 16));
@@ -149,7 +151,7 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
       onSubmit={(e) => {
         e.preventDefault();
         if (!ready) return;
-        void run(async () => {
+        void once(() => run(async () => {
           const profile = await getProfile();
           await trips.create({
             ownerId: profile.userId,
@@ -177,7 +179,7 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
           setStart(String(endKm));
           setEnd('');
           onSaved();
-        });
+        }));
       }}
     >
       <div className="segmented" role="group">
@@ -265,7 +267,7 @@ function TripForm({ vehicle, onSaved }: { vehicle: VehicleSettings; onSaved: () 
           <strong>{km} km</strong>
         </p>
       )}
-      <button type="submit" className="btn btn-primary btn-block" disabled={!ready}>
+      <button type="submit" className="btn btn-primary btn-block" disabled={!ready || pending}>
         <Icon name="plus" /> Zapisz przejazd
       </button>
     </form>

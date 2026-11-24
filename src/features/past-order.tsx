@@ -12,6 +12,7 @@ import { formatDate, todayWarsaw } from '../lib/dates';
 import { parseMoney } from '../lib/money';
 import { formatPhoneInput, phoneError } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
+import { useOnce } from '../ui/once';
 import { Icon } from '../ui/icons';
 import { Field, Group, Loading, Page, Row } from '../ui/kit';
 import { enterRegion } from './regions';
@@ -25,6 +26,7 @@ const PAY: PayMethod[] = ['gotowka', 'blik', 'przelew'];
  */
 export function PastOrderPage() {
   const { run, toast } = useFeedback();
+  const { once, pending } = useOnce();
   const [params] = useSearchParams();
   const state = useLiveQuery(async () => (await getSyncState()) ?? null);
   const regions = useLiveQuery(() => getRegions());
@@ -118,7 +120,7 @@ export function PastOrderPage() {
         className="form"
         onSubmit={(e) => {
           e.preventDefault();
-          void save();
+          void once(save);
         }}
       >
         <div className="form-row">
@@ -177,7 +179,7 @@ export function PastOrderPage() {
             ))}
           </select>
         </Field>
-        <button type="submit" className="btn btn-primary btn-block btn-big" disabled={Boolean(phoneProblem || amountProblem || !date)}>
+        <button type="submit" className="btn btn-primary btn-block btn-big" disabled={Boolean(phoneProblem || amountProblem || !date) || pending}>
           <Icon name="plus" /> Dodaj do raportów
         </button>
       </form>

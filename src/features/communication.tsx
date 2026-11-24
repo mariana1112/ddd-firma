@@ -11,6 +11,7 @@ import { getProfile, getRegions, getSyncState, getUiSyncState } from '../data/se
 import { formatDate, todayWarsaw } from '../lib/dates';
 import type { Message } from '../data/types';
 import { useFeedback } from '../ui/feedback';
+import { useOnce } from '../ui/once';
 import { Icon } from '../ui/icons';
 import { Badge, Empty, Group, Loading, Page, Row } from '../ui/kit';
 
@@ -223,6 +224,7 @@ function ChatConversation(props: {
 }) {
   const { data, channel } = props;
   const { run } = useFeedback();
+  const { once } = useOnce();
   const [text, setText] = useState(props.initialText ?? '');
   // Oznaczone osoby (@Imię) wybrane z podpowiedzi; przy wysyłaniu liczą się te, które zostały w tekście.
   const [picked, setPicked] = useState<Person[]>([]);
@@ -310,12 +312,12 @@ function ChatConversation(props: {
         onSubmit={(e) => {
           e.preventDefault();
           if (!text.trim()) return;
-          void run(async () => {
+          void once(() => run(async () => {
             await sendMessage(channel.id, text, mentionsIn(text, picked));
             setText('');
             setPicked([]);
             setPicking(false);
-          });
+          }));
         }}
       >
         {showPicker && (

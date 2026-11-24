@@ -905,7 +905,7 @@ export function VisitPage() {
     const lacking = invoiceMissing(freshOrder);
     if (lacking.length) {
       setInvoiceAlert(true);
-      toast(`Do faktury brakuje: ${lacking.map((f) => INVOICE_FIELD_LABEL[f]).join(', ')}`, { tone: 'error' });
+      toast(`Do ${documentWord(freshOrder.invoice).of} brakuje: ${lacking.map((f) => INVOICE_FIELD_LABEL[f]).join(', ')}`, { tone: 'error' });
       if (later) {
         setResumeFinish(true);
         setPaying(true);
@@ -1304,7 +1304,7 @@ export function VisitPage() {
             initial={proposeTerms(list, order)}
             invoice={order.invoice}
             onSave={(start, durationMin, nextTerms) =>
-              void run(async () => {
+              run(async () => {
                 const next = await scheduleNextVisit(order.id, { start, durationMin, terms: nextTerms });
                 setPlanningNext(false);
                 toast(`Zabieg ${roman(next.seq)} umówiony: ${formatTerm(start)}`);

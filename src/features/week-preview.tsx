@@ -119,6 +119,15 @@ export function WeekPreview(props: {
   const top = (time: string) => ((toMin(time) - H0 * 60) / 60) * HOUR_PX;
   const height = (min: number) => Math.max(14, (min / 60) * HOUR_PX - 2);
   const today = todayWarsaw();
+  // Zabieg poza siatką 7–20 (np. wieczorem) nie znika: stoi przy krawędzi siatki z godziną, żeby dzień nie wyglądał na wolny.
+  const GRID_PX = (H1 - H0) * HOUR_PX;
+  const place = (time: string, min: number) => {
+    const t = top(time);
+    const h = height(min);
+    if (t >= 0 && t + h <= GRID_PX) return { top: t, height: h, outside: false };
+    const clampedTop = Math.min(Math.max(t, 0), GRID_PX - 14);
+    return { top: clampedTop, height: Math.max(14, Math.min(h, GRID_PX - clampedTop, t + h - clampedTop)), outside: t < 0 || t >= GRID_PX };
+  };
 
   return (
     <div className="week-preview">
@@ -172,13 +181,14 @@ export function WeekPreview(props: {
                   <button
                     key={visit.id}
                     type="button"
-                    className={`wp-block wp-visit wp-${visit.status}`}
-                    style={{ top: top(visit.start!.slice(11, 16)), height: height(visit.durationMin || 60) }}
+                    className={`wp-block wp-visit wp-${visit.status}${place(visit.start!.slice(11, 16), visit.durationMin || 60).outside ? ' wp-outside' : ''}`}
+                    style={{ top: place(visit.start!.slice(11, 16), visit.durationMin || 60).top, height: place(visit.start!.slice(11, 16), visit.durationMin || 60).height }}
                     onClick={(e) => {
                       e.stopPropagation();
                       setPeek({ visit, order });
                     }}
                   >
+                    {place(visit.start!.slice(11, 16), visit.durationMin || 60).outside ? `${visit.start!.slice(11, 16)} ` : ''}
                     {String(order.number).padStart(4, '0')}
                   </button>
                 ))}

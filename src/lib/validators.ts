@@ -1,7 +1,10 @@
-/** Sprawdza sumę kontrolną NIP. Akceptuje zapis z myślnikami i spacjami. */
+/**
+ * Sprawdza sumę kontrolną NIP. Akceptuje zapis z myślnikami i spacjami oraz z „PL” na początku (jak na fakturach
+ * unijnych). Same zera nie są NIP-em, choć suma kontrolna się zgadza.
+ */
 export function isValidNip(input: string): boolean {
-  const digits = input.replace(/[\s-]/g, '');
-  if (!/^\d{10}$/.test(digits)) return false;
+  const digits = input.replace(/^\s*PL/i, '').replace(/[\s-]/g, '');
+  if (!/^\d{10}$/.test(digits) || /^0+$/.test(digits)) return false;
   const weights = [6, 5, 7, 2, 3, 4, 5, 6, 7];
   const sum = weights.reduce((acc, w, i) => acc + w * Number(digits[i]), 0);
   return sum % 11 === Number(digits[9]);

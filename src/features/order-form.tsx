@@ -1318,7 +1318,22 @@ export function OrderNewPage() {
     await save();
   };
 
-  const save = () =>
+  // Podwójne stuknięcie „Zapisz zlecenie” zakładało dwa (i więcej) zlecenia: drugi zapis w trakcie pierwszego
+  // jest pomijany.
+  const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    try {
+      await saveOnce();
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
+  };
+  const saveOnce = () =>
     run(async () => {
       const duration = Number(state.duration) || 60;
       const { order, offlineNumber } = await createOrder(
@@ -1390,8 +1405,8 @@ export function OrderNewPage() {
           </button>
         )}
         {step === 'podsumowanie' ? (
-          <button type="button" className="btn btn-primary" onClick={() => void saveNow()}>
-            <Icon name="check" /> Zapisz zlecenie
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveNow()}>
+            <Icon name="check" /> {busy ? 'Zapisuję…' : 'Zapisz zlecenie'}
           </button>
         ) : (
           <button type="button" className="btn btn-primary" onClick={() => void go(1)}>

@@ -200,7 +200,8 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
     const fresh = shownFor.current !== key;
     if (!fresh && (edited.current || kind === 'wlasna')) return;
     shownFor.current = key;
-    const draft = smsDrafts.get(`${order.id}|${kind}`);
+    // Szkic tylko własnej wiadomości: gotowe (przypomnienie, spóźnienie) zawsze z aktualnym terminem.
+    const draft = kind === 'wlasna' ? smsDrafts.get(`${order.id}|${kind}`) : undefined;
     edited.current = draft !== undefined;
     if (draft !== undefined) {
       setText(draft);
@@ -275,7 +276,7 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
           {/* Tekst zawija się w dół, a pole rośnie razem z nim: nic nie ucieka w bok przy pisaniu. */}
           <textarea ref={textRef} className="sms-text" rows={5} wrap="soft" value={text} placeholder="Wpisz wiadomość" onChange={(e) => {
             edited.current = true;
-            smsDrafts.set(`${order.id}|${kind}`, e.target.value);
+            if (kind === 'wlasna') smsDrafts.set(`${order.id}|${kind}`, e.target.value);
             setText(e.target.value);
           }} />
         </label>

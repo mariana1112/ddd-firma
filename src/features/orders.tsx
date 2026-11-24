@@ -20,6 +20,7 @@ import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { WeekPeek } from './week-preview';
 import { normalizeForSearch } from '../lib/validators';
 import { useFeedback } from '../ui/feedback';
+import { useOnce } from '../ui/once';
 import { Icon } from '../ui/icons';
 import { AddLink, Badge, Chips, Empty, Field, Group, Info, Loading, NotFound, Page, Row, Search, Sheet, TimeSelect } from '../ui/kit';
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
@@ -389,8 +390,10 @@ export function ScheduleNext(props: {
   invoice: InvoiceType;
   /** Dzień poprzedniego zabiegu: propozycje terminów 8–12 dni później. */
   after?: string | null;
-  onSave: (start: string, durationMin: number, terms: VisitTerms) => void;
+  onSave: (start: string, durationMin: number, terms: VisitTerms) => unknown;
 }) {
+  // Podwójne stuknięcie „Umów zabieg” umawiało od razu dwa kolejne zabiegi (II i III).
+  const { once, pending } = useOnce();
   const [date, setDate] = useState(() => (props.after ? (nextVisitDays(props.after).find((d) => d >= todayWarsaw()) ?? todayWarsaw()) : ''));
   const [time, setTime] = useState('10:00');
   const [duration, setDuration] = useState(String(props.durationMin));
@@ -403,7 +406,7 @@ export function ScheduleNext(props: {
       className="form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (valid) props.onSave(`${date}T${time}`, minutes, parsed!);
+        if (valid) void once(async () => props.onSave(`${date}T${time}`, minutes, parsed!));
       }}
     >
       {props.after && (
@@ -446,7 +449,7 @@ export function ScheduleNext(props: {
         <input inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/\D/g, ''))} />
       </Field>
       <TermsFields value={terms} onChange={setTerms} invoice={props.invoice} proposedFrom="Podpowiedź: zakres i cena z poprzedniego zabiegu. Zmień, jeśli klient chce inaczej." />
-      <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>
+      <button type="submit" className="btn btn-primary btn-block" disabled={!valid || pending}>
         Umów zabieg
       </button>
     </form>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createEvent, deleteEvent, EVENT_TYPES, eventErrors, eventType, updateEvent, type CalendarEvent, type EventDraft, type EventType } from '../data/events';
 import { formatDate } from '../lib/dates';
 import { useFeedback } from '../ui/feedback';
+import { useOnce } from '../ui/once';
 import { Icon } from '../ui/icons';
 import { Field, Sheet, TimeSelect } from '../ui/kit';
 
@@ -63,6 +64,7 @@ export function EventSheet(props: { source: CalendarEvent | CalendarSpot | null;
 
 function EventForm({ source, onClose }: { source: CalendarEvent | CalendarSpot; onClose: () => void }) {
   const { confirm, run, toast } = useFeedback();
+  const { once, pending } = useOnce();
   const editing = 'kind' in source ? source : null;
   const [d, setD] = useState<EventDraft>(() => draftFrom(source));
   const [tried, setTried] = useState(false);
@@ -134,7 +136,7 @@ function EventForm({ source, onClose }: { source: CalendarEvent | CalendarSpot; 
         <textarea rows={2} value={d.note} placeholder="Np. warsztat na Grunwaldzkiej, wymiana opon" onChange={(e) => set({ note: e.target.value })} />
       </Field>
       {tried && errors.length > 0 && <p className="field-message">{errors[0]}</p>}
-      <button type="button" className="btn btn-primary btn-block" onClick={() => void save()}>
+      <button type="button" className="btn btn-primary btn-block" disabled={pending} onClick={() => void once(save)}>
         <Icon name="check" /> {editing ? 'Zapisz zmiany' : 'Dodaj wydarzenie'}
       </button>
       {editing && (

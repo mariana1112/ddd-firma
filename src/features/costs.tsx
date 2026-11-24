@@ -7,11 +7,13 @@ import { getProfile, ownedBy } from '../data/settings';
 import { formatDate, formatDateLong, todayWarsaw } from '../lib/dates';
 import { parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
+import { useOnce } from '../ui/once';
 import { Icon } from '../ui/icons';
 import { Empty, Field, Group, Loading, Page, Stat } from '../ui/kit';
 
 export function CostsPage() {
   const { run, toast } = useFeedback();
+  const { once, pending } = useOnce();
   const [period, setPeriod] = useState<Period>(() => periodOf('tydzien', todayWarsaw()));
   const [date, setDate] = useState(todayWarsaw());
   // Jedna kategoria „inne koszty”: nazwę kosztu wpisuje technik, a przyciski tylko ją podpowiadają.
@@ -56,7 +58,7 @@ export function CostsPage() {
         className="form card"
         onSubmit={(e) => {
           e.preventDefault();
-          if (valid) void add();
+          if (valid) void once(add);
         }}
       >
         <Field label="Koszt" hint="Wpisz, co to za koszt, albo wybierz poniżej. Każdy koszt pomniejsza gotówkę dla szefa.">
@@ -85,7 +87,7 @@ export function CostsPage() {
         <Field label="Notatka (opcjonalnie)">
           <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Np. A1 Stryków, faktura" />
         </Field>
-        <button type="submit" className="btn btn-primary btn-block" disabled={!valid}>
+        <button type="submit" className="btn btn-primary btn-block" disabled={!valid || pending}>
           <Icon name="plus" /> Dodaj koszt
         </button>
       </form>
