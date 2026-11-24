@@ -1,4 +1,4 @@
-import type { Table } from 'dexie';
+import Dexie, { type Table } from 'dexie';
 import { newId } from '../lib/ids';
 import { logChange } from './changes';
 import { db, type RecordTableName } from './db';
@@ -119,5 +119,23 @@ export const expenses = new Repository<Expense>(db.expenses);
 export const attachments = new Repository<Attachment>(db.attachments);
 export const messages = new Repository<Message>(db.messages);
 export const orders = new Repository<Order>(db.orders);
-export const visits = new Repository<Visit>(db.visits);
+/**
+ * Zabieg należy do regionu swojego zlecenia. Serwer zapisuje nowy zabieg w regionie osoby, która go zapisała, więc
+ * zabieg umówiony przez kogoś z innego regionu (zastępstwo, telefon przełączony na inny region) miał inny region niż
+ * zlecenie i znikał z kalendarza i list. Pokazujemy zabieg, gdy w widoku jest on sam albo jego zlecenie.
+ */
+class VisitRepository extends Repository<Visit> {
+  async all(): Promise<Visit[]> {
+    const rows = (await this.table.toArray()).filter((r) => !r.deletedAt);
+    const inScope = scopeFilter();
+    if (!inScope) return rows;
+    // W transakcji zapisu bez tabeli zleceń nie wolno jej czytać (przerwałoby zapis): wtedy sam region zabiegu.
+    const tx = Dexie.currentTransaction;
+    const canReadOrders = !tx || tx.storeNames.includes('orders');
+    const ordersInView = canReadOrders ? new Set((await db.orders.toArray()).filter((o) => inScope(o)).map((o) => o.id)) : new Set<string>();
+    return rows.filter((v) => inScope(v) || ordersInView.has(v.orderId));
+  }
+}
+
+export const visits = new VisitRepository(db.visits);
 export const trips = new Repository<Trip>(db.trips);
