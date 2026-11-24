@@ -338,6 +338,33 @@ describe('numery zleceń', () => {
   });
   const plan = { start: null, durationMin: 60 };
 
+  it('zabieg wysyła się z identyfikatorem zlecenia (serwer zapisuje go w regionie zlecenia); zdjęcie z zabiegiem', async () => {
+    await useDevice('telefon');
+    await enableSync(server, account);
+    const { order, visits: [visit] } = await createOrder(draft(), { start: '2026-12-01T10:00', durationMin: 60 }, null);
+    await attachments.create({ jobId: visit.id, name: 'a.jpg', mime: 'image/jpeg', blob: null });
+    await syncNow(server);
+    const sent = server.history.filter((h) => h.deviceId && (h.tbl === 'visits' || h.tbl === 'attachments' || h.tbl === 'orders'));
+    expect(sent.find((h) => h.tbl === 'visits')?.parent).toBe(order.id);
+    expect(sent.find((h) => h.tbl === 'attachments')?.parent).toBe(visit.id);
+    expect(sent.find((h) => h.tbl === 'orders')?.parent).toBeUndefined();
+    // Treść nadal tylko zaszyfrowana; identyfikator zlecenia to losowy kod.
+    expect(Object.values(sent.find((h) => h.tbl === 'visits')!.patch).every((v) => String(v).startsWith('e1:'))).toBe(true);
+  });
+
+  it('admin: zabieg w innym regionie niż jego zlecenie wraca do regionu zlecenia (raz, ze zdjęciami)', async () => {
+    const { queueRegionRepair } = await import('./sync/engine');
+    await db.orders.put({ id: 'z1', branchId: 'gda', createdAt: 'x', updatedAt: 'x', deletedAt: null } as never);
+    await db.visits.put({ id: 'w1', orderId: 'z1', branchId: 'ldz', createdAt: 'x', updatedAt: 'x', deletedAt: null } as never);
+    await db.visits.put({ id: 'w2', orderId: 'z1', branchId: 'gda', createdAt: 'x', updatedAt: 'x', deletedAt: null } as never);
+    await db.attachments.put({ id: 'f1', jobId: 'w1', createdAt: 'x', updatedAt: 'x', deletedAt: null } as never);
+    expect(await queueRegionRepair({ role: 'technik' })).toBe(0);
+    expect(await queueRegionRepair({ role: 'owner' })).toBe(1);
+    expect((await db.changes.toArray()).map((c) => `${c.tbl}:${c.recordId}:${JSON.stringify(c.patch)}`)).toEqual(['visits:w1:{}', 'attachments:f1:{}']);
+    // Drugi raz nic: każdy rekord naprawiany tylko raz.
+    expect(await queueRegionRepair({ role: 'owner' })).toBe(0);
+  });
+
   it('dwa urządzenia nie nadają tego samego numeru, a numery sprzed synchronizacji się nie powtarzają', async () => {
     await useDevice('telefon');
     await setOrderCounter(209);

@@ -25,6 +25,55 @@ export interface PushChange {
   op: ChangeOp;
   patch: Record<string, unknown>;
   at: string;
+  /**
+   * Rodzic rekordu (jawny losowy identyfikator, bez danych klienta): zlecenie zabiegu albo zabieg zdjęcia. Serwer
+   * zapisuje zabieg w regionie zlecenia, a zdjęcie w regionie zabiegu, zamiast w regionie osoby, która zapisuje.
+   */
+  parent?: string;
+}
+
+/** Zlecenie zabiegu albo zabieg zdjęcia: z wysyłanej zmiany, a bez niego z zapisu na urządzeniu. */
+async function parentOf(tbl: SyncTable, recordId: string, patch: Record<string, unknown>): Promise<string | undefined> {
+  if (tbl === 'visits') {
+    const fromPatch = typeof patch.orderId === 'string' ? patch.orderId : undefined;
+    return fromPatch ?? (await db.visits.get(recordId))?.orderId;
+  }
+  if (tbl === 'attachments') {
+    const fromPatch = typeof patch.jobId === 'string' ? patch.jobId : undefined;
+    return fromPatch ?? (await db.attachments.get(recordId))?.jobId;
+  }
+  return undefined;
+}
+
+const REHOMED_KEY = 'rehomed';
+
+/**
+ * Admin: zabiegi zapisane na serwerze w innym regionie niż ich zlecenie (zanim serwer zaczął brać region zlecenia)
+ * wracają do regionu zlecenia razem ze zdjęciami. Pusta zmiana z „parent” przenosi rekord. Każdy rekord raz.
+ */
+export async function queueRegionRepair(state: Pick<SyncState, 'role'>): Promise<number> {
+  if (state.role !== 'owner') return 0;
+  const done = new Set(((await db.meta.get(REHOMED_KEY))?.value as string[] | undefined) ?? []);
+  const orderBranch = new Map((await db.orders.toArray()).map((o) => [o.id, o.branchId ?? null]));
+  const wrong = (await db.visits.toArray()).filter((v) => {
+    const target = orderBranch.get(v.orderId);
+    return !v.deletedAt && !done.has(v.id) && v.branchId && target && v.branchId !== target;
+  });
+  if (wrong.length === 0) return 0;
+  const wrongIds = new Set(wrong.map((v) => v.id));
+  const photos = (await db.attachments.toArray()).filter((a) => !a.deletedAt && wrongIds.has(a.jobId) && !done.has(a.id));
+  await writeTransaction([db.changes, db.meta], async () => {
+    for (const v of wrong) {
+      await logChange('visits', v.id, 'update', {});
+      done.add(v.id);
+    }
+    for (const a of photos) {
+      await logChange('attachments', a.id, 'update', {});
+      done.add(a.id);
+    }
+    await db.meta.put({ key: REHOMED_KEY, value: [...done], updatedAt: new Date().toISOString() });
+  });
+  return wrong.length;
 }
 
 export interface RemoteRecord {
@@ -179,6 +228,8 @@ export async function syncNow(server: SyncServer): Promise<void> {
   await pushPending(server, state, deviceId, key);
   if (await uploadPhotos(server, state, key)) await pushPending(server, state, deviceId, key);
   const unreadable = await pullAll(server, state, key);
+  // Admin: zabiegi w złym regionie (sprzed poprawki serwera) wracają do regionu zlecenia przy kolejnej wysyłce.
+  if ((await queueRegionRepair(state).catch(() => 0)) > 0) await pushPending(server, state, deviceId, key);
   // Udostępnione pojedyncze zlecenia (admin widzi wszystko i ich nie potrzebuje). Błąd nie psuje synchronizacji.
   if (server.recordGrants && state.role !== 'owner') {
     await server
@@ -200,7 +251,8 @@ async function pushPending(server: SyncServer, state: SyncState, deviceId: strin
     if (batch.length === 0) return;
     const sealed: PushChange[] = [];
     for (const { id, tbl, recordId, op, patch, at } of batch) {
-      sealed.push({ id, tbl, recordId, op, patch: await encryptFields(key, tbl, recordId, patch), at });
+      const parent = await parentOf(tbl, recordId, patch);
+      sealed.push({ id, tbl, recordId, op, patch: await encryptFields(key, tbl, recordId, patch), at, ...(parent ? { parent } : {}) });
     }
     await server.push(state.orgId, deviceId, SCHEMA_VERSION, sealed);
     // Trwale usunięte zdjęcie znika też z magazynu plików. Gdy to się nie uda, zmiana zostaje
