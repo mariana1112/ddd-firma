@@ -391,7 +391,7 @@ export function ScheduleNext(props: {
   after?: string | null;
   onSave: (start: string, durationMin: number, terms: VisitTerms) => void;
 }) {
-  const [date, setDate] = useState(() => (props.after ? (nextVisitDays(props.after)[0] ?? '') : ''));
+  const [date, setDate] = useState(() => (props.after ? (nextVisitDays(props.after).find((d) => d >= todayWarsaw()) ?? todayWarsaw()) : ''));
   const [time, setTime] = useState('10:00');
   const [duration, setDuration] = useState(String(props.durationMin));
   const [terms, setTerms] = useState(() => termsDraft(props.initial));

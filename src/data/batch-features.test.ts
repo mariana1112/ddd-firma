@@ -122,3 +122,15 @@ describe('paragon', () => {
     expect(text).not.toContain('Nabywca');
   });
 });
+
+describe('kopiuj opis z dokumentami', () => {
+  it('pod opisem zaznaczone dokumenty i dane: faktura VAT, imienna, paragon, protokół', () => {
+    const v = visit();
+    const first = descriptionCopy(v);
+    expect(descriptionCopy(v, order({ invoice: 'brak', protocol: false }))).toBe(first);
+    const vat = descriptionCopy(v, order({ invoice: 'vat', invoiceName: 'Apt sp. z o.o.', nip: '1234563218', invoiceAddress: 'Długa 1, Gdańsk', email: 'biuro@apt.pl', protocol: true, clientName: 'Jan Nowak' }));
+    expect(vat.split('\n')).toEqual([first, 'Faktura VAT: Apt sp. z o.o., NIP 1234563218, Długa 1, Gdańsk, biuro@apt.pl', 'Protokół: Jan Nowak, biuro@apt.pl']);
+    expect(descriptionCopy(v, order({ invoice: 'paragon', email: 'jan@example.com', protocol: false })).split('\n')[1]).toBe('Paragon na e-mail: jan@example.com');
+    expect(descriptionCopy(v, order({ invoice: 'imienna', clientName: 'Jan Nowak', invoiceAddress: '', email: 'jan@example.com', protocol: false })).split('\n')[1]).toMatch(/^Faktura imienna: Jan Nowak, .+, jan@example\.com$/);
+  });
+});

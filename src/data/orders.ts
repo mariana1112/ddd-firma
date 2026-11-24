@@ -207,7 +207,10 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
     let next: Visit | null = later ?? null;
     let bonus = 0;
     if (input.next.mode === 'umowiony') {
-      if (later) {
+      if (later && later.start === input.next.start && !input.next.terms) {
+        // Termin już umówiony wcześniej (np. w trakcie zabiegu): bez zmian, także „kto umówił”.
+        next = later;
+      } else if (later) {
         await visits.update(later.id, { start: input.next.start, durationMin: input.next.durationMin, ...termsPatch(input.next.terms), ...booking({ id: profile.userId, name: profile.name }) });
         next = { ...later, start: input.next.start, ...termsPatch(input.next.terms) };
       } else {

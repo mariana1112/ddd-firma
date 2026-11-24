@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { visitCode } from '../data/codes';
 import { freeSlots, nextVisitDays, type DayStop } from '../data/geo';
 import { orders, visits } from '../data/repo';
-import { formatDate } from '../lib/dates';
+import { formatDate, todayWarsaw } from '../lib/dates';
 import { dayOff, eventBusy, listEvents } from '../data/events';
 import { getProfile } from '../data/settings';
 import { WeekPeek, WeekPreview } from './week-preview';
@@ -28,7 +28,8 @@ export function NextDates(props: {
   /** Podgląd tygodnia zwinięty, pokazywany po kliknięciu „Podgląd kalendarza”. */
   peek?: boolean;
 }) {
-  const days = nextVisitDays(props.after);
+  // Tylko dziś i później: dni sprzed dzisiaj (np. przy umawianiu po czasie) nie są propozycją.
+  const days = nextVisitDays(props.after).filter((d) => d >= todayWarsaw());
   const proposals = useLiveQuery(async () => {
     const byId = new Map((await orders.all()).map((o) => [o.id, o]));
     const all = (await visits.all()).filter((v) => (v.status === 'zaplanowany' || v.status === 'w_trakcie') && v.start && byId.has(v.orderId) && v.id !== props.exclude);

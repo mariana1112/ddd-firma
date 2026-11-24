@@ -238,11 +238,27 @@ export function interviewLines(raw: Visit['interview']): string[] {
   return lines;
 }
 
-/** „Opis: 300 zł gotówka - Pluskwy w sypialni…” (do wklejenia szefowi albo do centrali). */
-export function descriptionCopy(visit: Pick<Visit, 'amount' | 'payMethod' | 'interview'>): string {
+/**
+ * „Kopiuj opis” (do wklejenia szefowi albo do centrali): „Opis: 300 zł gotówka - Pluskwy w sypialni…”, a pod spodem zaznaczone dokumenty z danymi klienta: faktura VAT
+ * (firma, NIP, adres, e-mail), faktura imienna (imię i nazwisko, adres, e-mail), paragon (e-mail), protokół
+ * (imię i nazwisko, e-mail).
+ */
+export function descriptionCopy(
+  visit: Pick<Visit, 'amount' | 'payMethod' | 'interview'>,
+  order?: Pick<Order, 'invoice' | 'invoiceName' | 'nip' | 'invoiceAddress' | 'clientName' | 'email' | 'protocol' | 'street' | 'houseNo' | 'flatNo' | 'building' | 'city' | 'postalCode'>,
+): string {
   const i = normalizeInterview(visit.interview);
   const pay = visit.amount ? `${zl(visit.amount)} zł${visit.payMethod ? ` ${visit.payMethod === 'blik' ? 'BLIK' : PAY_NAMES[visit.payMethod].toLowerCase()}` : ''}` : 'bez płatności';
-  return `Opis: ${pay} - ${i.situation.trim().replace(/\n+/g, '; ')}`;
+  const lines = [`Opis: ${pay} - ${i.situation.trim().replace(/\n+/g, '; ')}`];
+  if (!order) return lines[0];
+  const email = order.email.trim();
+  const address = order.invoiceAddress.trim() || [orderAddress(order), order.postalCode.trim()].filter(Boolean).join(', ');
+  const join = (parts: Array<string | false | undefined>) => parts.filter(Boolean).join(', ');
+  if (order.invoice === 'vat') lines.push(`Faktura VAT: ${join([(order.invoiceName ?? '').trim(), order.nip.trim() && `NIP ${order.nip.trim()}`, address, email])}`);
+  if (order.invoice === 'imienna') lines.push(`Faktura imienna: ${join([order.clientName.trim(), address, email])}`);
+  if (order.invoice === 'paragon') lines.push(`Paragon na e-mail: ${email || '—'}`);
+  if (order.protocol) lines.push(`Protokół: ${join([order.clientName.trim(), email]) || 'tak'}`);
+  return lines.join('\n');
 }
 
 /** Dane do wystawienia faktury za zabieg: nabywca, NIP, adres, e-mail, usługa, data, kwota i płatność. */

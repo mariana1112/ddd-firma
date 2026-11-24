@@ -646,7 +646,8 @@ function FinishSheet(props: {
   const pickedDate = date || nextVisitDays(doneOn)[0] || '';
   const [busy, setBusy] = useState(false);
   const nextSeq = visit.seq + 1;
-  const ready = mode !== 'umowiony' || Boolean(pickedDate && time);
+  const booked = later?.start ? later : null;
+  const ready = Boolean(booked) || mode !== 'umowiony' || Boolean(pickedDate && time);
 
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
@@ -680,6 +681,15 @@ function FinishSheet(props: {
             </button>
           </div>
         </div>
+        {/* Kolejny zabieg już umówiony (np. „Umów od razu kolejny zabieg” w trakcie): tylko informacja, bez umawiania. */}
+        {booked ? (
+          <p className="notice notice-info">
+            <Icon name="calendar" />
+            <span>
+              Zabieg {roman(booked.seq)} jest już umówiony: <strong>{formatTerm(booked.start!)}</strong>
+            </span>
+          </p>
+        ) : (
         <div className="field">
           <span className="field-label">Zabieg {roman(nextSeq)}</span>
           <div className="choice">
@@ -696,7 +706,8 @@ function FinishSheet(props: {
             ))}
           </div>
         </div>
-        {mode === 'umowiony' && (
+        )}
+        {!booked && mode === 'umowiony' && (
           <NextDates
             after={doneOn}
             backLabel={`Wróć do zakończenia zabiegu ${roman(visit.seq)}`}
@@ -710,7 +721,7 @@ function FinishSheet(props: {
             }}
           />
         )}
-        {mode === 'umowiony' && (
+        {!booked && mode === 'umowiony' && (
           <div className="form-row">
             <Field label="Data">
               <input type="date" value={pickedDate} onChange={(e) => setDate(e.target.value)} />
@@ -727,8 +738,10 @@ function FinishSheet(props: {
           onClick={async () => {
             setBusy(true);
             const t = props.initialTerms;
-            const next: NextVisit =
-              mode === 'umowiony' ? { mode, start: `${pickedDate}T${time}`, durationMin: visit.durationMin, terms: t } : mode === 'technik' ? { mode, terms: t } : { mode };
+            // Już umówiony kolejny zabieg zostaje bez zmian (termin, zakres, cena i kto umówił).
+            const next: NextVisit = booked
+              ? { mode: 'umowiony', start: booked.start!, durationMin: booked.durationMin || visit.durationMin }
+              : mode === 'umowiony' ? { mode, start: `${pickedDate}T${time}`, durationMin: visit.durationMin, terms: t } : mode === 'technik' ? { mode, terms: t } : { mode };
             await props.onFinish({ recommendations, next, doneOn });
             setBusy(false);
           }}
@@ -741,7 +754,7 @@ function FinishSheet(props: {
 }
 
 /** Kroki zabiegu w trakcie (jak kroki tworzenia zlecenia). */
-const WORK_STEPS = ['Wywiad', 'Co wykonano', 'Zdjęcia i protokół', 'Płatność i zakończenie'];
+const WORK_STEPS = ['Wywiad', 'Co wykonano', 'Zdjęcia', 'Płatność i zakończenie'];
 
 /**
  * Nagłówek zabiegu w trakcie: tylko to, co potrzebne na miejscu. Adres, telefon i opis od przyjmującego (np. szefa);
@@ -1237,7 +1250,7 @@ export function VisitPage() {
               <button
                 type="button"
                 className="btn"
-                onClick={() => void copyText(descriptionCopy(visit)).then((ok) => toast(ok ? 'Skopiowano opis' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
+                onClick={() => void copyText(descriptionCopy(visit, order)).then((ok) => toast(ok ? 'Skopiowano opis' : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }))}
               >
                 <Icon name="copy" /> Kopiuj opis
               </button>
@@ -1390,14 +1403,6 @@ export function VisitPage() {
               <Photos visitId={visit.id} />
             </Group>
 
-            <Group title="Protokół" plain>
-              <label className="check">
-                <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
-                Klient chce protokół z zabiegu
-              </label>
-              {order.protocol && order.invoice === 'brak' && <ProtocolEmail order={order} />}
-            </Group>
-
             <div className={order.pink ? 'pink-box active' : 'pink-box'}>
               <label className="check check-pink">
                 <input
@@ -1479,6 +1484,12 @@ export function VisitPage() {
                 ))}
               </div>
               <InvoiceData order={order} alert={invoiceAlert} onSave={(patch) => void run(() => orders.update(order.id, patch))} />
+              {/* Protokół razem z fakturą i płatnością: wszystkie dokumenty dla klienta w jednym miejscu. */}
+              <label className="check">
+                <input type="checkbox" checked={Boolean(order.protocol)} onChange={(e) => void run(() => orders.update(order.id, { protocol: e.target.checked }))} />
+                Klient chce protokół z zabiegu
+              </label>
+              {order.protocol && order.invoice === 'brak' && <ProtocolEmail order={order} />}
             </Group>
             </div>
 
