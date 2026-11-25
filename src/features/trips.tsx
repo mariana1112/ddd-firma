@@ -6,7 +6,7 @@ import { restoreRecord } from '../data/domain';
 import { driverSummary, mileageSheets, normalizePlate, routeText, suggestRoutes } from '../data/mileage';
 import { lastOdometer, odometerAround, tripKm } from '../data/orders';
 import { trips, orders, visits } from '../data/repo';
-import { COMPANY_NAME, DEFAULT_BASE, getCompany, getProfile, getUiSyncState, getVehicle, ownedBy, saveVehicle, type VehicleSettings } from '../data/settings';
+import { COMPANY_NAME, DEFAULT_BASE, forgetVehicle, getCompany, getProfile, getUiSyncState, getVehicle, getVehicles, ownedBy, saveVehicle, switchVehicle, type VehicleSettings } from '../data/settings';
 import { DayCard } from './day-card';
 import type { CompanySettings, Trip, TripKind } from '../data/types';
 import { formatDate, formatMonth, monthOf, nowWarsaw, shiftMonth, todayWarsaw } from '../lib/dates';
@@ -38,29 +38,65 @@ export function taxpayerLine(company: CompanySettings): string {
   return [name, company.street, city, company.nip ? `NIP ${company.nip}` : ''].filter(Boolean).join(', ');
 }
 
-function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileName: string; onClose: () => void }) {
+/**
+ * Przełącznik auta, gdy na tym telefonie są co najmniej dwa (jak przełącznik regionu). Wybrane auto zostaje do
+ * następnej zmiany: przejazdy, „Jadę” i licznik idą na nie; każde auto ma własną kartę przebiegu.
+ */
+export function VehicleSwitcher() {
   const { run, toast } = useFeedback();
+  const data = useLiveQuery(async () => ({ list: await getVehicles(), active: await getVehicle() }));
+  if (!data || data.list.length < 2) return null;
+  const key = (plate: string) => plate.replace(/\s+/g, '').toUpperCase();
+  return (
+    <label className="region-pill region-switch vehicle-switch">
+      <Icon name="car" size={16} />
+      <span className="region-pill-label">Auto</span>
+      <select
+        value={key(data.active.plate)}
+        aria-label="Przełącz auto"
+        onChange={(e) => {
+          const target = data.list.find((v) => key(v.plate) === e.target.value);
+          if (!target) return;
+          void run(async () => {
+            await switchVehicle(target.plate);
+            toast(`Jeździsz autem ${target.plate}. Zostaje do następnej zmiany.`);
+          });
+        }}
+      >
+        {data.list.map((v) => (
+          <option key={key(v.plate)} value={key(v.plate)}>
+            {v.plate}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileName: string; onClose: () => void; adding?: boolean }) {
+  const { run, toast } = useFeedback();
+  const others = useLiveQuery(async () => (await getVehicles()).filter((v) => normalizePlate(v.plate) !== normalizePlate(props.vehicle.plate)), [props.vehicle.plate]);
   const [plate, setPlate] = useState(props.vehicle.plate);
   const [driver, setDriver] = useState(props.vehicle.driver);
   const [base, setBase] = useState(props.vehicle.base);
 
   useEffect(() => {
     if (props.open) {
-      setPlate(props.vehicle.plate);
+      setPlate(props.adding ? '' : props.vehicle.plate);
       setDriver(props.vehicle.driver || props.profileName);
       setBase(props.vehicle.base);
     }
-  }, [props.open, props.vehicle, props.profileName]);
+  }, [props.open, props.vehicle, props.profileName, props.adding]);
 
   return (
-    <Sheet open={props.open} title="Auto i kierowca" onClose={props.onClose}>
+    <Sheet open={props.open} title={props.adding ? 'Dodaj auto' : 'Auto i kierowca'} onClose={props.onClose}>
       <form
         className="form"
         onSubmit={(e) => {
           e.preventDefault();
           void run(async () => {
             await saveVehicle({ plate: plate.trim().toUpperCase().replace(/\s+/g, ' '), driver: driver.trim(), base: normalizeCity(base) || DEFAULT_BASE });
-            toast('Zapisano auto. Obowiązuje do następnej zmiany.');
+            toast(props.adding ? 'Dodano auto i od teraz jeździsz nim. Zmienisz je przełącznikiem „Auto”.' : 'Zapisano auto. Obowiązuje do następnej zmiany.');
             props.onClose();
           });
         }}
@@ -77,6 +113,28 @@ function VehicleSheet(props: { open: boolean; vehicle: VehicleSettings; profileN
         <button type="submit" className="btn btn-primary btn-block" disabled={normalizePlate(plate).length < 4 || !driver.trim()}>
           Zapisz
         </button>
+        {!props.adding && others && others.length > 0 && (
+          <div className="field">
+            <span className="field-label">Inne auta na tym telefonie</span>
+            {others.map((v) => (
+              <div key={v.plate} className="vehicle-other">
+                <strong className="plate">{v.plate}</strong>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() =>
+                    void run(async () => {
+                      await forgetVehicle(v.plate);
+                      toast(`Usunięto ${v.plate} z listy. Jego przejazdy zostają w ewidencji.`);
+                    })
+                  }
+                >
+                  Usuń z listy
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </form>
     </Sheet>
   );
@@ -282,6 +340,7 @@ export function TripsPage() {
   const [filter, setFilter] = useState<TripKind | 'wszystkie'>('wszystkie');
   const [who, setWho] = useState('moje');
   const [vehicleOpen, setVehicleOpen] = useState(false);
+  const [addingVehicle, setAddingVehicle] = useState(false);
   const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
   const data = useLiveQuery(async () => {
@@ -352,6 +411,13 @@ export function TripsPage() {
           <Icon name="alert" />
           <span>Ustaw numer rejestracyjny auta. Ewidencja przebiegu jest prowadzona osobno dla każdego auta.</span>
         </div>
+      )}
+      {/* Dwa auta i więcej: przełącznik jak przy regionie; każde auto ma własną kartę przebiegu w wydruku. */}
+      <VehicleSwitcher />
+      {vehicle.plate && (
+        <button type="button" className="link vehicle-add" onClick={() => setAddingVehicle(true)}>
+          <Icon name="plus" size={16} /> Dodaj kolejne auto
+        </button>
       )}
 
       <DayCard always />
@@ -486,6 +552,7 @@ export function TripsPage() {
       </Group>
 
       <VehicleSheet open={vehicleOpen} vehicle={vehicle} profileName={profile.name} onClose={() => setVehicleOpen(false)} />
+      <VehicleSheet open={addingVehicle} adding vehicle={vehicle} profileName={profile.name} onClose={() => setAddingVehicle(false)} />
     </Page>
   );
 }

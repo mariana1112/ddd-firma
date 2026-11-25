@@ -2,6 +2,7 @@ import { newId } from '../lib/ids';
 import type { MethodPackages } from './methods';
 import { logChange } from './changes';
 import { db, writeTransaction } from './db';
+import { DomainError } from './domain';
 import { setOwnBranch } from './scope';
 import type { CompanySettings, NumberBlock, SyncState } from './types';
 
@@ -37,6 +38,7 @@ export function isDeviceMetaKey(key: string): boolean {
     key === 'dataKey' ||
     key === 'profile' ||
     key === 'vehicle' ||
+    key === 'vehicles' ||
     key === 'adminSecrets' ||
     key === 'adminOff' ||
     key === 'myApp' ||
@@ -374,6 +376,48 @@ export async function getVehicle(): Promise<VehicleSettings> {
 
 export async function saveVehicle(vehicle: VehicleSettings): Promise<void> {
   await db.meta.put({ key: 'vehicle', value: vehicle, updatedAt: new Date().toISOString() });
+  if (vehicle.plate.trim()) await rememberVehicle({ plate: vehicle.plate, driver: vehicle.driver });
+}
+
+/**
+ * Auta, którymi jeździ użytkownik tego urządzenia (np. dwa samochody na zmianę). Jedno jest wybrane (getVehicle)
+ * i obowiązuje do zmiany; każde ma własną kartę przebiegu (kilometrówka VAT liczy się osobno dla każdego numeru).
+ */
+export interface FleetVehicle {
+  plate: string;
+  driver: string;
+}
+
+const samePlate = (a: string, b: string) => a.replace(/\s+/g, '').toUpperCase() === b.replace(/\s+/g, '').toUpperCase();
+
+/** Lista aut na tym urządzeniu, z wybranym autem zawsze na liście. */
+export async function getVehicles(): Promise<FleetVehicle[]> {
+  const list = (await getMeta<FleetVehicle[]>('vehicles')) ?? [];
+  const active = await getVehicle();
+  return active.plate.trim() && !list.some((v) => samePlate(v.plate, active.plate)) ? [...list, { plate: active.plate, driver: active.driver }] : list;
+}
+
+async function rememberVehicle(vehicle: FleetVehicle): Promise<void> {
+  const list = (await getMeta<FleetVehicle[]>('vehicles')) ?? [];
+  const next = [...list.filter((v) => !samePlate(v.plate, vehicle.plate)), vehicle].sort((a, b) => a.plate.localeCompare(b.plate));
+  await db.meta.put({ key: 'vehicles', value: next, updatedAt: new Date().toISOString() });
+}
+
+/** Przesiadka na inne auto z listy: od teraz przejazdy i „Jadę” zapisują się na nie, aż do kolejnej zmiany. */
+export async function switchVehicle(plate: string): Promise<VehicleSettings> {
+  const target = (await getVehicles()).find((v) => samePlate(v.plate, plate));
+  if (!target) throw new DomainError('Nie ma takiego auta na liście.');
+  const current = await getVehicle();
+  const next = { ...current, plate: target.plate, driver: target.driver || current.driver };
+  await saveVehicle(next);
+  return next;
+}
+
+/** Usuwa auto z listy (przejazdy zostają). Wybranego auta nie da się usunąć: najpierw przesiadka. */
+export async function forgetVehicle(plate: string): Promise<void> {
+  if (samePlate((await getVehicle()).plate, plate)) throw new DomainError('To auto jest teraz wybrane. Najpierw wybierz inne.');
+  const list = (await getMeta<FleetVehicle[]>('vehicles')) ?? [];
+  await db.meta.put({ key: 'vehicles', value: list.filter((v) => !samePlate(v.plate, plate)), updatedAt: new Date().toISOString() });
 }
 
 /** Region technika na tym urządzeniu. Prefiks trafia do kodu każdego nowego zlecenia, np. LDZ-0042. */

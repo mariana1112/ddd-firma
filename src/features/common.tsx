@@ -13,7 +13,7 @@ import { orderAddress } from '../data/texts';
 import { useEffect, useState, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { EARLY_MINUTES, earlierSms, LATE_MINUTES, lateSms, type SmsKind } from '../data/sms';
-import { getAppSettings, getProfile } from '../data/settings';
+import { getAppSettings, getCompany, getProfile } from '../data/settings';
 import { finishSms, reminderSms } from '../data/texts';
 import { visits as visitRepo } from '../data/repo';
 
@@ -163,7 +163,7 @@ const smsDrafts = new Map<string, string>();
  */
 export function SmsSheet(props: { order: Order; visit?: Visit | null; open: boolean; onClose: () => void; initial?: SmsKind; /** Tylko ta jedna wiadomość, bez wyboru innych. */ only?: boolean }) {
   const { order, visit } = props;
-  const data = useLiveQuery(async () => ({ settings: await getAppSettings(), profile: await getProfile() }));
+  const data = useLiveQuery(async () => ({ settings: await getAppSettings(), profile: await getProfile(), company: await getCompany() }));
   const phones = order.phones.filter((p) => p.number.trim());
   const [phoneIdx, setPhoneIdx] = useState(0);
   const planned = visit && visit.status === 'zaplanowany' && visit.start ? visit : null;
@@ -209,7 +209,7 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
     }
     const who = data.profile.name;
     const base = visit ?? { start: null, seq: 1 };
-    if (kind === 'zalecenia' && done) setText(finishSms(done, next ?? null, data.settings, data.profile.name));
+    if (kind === 'zalecenia' && done) setText(finishSms(done, next ?? null, data.settings, data.profile.name, { order, company: data.company }));
     else if (kind === 'przypomnienie' && planned) setText(reminderSms(order, planned, data.settings));
     else if (kind === 'spoznienie') setText(lateSms(order, base, minutes, who, data.settings));
     else if (kind === 'wczesniej') setText(earlierSms(order, base, minutes, who, data.settings));

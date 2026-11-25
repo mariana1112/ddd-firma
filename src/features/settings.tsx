@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { VehicleSwitcher } from './trips';
 import { METHOD_LABEL, methodPackage, PACKAGE_METHODS, type MethodPackages } from '../data/methods';
 import type { TreatmentMethod } from '../data/types';
 import { useEffect, useState, useRef } from 'react';
@@ -93,6 +94,8 @@ export function MorePage() {
   return (
     <Page title="Więcej">
       <AdminDuty />
+      {/* Dwa auta i więcej na tym telefonie: przesiadka jednym wyborem (zostaje do następnej zmiany). */}
+      <VehicleSwitcher />
       <Group title="Praca">
         <Row to="/wizytowka" icon="wallet" title="Wizytówka" sub="Dane do przelewu, numer do BLIK-a i Twój numer do skopiowania" />
         <Row to="/koszty" icon="receipt" title="Koszty" sub="Autostrady, parkingi i inne wydatki z dnia" />

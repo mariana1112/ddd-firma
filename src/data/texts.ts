@@ -1,6 +1,7 @@
 // Teksty wysyłane klientowi i centrali. Czyste funkcje, więc łatwe do sprawdzenia w testach.
 import { methodOf, methodNames } from './methods';
 import { withCountryCode } from '../lib/validators';
+import { formatAccount } from './card';
 import { formatDate, formatTerm, formatTime } from '../lib/dates';
 import { orderCode, roman, visitCode } from './codes';
 import { normalizeInterview } from './interview';
@@ -203,7 +204,41 @@ export function workLines(visit: Pick<Visit, 'treatments' | 'places' | 'scope'>)
  * SMS po zabiegu w formacie firmy: wstęp, wykonane prace, zalecenia (z uszczelnieniem i obserwacją), termin
  * kolejnego zabiegu, kontakt i podpis technika ze stroną firmy.
  */
-export function finishSms(visit: Visit, next: Visit | null, settings: AppSettings, technician = ''): string {
+/**
+ * Dokumenty dla klienta w SMS-ie z zaleceniami: „Faktura i protokół z zabiegu zostaną przesłane przez nasze biuro
+ * na adres e-mail: …”. Pusto, gdy klient nie chce żadnego dokumentu.
+ */
+export function documentsNote(order: Pick<Order, 'invoice' | 'protocol' | 'email'>): string {
+  const docs = [order.invoice === 'paragon' ? 'paragon' : order.invoice !== 'brak' ? 'faktura' : '', order.protocol ? 'protokół z zabiegu' : ''].filter(Boolean);
+  if (docs.length === 0) return '';
+  const what = docs.join(' i ');
+  const verb = docs.length > 1 ? 'zostaną przesłane' : docs[0] === 'faktura' ? 'zostanie przesłana' : 'zostanie przesłany';
+  const email = order.email.trim();
+  return `${what.charAt(0).toUpperCase()}${what.slice(1)} ${verb} przez nasze biuro${email ? ` na adres e-mail: ${email}` : ' mailem'}.`;
+}
+
+/**
+ * Przelew w SMS-ie z zaleceniami: kwota wpisana przy zakończeniu zabiegu, numer konta firmy i tytuł (kod zabiegu).
+ * Pusto przy innej formie płatności albo bez numeru konta w danych firmy.
+ */
+export function transferNote(visit: Pick<Visit, 'payMethod' | 'amount' | 'seq'>, order: Pick<Order, 'number' | 'prefix'>, company: { name: string; bankAccount: string }): string[] {
+  if (visit.payMethod !== 'przelew' || !company.bankAccount.trim()) return [];
+  return [
+    'Dane do przelewu:',
+    ...(visit.amount ? [`Kwota: ${zl(visit.amount)} zł`] : []),
+    `Numer konta: ${formatAccount(company.bankAccount)}`,
+    ...(company.name.trim() ? [`Odbiorca: ${company.name.trim()}`] : []),
+    `Tytuł: zabieg ${visitCode(order, visit.seq)}`,
+  ];
+}
+
+export function finishSms(
+  visit: Visit,
+  next: Visit | null,
+  settings: AppSettings,
+  technician = '',
+  extra?: { order: Pick<Order, 'invoice' | 'protocol' | 'email' | 'number' | 'prefix'>; company: { name: string; bankAccount: string } },
+): string {
   const bullet = (text: string) => ` * ${text}`;
   const lines = [settings.summaryIntro, ''];
   const work = workLines(visit);
@@ -217,6 +252,12 @@ export function finishSms(visit: Visit, next: Visit | null, settings: AppSetting
     lines.push(`${ordinal} zabieg: ${formatTerm(next.start).replace(', ', ' o ')}.`, '');
   } else if (next) {
     lines.push('Termin kolejnego zabiegu ustalimy telefonicznie.', '');
+  }
+  if (extra) {
+    const docs = documentsNote(extra.order);
+    if (docs) lines.push(docs, '');
+    const transfer = transferNote(visit, extra.order, extra.company);
+    if (transfer.length) lines.push(...transfer, '');
   }
   if (settings.contactTemplate.trim()) lines.push(fill(settings.contactTemplate.trim(), { numer: settings.reportPhone }), '');
   lines.push(settings.closing.trim() || 'Pozdrawiam,', firstName(technician) || 'Pogromcy Insektów');

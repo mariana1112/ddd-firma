@@ -4780,3 +4780,21 @@ a.region-pill {
   outline: 1px dashed rgb(255 255 255 / 0.7);
   outline-offset: -1px;
 }
+
+/* Kilka aut: przełącznik (jak region), dodawanie i lista innych aut */
+.vehicle-switch {
+  margin-bottom: 4px;
+}
+.vehicle-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+}
+.vehicle-other {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}

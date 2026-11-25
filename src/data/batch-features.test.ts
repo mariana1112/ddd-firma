@@ -134,3 +134,24 @@ describe('kopiuj opis z dokumentami', () => {
     expect(descriptionCopy(v, order({ invoice: 'imienna', clientName: 'Jan Nowak', invoiceAddress: '', email: 'jan@example.com', protocol: false })).split('\n')[1]).toMatch(/^Faktura imienna: Jan Nowak, .+, jan@example\.com$/);
   });
 });
+
+describe('SMS z zaleceniami: dokumenty i przelew', () => {
+  it('dokumenty przesyła biuro na e-mail; przy przelewie kwota, konto i tytuł', async () => {
+    const { documentsNote, transferNote } = await import('./texts');
+    expect(documentsNote(order({ invoice: 'brak', protocol: false, email: '' }))).toBe('');
+    expect(documentsNote(order({ invoice: 'paragon', protocol: false, email: 'jan@example.com' }))).toBe('Paragon zostanie przesłany przez nasze biuro na adres e-mail: jan@example.com.');
+    expect(documentsNote(order({ invoice: 'vat', protocol: false, email: 'a@b.pl' }))).toBe('Faktura zostanie przesłana przez nasze biuro na adres e-mail: a@b.pl.');
+    expect(documentsNote(order({ invoice: 'imienna', protocol: true, email: 'a@b.pl' }))).toBe('Faktura i protokół z zabiegu zostaną przesłane przez nasze biuro na adres e-mail: a@b.pl.');
+    expect(documentsNote(order({ invoice: 'brak', protocol: true, email: '' }))).toBe('Protokół z zabiegu zostanie przesłany przez nasze biuro mailem.');
+    const company = { name: 'Pogromcy Insektów', bankAccount: '51249000050000450038079526' };
+    expect(transferNote(visit({ payMethod: 'gotowka', amount: 35000 }), order(), company)).toEqual([]);
+    expect(transferNote(visit({ payMethod: 'przelew', amount: 43050, seq: 1 }), order({ number: 14, prefix: 'GDA' }), company)).toEqual([
+      'Dane do przelewu:',
+      'Kwota: 430,50 zł',
+      'Numer konta: 51 2490 0005 0000 4500 3807 9526',
+      'Odbiorca: Pogromcy Insektów',
+      'Tytuł: zabieg GDA-0014/I',
+    ]);
+    expect(transferNote(visit({ payMethod: 'przelew', amount: 100 }), order(), { name: '', bankAccount: '' })).toEqual([]);
+  });
+});

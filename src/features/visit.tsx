@@ -838,6 +838,10 @@ export function VisitPage() {
   const [editingId, setEditingId] = useState<string | null>(params.has('edycja') ? id : null);
   useEffect(() => setEditingId(params.has('edycja') ? id : null), [id, params]);
   const editing = editingId === id;
+  // Rozpoczęty, niedokończony zabieg otwiera się jak zwykła karta zlecenia z „Dokończ zabieg”, a nie od razu
+  // w krokach. Kroki od razu tylko zaraz po „Rozpocznij zabieg” na tym ekranie.
+  const [resumedId, setResumedId] = useState<string | null>(null);
+  const resumed = resumedId === id;
 
   const data = useLiveQuery(async () => {
     const visit = await visits.get(id);
@@ -871,7 +875,8 @@ export function VisitPage() {
   };
   const interview = normalizeInterview(visit.interview);
   const summary = visit.status === 'wykonany' && !editing;
-  const active = visit.status === 'w_trakcie' || (visit.status === 'wykonany' && editing);
+  const active = (visit.status === 'w_trakcie' && resumed) || (visit.status === 'wykonany' && editing);
+  const paused = visit.status === 'w_trakcie' && !resumed;
 
   const scrollToPay = () => {
     setWorkStep(WORK_STEPS.length - 1);
@@ -1171,7 +1176,12 @@ export function VisitPage() {
               type="button"
               className="btn btn-primary btn-block btn-big"
               disabled={visit.seq > 1 && !visit.start}
-              onClick={() => void run(() => startVisit(visit.id))}
+              onClick={() =>
+                void run(async () => {
+                  await startVisit(visit.id);
+                  setResumedId(visit.id);
+                })
+              }
             >
               <Icon name="play" /> Rozpocznij zabieg
             </button>
@@ -1206,6 +1216,28 @@ export function VisitPage() {
                 <Link className="btn" to={`/zlecenia/nowe?powiel=${order.id}&zabieg=${visit.id}`}>
                   <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
                 </Link>
+                <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
+                  <Icon name="close" /> Odwołaj zabieg
+                </button>
+              </div>
+            </details>
+          </>
+        )}
+        {paused && (
+          <>
+            <p className="notice notice-info">
+              <Icon name="play" />
+              <span>
+                <strong>Zabieg rozpoczęty, jeszcze niedokończony.</strong> Dokończ, gdy wrócisz do klienta albo masz chwilę na opis.
+              </span>
+            </p>
+            <button type="button" className="btn btn-primary btn-block btn-big" onClick={() => setResumedId(visit.id)}>
+              <Icon name="play" /> Dokończ zabieg
+            </button>
+            <details className="more-actions">
+              <summary>Więcej opcji</summary>
+              <div className="btn-stack">
+                <OrderOptions order={order} visits={list} vatRate={settings.vatRate} noEdit />
                 <button type="button" className="btn btn-danger-quiet" onClick={() => void cancel()}>
                   <Icon name="close" /> Odwołaj zabieg
                 </button>
