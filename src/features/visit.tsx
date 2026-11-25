@@ -487,6 +487,81 @@ function ToggleChips(props: { options: string[]; selected: string[]; onChange: (
   );
 }
 
+/**
+ * Szybkie przejście do innych zabiegów zlecenia: kafelki I, II, III u góry karty (także w trakcie zabiegu) i skrót
+ * „Na zabiegu I” przy zabiegu II i kolejnych. Dotknięcie wykonanego zabiegu otwiera okienko z podsumowaniem, bez
+ * wychodzenia z bieżącego zabiegu; umówiony albo nieumówiony otwiera jego kartę.
+ */
+function VisitStrip({ list, current, order, vatRate }: { list: Visit[]; current: Visit; order: Order; vatRate: number }) {
+  const navigate = useNavigate();
+  const [preview, setPreview] = useState<Visit | null>(null);
+  const all = list.filter((v) => v.status !== 'odwolany' && !v.deletedAt).sort((a, b) => a.seq - b.seq);
+  // Kafelki: bieżący, wykonane i umówione. Nieumówiony kolejny zabieg nie ma kafelka (nie ma czego podejrzeć).
+  const shown = all.filter((v) => v.id === current.id || v.status === 'wykonany' || v.status === 'w_trakcie' || Boolean(v.start));
+  const before = all.filter((v) => v.seq < current.seq && v.status === 'wykonany').pop();
+  const hint = before
+    ? [workSummary(before), before.sealing?.length ? `uszczelnić: ${before.sealing.join(', ')}` : ''].filter(Boolean).join(' · ')
+    : '';
+  if (shown.length < 2 && !before) return null;
+  // Zabieg, na którym jesteś, jest wyróżniony zawsze, także gdy to wcześniejszy, wykonany zabieg (wtedy z datą).
+  const label = (v: Visit) =>
+    v.id === current.id && v.status !== 'wykonany'
+      ? 'teraz'
+      : v.status === 'wykonany'
+        ? formatDate(v.doneOn ?? v.start).slice(0, 5)
+        : v.status === 'w_trakcie'
+          ? 'w trakcie'
+          : v.start
+            ? formatDate(v.start).slice(0, 5)
+            : 'nieumówiony';
+  return (
+    <>
+      {shown.length > 1 && (
+      <div className="visit-strip" role="navigation" aria-label="Zabiegi zlecenia">
+        {shown.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            className={`visit-chip${v.id === current.id ? ' visit-chip-current' : v.status === 'wykonany' ? ' visit-chip-done' : !v.start ? ' visit-chip-open' : ''}`}
+            aria-current={v.id === current.id ? 'page' : undefined}
+            onClick={() => {
+              if (v.id === current.id) return;
+              if (v.status === 'wykonany') setPreview(v);
+              else navigate(`/zabieg/${v.id}`);
+            }}
+          >
+            {v.id === current.id ? <Icon name="here" size={14} /> : v.status === 'wykonany' ? <Icon name="check" size={14} /> : null}
+            {roman(v.seq)} · {label(v)}
+          </button>
+        ))}
+      </div>
+      )}
+      {before && hint && (
+        <button type="button" className="visit-prev-hint" onClick={() => setPreview(before)}>
+          <span className="visit-prev-title">
+            Na zabiegu {roman(before.seq)} ({formatDate(before.doneOn ?? before.start).slice(0, 5)}
+            {before.technicianName ? `, ${firstName(before.technicianName)}` : ''})
+          </span>
+          <span className="visit-prev-text">{hint}</span>
+        </button>
+      )}
+      <Sheet open={Boolean(preview)} title={preview ? `Zabieg ${roman(preview.seq)} · ${visitCode(order, preview.seq)}` : ''} onClose={() => setPreview(null)}>
+        {preview && (
+          <div className="form">
+            <VisitSummary order={order} visit={preview} vatRate={vatRate} short />
+            <button type="button" className="btn btn-block" onClick={() => navigate(`/zabieg/${preview.id}`)}>
+              <Icon name="clipboard" /> Otwórz cały zabieg {roman(preview.seq)}
+            </button>
+            <button type="button" className="btn btn-primary btn-block" onClick={() => setPreview(null)}>
+              Wróć do zabiegu {roman(current.seq)}
+            </button>
+          </div>
+        )}
+      </Sheet>
+    </>
+  );
+}
+
 function History({ list, current, order, vatRate }: { list: Visit[]; current: Visit; order: Order; vatRate: number }) {
   const navigate = useNavigate();
   const [preview, setPreview] = useState<Visit | null>(null);
@@ -1037,7 +1112,10 @@ export function VisitPage() {
         </div>
       </Sheet>
       {active ? (
-        <WorkHeader order={order} visit={visit} />
+        <>
+          <WorkHeader order={order} visit={visit} />
+          <VisitStrip list={list} current={visit} order={order} vatRate={settings.vatRate} />
+        </>
       ) : (
         <>
         <div className="job-hero">
@@ -1052,6 +1130,7 @@ export function VisitPage() {
             {dayPos && dayPos.of > 1 && <span className="day-pos day-pos-wide">zabieg {dayPos.n} z {dayPos.of} tego dnia</span>}
           </p>
           {bookedBy(visit, order) && <p className="visit-booked">Umówione przez: {firstName(bookedBy(visit, order))}</p>}
+          <VisitStrip list={list} current={visit} order={order} vatRate={settings.vatRate} />
         </div>
 
         <ContactBar
