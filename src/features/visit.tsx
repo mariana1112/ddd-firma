@@ -799,7 +799,7 @@ function OrderInfo(props: { order: Order; vatRate: number; terms?: string; assig
 }
 
 /** Rzadziej potrzebne opcje zlecenia: edycja danych klienta i adresu, PDF, wszystkie zabiegi zlecenia. */
-function OrderOptions(props: { order: Order; visits: Visit[]; vatRate: number; noEdit?: boolean }) {
+function OrderOptions(props: { order: Order; visits: Visit[]; vatRate: number; noEdit?: boolean; /** Np. zamknięcie „Więcej opcji”, gdy otwiera się PDF. */ onPdf?: () => void }) {
   const { order } = props;
   const { deliverFile, run } = useFeedback();
   return (
@@ -814,6 +814,7 @@ function OrderOptions(props: { order: Order; visits: Visit[]; vatRate: number; n
         className="btn"
         onClick={() =>
           void run(async () => {
+            props.onPdf?.();
             const [{ orderDocument }, { renderPdf }] = await Promise.all([import('../pdf/documents'), import('../pdf/render')]);
             deliverFile(await renderPdf(orderDocument(order, props.visits, { vatRate: props.vatRate })), `zlecenie-${orderCode(order).replace(/[^\w-]+/g, '-')}.pdf`);
           })
@@ -1287,7 +1288,7 @@ export function VisitPage() {
           <Link className="btn" to={`/zlecenia/nowe?powiel=${order.id}&zabieg=${visit.id}`}>
             <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
           </Link>
-          <OrderOptions order={order} visits={list} vatRate={settings.vatRate} noEdit={visit.status !== 'wykonany'} />
+          <OrderOptions order={order} visits={list} vatRate={settings.vatRate} noEdit={visit.status !== 'wykonany'} onPdf={() => setMoreOpen(false)} />
           {(visit.status === 'zaplanowany' || visit.status === 'w_trakcie') && (
             <button
               type="button"

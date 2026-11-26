@@ -55,6 +55,16 @@ function printBlob(blob: Blob) {
 
 export function PdfPreview(props: { blob: Blob; filename: string; touch: boolean; onShare: () => void; onClose: () => void }) {
   const pages = useRef<HTMLDivElement>(null);
+  // Okno systemowe (dialog) leży w warstwie nad wszystkimi okienkami aplikacji: PDF z „Więcej opcji” (też okienka)
+  // pokazuje się nad nim, a nie pod spodem.
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = dialog.current;
+    if (d && !d.open) d.showModal();
+    return () => {
+      if (d?.open) d.close();
+    };
+  }, []);
   const [state, setState] = useState<{ status: 'loading' | 'ready' | 'error'; count: number }>({ status: 'loading', count: 0 });
   const [zoom, setZoom] = useState(false);
 
@@ -71,15 +81,17 @@ export function PdfPreview(props: { blob: Blob; filename: string; touch: boolean
     };
   }, [props.blob]);
 
-  // Esc zamyka podgląd (komputer).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && props.onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [props]);
-
   return (
-    <div className="pdf-preview" role="dialog" aria-modal="true" aria-label="Podgląd wydruku">
+    <dialog
+      ref={dialog}
+      className="pdf-preview"
+      aria-label="Podgląd wydruku"
+      // Esc (komputer) zamyka podgląd tak samo jak krzyżyk.
+      onCancel={(e) => {
+        e.preventDefault();
+        props.onClose();
+      }}
+    >
       <div className="pdf-preview-head">
         <span>
           <strong>Podgląd wydruku</strong>
@@ -119,6 +131,6 @@ export function PdfPreview(props: { blob: Blob; filename: string; touch: boolean
           </>
         )}
       </div>
-    </div>
+    </dialog>
   );
 }
