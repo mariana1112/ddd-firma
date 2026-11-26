@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { visitCode } from '../data/codes';
+import { visitLabel } from '../data/codes';
 import { eventOnDay, eventType, listEvents } from '../data/events';
 import { orders, visits } from '../data/repo';
 import { orderAddress, pestName } from '../data/texts';
@@ -181,7 +181,7 @@ export function WeekPreview(props: {
                   <button
                     key={visit.id}
                     type="button"
-                    className={`wp-block wp-visit wp-${visit.status}${place(visit.start!.slice(11, 16), visit.durationMin || 60).outside ? ' wp-outside' : ''}`}
+                    className={`wp-block wp-visit wp-${visit.status}${visit.complaintOf ? ' wp-complaint' : ''}${place(visit.start!.slice(11, 16), visit.durationMin || 60).outside ? ' wp-outside' : ''}`}
                     style={{ top: place(visit.start!.slice(11, 16), visit.durationMin || 60).top, height: place(visit.start!.slice(11, 16), visit.durationMin || 60).height }}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -213,7 +213,7 @@ export function WeekPreview(props: {
           </span>
         )}
       </div>
-      <Sheet open={Boolean(peek)} title={peek ? `Podgląd: ${visitCode(peek.order, peek.visit.seq)}` : ''} onClose={() => setPeek(null)}>
+      <Sheet open={Boolean(peek)} title={peek ? `Podgląd: ${visitLabel(peek.order, peek.visit)}` : ''} onClose={() => setPeek(null)}>
         {peek && (
           <div className="form">
             <Info label="Termin">{`${formatDate(peek.visit.start)} ${peek.visit.start!.slice(11, 16)} (${peek.visit.durationMin || 60} min)`}</Info>

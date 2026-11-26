@@ -9,7 +9,7 @@ import '@fullcalendar/react/skeleton.css';
 import '@fullcalendar/react/themes/classic/theme.css';
 import '@fullcalendar/react/themes/classic/palette.css';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { roman, visitCode } from '../data/codes';
+import { roman, visitLabel } from '../data/codes';
 import { mainPhone } from '../data/order-search';
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -268,13 +268,14 @@ export default function CalendarPage() {
         const short = (order.street || order.city || '').replace(/^(ul\.|al\.|os\.|pl\.)\s*/i, '').split(/\s+/)[0] ?? '';
         return {
           id: v.id,
-          title: `${visitCode(order, v.seq)} · ${place} · ${what}${order.pink ? ' · PINK' : ''}${urgent ? ` · ${urgent}` : ''}${problem !== null ? ' · problem u księgowej' : ''}`,
+          title: `${visitLabel(order, v)} · ${place} · ${what}${order.pink ? ' · PINK' : ''}${urgent ? ` · ${urgent}` : ''}${problem !== null ? ' · problem u księgowej' : ''}`,
           start: at,
           end: addMinutes(at, v.durationMin),
-          color: STATUS_COLOR[v.status],
+          // Reklamacja w innym kolorze (fioletowym), żeby od razu było widać, że to nie zwykły zabieg.
+          color: v.complaintOf && v.status !== 'wykonany' ? 'var(--complaint)' : STATUS_COLOR[v.status],
           textColor: v.status === 'zaplanowany' ? '#ffffff' : 'var(--surface)',
           editable: v.status === 'zaplanowany',
-          extendedProps: { number: visitCode(order, v.seq), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, next: v.id === nextId, assigned: v.status === 'zaplanowany' ? (v.assignedName ?? null) : null, pinkNote: order.pinkNote ?? '', urgent, problem, place, city: order.city, what, phone, short, street, status: v.status, durationMin: v.durationMin },
+          extendedProps: { number: visitLabel(order, v), digits: String(order.number).padStart(4, '0'), seq: v.seq, pink: order.pink, next: v.id === nextId, assigned: v.status === 'zaplanowany' ? (v.assignedName ?? null) : null, pinkNote: order.pinkNote ?? '', urgent, problem, place, city: order.city, what, phone, short, street, status: v.status, durationMin: v.durationMin },
         };
       });
   }, [rows]);

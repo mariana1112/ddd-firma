@@ -20,7 +20,8 @@ export function accountingTasks(order: Pick<Order, 'invoice' | 'protocol'>): Acc
 }
 
 /** Wykonane zabiegi, od pierwszego: każdy to osobna pozycja do faktury. */
-export const doneVisits = (list: Visit[]): Visit[] => list.filter((v) => v.status === 'wykonany').sort((a, b) => a.seq - b.seq);
+/** Zabieg gratis (reklamacja) nie jest pozycją do faktury; zwrot pieniędzy zostaje (ujemna kwota do korekty). */
+export const doneVisits = (list: Visit[]): Visit[] => list.filter((v) => v.status === 'wykonany' && v.complaintKind !== 'gratis').sort((a, b) => a.seq - b.seq);
 
 /** Czy zabieg ma już fakturę (zaznaczenie przy zabiegu; zlecenia sprzed tej opcji: zaznaczenie przy zleceniu). */
 export function visitInvoiced(order: Pick<Order, 'invoiceDone'>, visit: Pick<Visit, 'invoicedAt'>): boolean {

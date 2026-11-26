@@ -170,7 +170,7 @@ export function SmsSheet(props: { order: Order; visit?: Visit | null; open: bool
   const done = visit && visit.status === 'wykonany' ? visit : null;
   // Kolejny zabieg zlecenia: jego termin trafia do podsumowania po wykonanym zabiegu.
   const next = useLiveQuery(
-    async () => (done ? ((await visitRepo.where('orderId', done.orderId)).find((v) => v.seq === done.seq + 1 && v.status !== 'odwolany') ?? null) : null),
+    async () => (done ? ((await visitRepo.where('orderId', done.orderId)).find((v) => v.seq === done.seq + 1 && v.status !== 'odwolany' && !v.complaintOf) ?? null) : null),
     [done?.id],
   );
   // Przypomnienie proponujemy tylko, gdy jeszcze nie poszło (przesunięcie terminu nie kasuje „wysłane”).

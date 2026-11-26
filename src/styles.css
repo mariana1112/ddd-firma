@@ -23,6 +23,7 @@
   --tabbar: 58px;
   --shadow: 0 8px 28px rgb(20 25 20 / 18%);
   --planned: #1763d1;
+  --complaint: #7c4dbd;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 16px;
   line-height: 1.35;
@@ -52,6 +53,7 @@
     --muted-soft: #2a2e2a;
     --shadow: 0 8px 28px rgb(0 0 0 / 55%);
     --planned: #2f74d6;
+  --complaint: #b08ff0;
   }
 }
 
@@ -4837,12 +4839,14 @@ a.region-pill {
   color: var(--ok);
   opacity: 0.75;
 }
-.visit-chip-current {
+/* Zabieg, na którym jesteś: tylko podświetlenie (ikonka stanu zostaje). */
+.visit-chip.visit-chip-current {
   border-width: 2px;
   padding: 5px 11px;
   border-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 18%, transparent);
-  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  color: var(--text);
+  font-weight: 700;
 }
 .visit-chip-open {
   color: var(--muted);
@@ -4868,4 +4872,84 @@ a.region-pill {
 .visit-prev-text {
   font-size: 0.82rem;
   color: var(--muted);
+}
+
+/* Reklamacja: fioletowy zabieg w kalendarzu, podglądzie tygodnia i na pasku zabiegów */
+.wp-visit.wp-complaint {
+  background: var(--complaint);
+}
+.visit-chip-complaint {
+  border-color: color-mix(in srgb, var(--complaint) 70%, transparent);
+  color: var(--complaint);
+}
+.visit-chip-complaint.visit-chip-current {
+  border-color: var(--complaint);
+  background: color-mix(in srgb, var(--complaint) 18%, transparent);
+  color: var(--complaint);
+}
+.complaint-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--complaint) 20%, transparent);
+  color: var(--complaint);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Pasek zabiegów ze strzałkami: poprzedni i następny zabieg zlecenia */
+.visit-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  /* W karcie (kolumna z align-items: flex-start) pasek nie może rozpychać strony: pełna szerokość, kafelki się przewijają. */
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+}
+.job-hero .visit-prev-hint {
+  align-self: stretch;
+}
+.visit-strip-row .visit-strip {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.visit-step {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.visit-step:disabled {
+  opacity: 0.35;
+}
+
+/* „Więcej opcji” w nagłówku: grubsze kropki */
+.more-btn .icon {
+  stroke-width: 3.2;
+}
+.complaint-kinds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.renumber-choice {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.complaint-line {
+  margin: 6px 0 0;
+  font-size: 0.92rem;
 }

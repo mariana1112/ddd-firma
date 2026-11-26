@@ -11,7 +11,7 @@ import { attachments, expenses, orders, visits, trips, type NewRecord } from './
 import { getAppSettings, getProfile, getRegion, getSyncState, nextOrderNumber, ownedBy } from './settings';
 import { reserveOrderNumber } from './sync/numbers';
 import { EMPTY_INTERVIEW } from './interview';
-import type { Order, PayMethod, Visit, PestCategory } from './types';
+import type { ComplaintKind, Order, PayMethod, Visit, PestCategory } from './types';
 
 export { orders, visits, trips };
 export { EMPTY_INTERVIEW, normalizeInterview } from './interview';
@@ -64,7 +64,7 @@ function newVisit(orderId: string, seq: number, plan: PlannedVisit, technician: 
 async function placeVisit(orderId: string, seq: number, plan: PlannedVisit, technician: { id: string | null; name: string }): Promise<Visit> {
   const fresh = newVisit(orderId, seq, plan, technician);
   const cancelled = (await orderVisits(orderId))
-    .filter((v) => v.seq === seq && v.status === 'odwolany')
+    .filter((v) => v.seq === seq && v.status === 'odwolany' && !v.complaintOf)
     .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))[0];
   if (!cancelled) return visits.create(fresh);
   const patch: Partial<Visit> = { ...fresh, remindedAt: null, summarySentAt: null, detailsLater: false, sealing: [] };
@@ -73,7 +73,7 @@ async function placeVisit(orderId: string, seq: number, plan: PlannedVisit, tech
 }
 
 /** Numer kolejnego zabiegu: po ostatnim nieodwołanym (odwołany numer wraca do użytku). */
-export const nextVisitSeq = (list: Array<Pick<Visit, 'seq' | 'status'>>) => Math.max(0, ...list.filter((v) => v.status !== 'odwolany').map((v) => v.seq)) + 1;
+export const nextVisitSeq = (list: Array<Pick<Visit, 'seq' | 'status' | 'complaintOf'>>) => Math.max(0, ...list.filter((v) => v.status !== 'odwolany' && !v.complaintOf).map((v) => v.seq)) + 1;
 
 /** Pola zabiegu z ustaleń, do zapisu przy zmianie terminu. */
 function termsPatch(terms: VisitTerms | undefined): Partial<Visit> {
@@ -202,7 +202,7 @@ export async function finishVisit(id: string, input: FinishInput): Promise<{ nex
     const visit = await visits.get(id);
     if (!visit || visit.deletedAt) throw new DomainError('Nie znaleziono zabiegu.');
     const all = await orderVisits(visit.orderId);
-    const later = all.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany');
+    const later = all.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany' && !v.complaintOf);
 
     let next: Visit | null = later ?? null;
     let bonus = 0;
@@ -254,7 +254,7 @@ export async function scheduleNextVisit(orderId: string, plan: PlannedVisit): Pr
   return writeTransaction([db.orders, db.visits], async () => {
     const order = await orders.get(orderId);
     if (!order || order.deletedAt) throw new DomainError('Nie znaleziono zlecenia.');
-    const all = (await orderVisits(orderId)).filter((v) => v.status !== 'odwolany');
+    const all = (await orderVisits(orderId)).filter((v) => v.status !== 'odwolany' && !v.complaintOf);
     const waiting = all.find((v) => v.status === 'zaplanowany' && !v.start);
     if (waiting) {
       const booked = booking({ id: profile.userId, name: profile.name });
@@ -307,13 +307,98 @@ export async function restoreVisit(id: string): Promise<void> {
     if (!visit || visit.deletedAt) throw new DomainError('Nie znaleziono zabiegu.');
     if (visit.status !== 'odwolany') return;
     const all = await orderVisits(visit.orderId);
-    if (all.some((v) => v.id !== id && v.seq === visit.seq && v.status !== 'odwolany')) {
+    if (!visit.complaintOf && all.some((v) => v.id !== id && v.seq === visit.seq && v.status !== 'odwolany' && !v.complaintOf)) {
       throw new DomainError('Ten zabieg umówiono już ponownie (nowy termin). Najpierw odwołaj nowy, żeby przywrócić ten.');
     }
     await visits.update(id, { status: visit.startedAt && !visit.finishedAt ? 'w_trakcie' : 'zaplanowany' });
     const order = await orders.get(visit.orderId);
     if (order?.regionDeleted) throw new DomainError('To zlecenie należało do usuniętego regionu i zostaje w archiwum.');
     if (order && (order.archived || order.closed)) await orders.update(order.id, { archived: false, closed: false });
+  });
+}
+
+export interface ComplaintInput {
+  kind: ComplaintKind;
+  note: string;
+  /** Zabieg gratis, z rabatem albo inny z terminem. */
+  start?: string | null;
+  durationMin?: number;
+  /** Zabieg z rabatem: cena po rabacie (grosze, netto przy fakturze VAT). */
+  price?: number | null;
+  /** Zwrot: kwota (grosze, dodatnia), forma i dzień zwrotu. */
+  refund?: { amount: number; method: PayMethod; date: string };
+}
+
+export const COMPLAINT_NAMES: Record<ComplaintKind, string> = {
+  gratis: 'Zabieg gratis',
+  zwrot: 'Zwrot pieniędzy',
+  rabat: 'Zabieg z rabatem',
+  inne: 'Inne',
+};
+
+/**
+ * Reklamacja do zabiegu: zabieg reklamacyjny z tym samym numerem (I, II…) co reklamowany. Zabieg gratis ma cenę 0 i nie
+ * wymaga płatności; z rabatem ma cenę po rabacie. Zwrot pieniędzy to od razu wykonany wpis z ujemną kwotą w dniu
+ * zwrotu, więc raporty odejmują go od utargu (gotówka także od gotówki do oddania). Zlecenie wraca do otwartych.
+ */
+export async function createComplaint(visitId: string, input: ComplaintInput): Promise<Visit> {
+  const profile = await getProfile();
+  return writeTransaction([db.orders, db.visits], async () => {
+    const source = await visits.get(visitId);
+    if (!source || source.deletedAt) throw new DomainError('Nie znaleziono zabiegu.');
+    const origin = source.complaintOf ? ((await visits.get(source.complaintOf)) ?? source) : source;
+    const order = await orders.get(origin.orderId);
+    if (!order || order.deletedAt) throw new DomainError('Nie znaleziono zlecenia.');
+    const note = input.note.trim();
+    if (input.kind === 'inne' && !note) throw new DomainError('Opisz, na czym polega rozwiązanie reklamacji.');
+    const technician = { id: profile.userId, name: profile.name };
+    const base: NewRecord<Visit> = {
+      ...newVisit(order.id, origin.seq, { start: input.start ?? null, durationMin: input.durationMin || origin.durationMin || 60 }, technician),
+      complaintOf: origin.id,
+      complaintKind: input.kind,
+      complaintNote: note,
+      ...(origin.scope ? { scope: { ...origin.scope } } : {}),
+    };
+    let record: NewRecord<Visit>;
+    if (input.kind === 'zwrot') {
+      const refund = input.refund;
+      if (!refund || !(refund.amount > 0)) throw new DomainError('Podaj kwotę zwrotu.');
+      const at = new Date().toISOString();
+      record = { ...base, start: null, status: 'wykonany', doneOn: refund.date, startedAt: at, finishedAt: at, amount: -refund.amount, payMethod: refund.method, priceMin: null, priceMax: null };
+    } else if (input.kind === 'gratis') {
+      record = { ...base, priceMin: 0, priceMax: 0 };
+    } else if (input.kind === 'rabat') {
+      if (input.price == null || input.price < 0) throw new DomainError('Podaj cenę po rabacie.');
+      record = { ...base, priceMin: input.price, priceMax: input.price };
+    } else {
+      record = { ...base };
+    }
+    const created = await visits.create(record);
+    if (order.closed || order.archived) await orders.update(order.id, { closed: false, archived: false });
+    return created;
+  });
+}
+
+/**
+ * Zmiana numeru zabiegu (np. zapisany jako I, a to był II). Gdy ten numer ma inny zabieg zlecenia, zamieniają się
+ * numerami. Zabiegi reklamacyjne idą za swoim zabiegiem.
+ */
+export async function renumberVisit(visitId: string, seq: number): Promise<void> {
+  if (!Number.isInteger(seq) || seq < 1 || seq > 20) throw new DomainError('Numer zabiegu od I do XX.');
+  await writeTransaction([db.visits], async () => {
+    const visit = await visits.get(visitId);
+    if (!visit || visit.deletedAt) throw new DomainError('Nie znaleziono zabiegu.');
+    if (visit.complaintOf) throw new DomainError('Zabieg reklamacyjny ma numer reklamowanego zabiegu. Zmień numer tamtego zabiegu.');
+    if (visit.seq === seq) return;
+    const all = await orderVisits(visit.orderId);
+    const other = all.find((v) => v.id !== visit.id && v.seq === seq && !v.complaintOf && v.status !== 'odwolany');
+    const old = visit.seq;
+    await visits.update(visit.id, { seq });
+    for (const c of all.filter((v) => v.complaintOf === visit.id)) await visits.update(c.id, { seq });
+    if (other) {
+      await visits.update(other.id, { seq: old });
+      for (const c of all.filter((v) => v.complaintOf === other.id)) await visits.update(c.id, { seq: old });
+    }
   });
 }
 

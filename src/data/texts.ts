@@ -370,7 +370,7 @@ export function centralExport(order: Order, visit: Visit, all: Visit[]): string 
     const invoice = [order.invoiceName, order.invoice === 'vat' && order.nip && `NIP ${order.nip}`, order.invoiceAddress, order.email].filter(Boolean).join(', ');
     if (invoice) lines.push(`Dane do faktury: ${invoice}`);
   }
-  const next = all.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany');
+  const next = all.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany' && !v.complaintOf);
   if (next) lines.push(`Kolejny zabieg: ${next.start ? formatTerm(next.start) : 'technik umówi z klientem'}`);
   if (order.pink) lines.push(`KOD PINK${order.pinkNote ? `: ${order.pinkNote}` : ''}`);
   return lines.filter(Boolean).join('\n');

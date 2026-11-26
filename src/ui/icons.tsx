@@ -33,6 +33,8 @@ const PATHS = {
   message: 'M4 5.500h16v11H9l-5 4v-15ZM8 10h8M8 13h5',
   share: 'M12 15V3.500M8 7.500l4-4 4 4M5 11v9h14v-9',
   nav: 'm4 11 16-7-7 16-2-7-7-2Z',
+  // „Więcej opcji”: trzy kropki w nagłówku zabiegu.
+  more: 'M5.5 12h.01M12 12h.01M18.5 12h.01',
   // „Tu jesteś”: kółko z kropką (bieżący zabieg na pasku zabiegów).
   here: 'M12 20.5a8.5 8.5 0 1 0 0-17 8.5 8.5 0 0 0 0 17ZM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z',
   receipt: 'M6 3.500h12v17l-3-2-3 2-3-2-3 2v-17ZM9 8h6M9 11.500h6M9 15h4',

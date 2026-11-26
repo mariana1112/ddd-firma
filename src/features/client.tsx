@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useParams } from 'react-router-dom';
 import { groupClients, type ClientGroup } from '../data/clients-view';
-import { roman, visitCode } from '../data/codes';
+import { roman, visitLabel } from '../data/codes';
 import { normalizeInterview } from '../data/interview';
 import { orders, visits } from '../data/repo';
 import { getUiSyncState } from '../data/settings';
@@ -38,7 +38,7 @@ function DoneVisit({ visit, order }: { visit: Visit; order: Order }) {
     <details className="client-visit">
       <summary>
         <span>
-          <strong>{visitCode(order, visit.seq)}</strong> · {formatDate(visit.doneOn ?? visit.start)} · {pestName(order)}
+          <strong>{visitLabel(order, visit)}</strong> · {formatDate(visit.doneOn ?? visit.start)} · {pestName(order)}
         </span>
         <span className="row-sub">
           {[workSummary(visit), visit.amount !== null ? `${formatPln(visit.amount)}${visit.payMethod ? `, ${PAY_NAMES[visit.payMethod]}` : ''}` : 'bez płatności', visit.technicianName].filter(Boolean).join(' · ')}
@@ -98,7 +98,7 @@ export function ClientPage() {
               key={v.id}
               to={`/zabieg/${v.id}`}
               icon="calendar"
-              title={`${visitCode(o, v.seq)} · ${v.start ? formatTerm(v.start) : 'termin do umówienia'}`}
+              title={`${visitLabel(o, v)} · ${v.start ? formatTerm(v.start) : 'termin do umówienia'}`}
               sub={`${orderAddress(o) || 'brak adresu'} · ${pestName(o)}, zabieg ${roman(v.seq)}`}
               trailing={v.status === 'w_trakcie' ? <Badge tone="warn">W trakcie</Badge> : undefined}
             />

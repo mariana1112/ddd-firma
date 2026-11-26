@@ -1,4 +1,4 @@
-import { orderCode, roman, visitCode } from '../data/codes';
+import { orderCode, roman, visitCode, visitLabel } from '../data/codes';
 import { nextVisitDays, previousVisitDay } from '../data/geo';
 import { NextDates } from './next-dates';
 import { requiredAnswersMissing, sealedBefore } from '../data/interview';
@@ -6,7 +6,7 @@ import { withCountryCode } from '../lib/validators';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
-import { cancelVisit, defaultDoneOn, finishVisit, nextVisitSeq, normalizeInterview, orderVisits, restoreVisit, revertStartedVisit, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
+import { COMPLAINT_NAMES, cancelVisit, createComplaint, defaultDoneOn, renumberVisit, finishVisit, nextVisitSeq, normalizeInterview, orderVisits, restoreVisit, revertStartedVisit, scheduleNextVisit, startVisit, type NextVisit } from '../data/orders';
 import { googleCalendarUrl } from '../data/calendar';
 import { ScheduleNext } from './orders';
 import { addressMissing, dayPositions, paymentMissing } from '../data/order-list';
@@ -25,11 +25,12 @@ import {
   priceRange,
   workSummary,
   bookedBy, firstName, centralExport, descriptionCopy, invoiceCopy, orderAddress, telUrl } from '../data/texts';
-import type { Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
+import type { ComplaintKind, Interview, InvoiceType, Order, PayMethod, Visit, YesNo } from '../data/types';
 import { formatDate, formatTerm, todayWarsaw } from '../lib/dates';
 import { TomorrowReminders } from './reminders';
 import { moneyToInput, parseMoney } from '../lib/money';
 import { useFeedback } from '../ui/feedback';
+import { useOnce } from '../ui/once';
 import { Icon } from '../ui/icons';
 import { Badge, Field, Group, Info, Loading, NotFound, Page, Sheet, TimeSelect, goBack, PasteButton } from '../ui/kit';
 import { ContactBar, useCallPicker, PinkBadge, SmsSheet, VisitBadge, visitWhen, AddressBlock, ClientHeading, copyText } from './common';
@@ -39,6 +40,7 @@ import { AssignSheet } from './assign';
 import { documentWord, INVOICE_FIELD_LABEL, invoiceMissing, type InvoiceField } from '../data/invoice';
 import { isValidNip } from '../lib/validators';
 import { VisitSummary } from './visit-summary';
+import { WeekPeek } from './week-preview';
 import { TermsFields, termsDraft, termsFromDraft, termsText } from './terms';
 import { proposeTerms, visitPrice, type VisitTerms } from '../data/visit-terms';
 
@@ -488,56 +490,62 @@ function ToggleChips(props: { options: string[]; selected: string[]; onChange: (
 }
 
 /**
- * Szybkie przejście do innych zabiegów zlecenia: kafelki I, II, III u góry karty (także w trakcie zabiegu) i skrót
- * „Na zabiegu I” przy zabiegu II i kolejnych. Dotknięcie wykonanego zabiegu otwiera okienko z podsumowaniem, bez
- * wychodzenia z bieżącego zabiegu; umówiony albo nieumówiony otwiera jego kartę.
+ * Szybkie przejście do innych zabiegów zlecenia: kafelki I, II, III (i reklamacje) u góry karty, także w trakcie
+ * zabiegu, ze strzałkami do poprzedniego i następnego. Ikonki pokazują stan zabiegu (wykonany, umówiony, w trakcie)
+ * i nie zmieniają się przy przechodzeniu; zabieg, na którym jesteś, jest tylko podświetlony. Dotknięcie przenosi
+ * prosto do zabiegu. Przy zabiegu II i kolejnych skrót „Na zabiegu I”.
  */
-function VisitStrip({ list, current, order, vatRate }: { list: Visit[]; current: Visit; order: Order; vatRate: number }) {
+function VisitStrip({ list, current }: { list: Visit[]; current: Visit }) {
   const navigate = useNavigate();
-  const [preview, setPreview] = useState<Visit | null>(null);
-  const all = list.filter((v) => v.status !== 'odwolany' && !v.deletedAt).sort((a, b) => a.seq - b.seq);
-  // Kafelki: bieżący, wykonane i umówione. Nieumówiony kolejny zabieg nie ma kafelka (nie ma czego podejrzeć).
+  const rank = (v: Visit) => v.seq * 10 + (v.complaintOf ? 5 : 0);
+  const all = list.filter((v) => v.status !== 'odwolany' && !v.deletedAt).sort((a, b) => rank(a) - rank(b) || (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+  // Kafelki: wykonane, rozpoczęte i umówione oraz ten, na którym jesteś. Nieumówiony zabieg nie ma kafelka.
   const shown = all.filter((v) => v.id === current.id || v.status === 'wykonany' || v.status === 'w_trakcie' || Boolean(v.start));
-  const before = all.filter((v) => v.seq < current.seq && v.status === 'wykonany').pop();
+  const before = all.filter((v) => v.seq < current.seq && v.status === 'wykonany' && v.complaintKind !== 'zwrot').pop();
   const hint = before
     ? [workSummary(before), before.sealing?.length ? `uszczelnić: ${before.sealing.join(', ')}` : ''].filter(Boolean).join(' · ')
     : '';
   if (shown.length < 2 && !before) return null;
-  // Zabieg, na którym jesteś, jest wyróżniony zawsze, także gdy to wcześniejszy, wykonany zabieg (wtedy z datą).
-  const label = (v: Visit) =>
-    v.id === current.id && v.status !== 'wykonany'
-      ? 'teraz'
-      : v.status === 'wykonany'
-        ? formatDate(v.doneOn ?? v.start).slice(0, 5)
-        : v.status === 'w_trakcie'
-          ? 'w trakcie'
-          : v.start
-            ? formatDate(v.start).slice(0, 5)
-            : 'nieumówiony';
+  const at = shown.findIndex((v) => v.id === current.id);
+  const prev = at > 0 ? shown[at - 1] : null;
+  const next = at >= 0 && at < shown.length - 1 ? shown[at + 1] : null;
+  const when = (v: Visit) => (v.status === 'wykonany' ? formatDate(v.doneOn ?? v.start).slice(0, 5) : v.status === 'w_trakcie' ? 'w trakcie' : v.start ? formatDate(v.start).slice(0, 5) : 'teraz');
+  const label = (v: Visit) => (v.complaintKind === 'zwrot' ? `${roman(v.seq)} · zwrot` : v.complaintOf ? `${roman(v.seq)} reklamacja · ${when(v)}` : `${roman(v.seq)} · ${when(v)}`);
+  const icon = (v: Visit) => (v.status === 'wykonany' ? 'check' : v.status === 'w_trakcie' ? 'play' : 'calendar');
+  const go = (v: Visit | null) => v && navigate(`/zabieg/${v.id}`);
   return (
     <>
       {shown.length > 1 && (
-      <div className="visit-strip" role="navigation" aria-label="Zabiegi zlecenia">
-        {shown.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            className={`visit-chip${v.id === current.id ? ' visit-chip-current' : v.status === 'wykonany' ? ' visit-chip-done' : !v.start ? ' visit-chip-open' : ''}`}
-            aria-current={v.id === current.id ? 'page' : undefined}
-            onClick={() => {
-              if (v.id === current.id) return;
-              if (v.status === 'wykonany') setPreview(v);
-              else navigate(`/zabieg/${v.id}`);
-            }}
-          >
-            {v.id === current.id ? <Icon name="here" size={14} /> : v.status === 'wykonany' ? <Icon name="check" size={14} /> : null}
-            {roman(v.seq)} · {label(v)}
+        <div className="visit-strip-row">
+          <button type="button" className="visit-step" disabled={!prev} aria-label={prev ? `Poprzedni: ${label(prev)}` : 'Brak poprzedniego'} onClick={() => go(prev)}>
+            <Icon name="left" size={18} />
           </button>
-        ))}
-      </div>
+          <div className="visit-strip" role="navigation" aria-label="Zabiegi zlecenia">
+            {shown.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                className={[
+                  'visit-chip',
+                  v.status === 'wykonany' ? 'visit-chip-done' : '',
+                  v.complaintOf ? 'visit-chip-complaint' : '',
+                  v.id === current.id ? 'visit-chip-current' : '',
+                ].filter(Boolean).join(' ')}
+                aria-current={v.id === current.id ? 'page' : undefined}
+                onClick={() => v.id !== current.id && go(v)}
+              >
+                <Icon name={icon(v)} size={14} />
+                {label(v)}
+              </button>
+            ))}
+          </div>
+          <button type="button" className="visit-step" disabled={!next} aria-label={next ? `Następny: ${label(next)}` : 'Brak następnego'} onClick={() => go(next)}>
+            <Icon name="chevron" size={18} />
+          </button>
+        </div>
       )}
       {before && hint && (
-        <button type="button" className="visit-prev-hint" onClick={() => setPreview(before)}>
+        <button type="button" className="visit-prev-hint" onClick={() => go(before)}>
           <span className="visit-prev-title">
             Na zabiegu {roman(before.seq)} ({formatDate(before.doneOn ?? before.start).slice(0, 5)}
             {before.technicianName ? `, ${firstName(before.technicianName)}` : ''})
@@ -545,20 +553,163 @@ function VisitStrip({ list, current, order, vatRate }: { list: Visit[]; current:
           <span className="visit-prev-text">{hint}</span>
         </button>
       )}
-      <Sheet open={Boolean(preview)} title={preview ? `Zabieg ${roman(preview.seq)} · ${visitCode(order, preview.seq)}` : ''} onClose={() => setPreview(null)}>
-        {preview && (
-          <div className="form">
-            <VisitSummary order={order} visit={preview} vatRate={vatRate} short />
-            <button type="button" className="btn btn-block" onClick={() => navigate(`/zabieg/${preview.id}`)}>
-              <Icon name="clipboard" /> Otwórz cały zabieg {roman(preview.seq)}
-            </button>
-            <button type="button" className="btn btn-primary btn-block" onClick={() => setPreview(null)}>
-              Wróć do zabiegu {roman(current.seq)}
-            </button>
-          </div>
-        )}
-      </Sheet>
     </>
+  );
+}
+
+/**
+ * Reklamacja do zabiegu: zabieg gratis, zwrot pieniędzy, zabieg z rabatem albo inne rozwiązanie (opis). Zabieg
+ * reklamacyjny ma ten sam numer co reklamowany zabieg, dopisek „reklamacja” i fioletowy kolor w kalendarzu.
+ */
+function ComplaintSheet(props: { open: boolean; order: Order; visit: Visit; onClose: () => void }) {
+  const { order, visit } = props;
+  const navigate = useNavigate();
+  const { run, toast } = useFeedback();
+  const { once, pending } = useOnce();
+  const [kind, setKind] = useState<ComplaintKind>('gratis');
+  const [note, setNote] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('10:00');
+  const [price, setPrice] = useState('');
+  const [refund, setRefund] = useState(visit.amount && visit.amount > 0 ? moneyToInput(visit.amount) : '');
+  const [method, setMethod] = useState<PayMethod>(visit.payMethod ?? 'gotowka');
+  const [refundDate, setRefundDate] = useState(todayWarsaw());
+  const withTerm = kind !== 'zwrot';
+  const needsTerm = kind === 'gratis' || kind === 'rabat';
+  const refundValue = parseMoney(refund);
+  const priceValue = parseMoney(price);
+  const problem =
+    kind === 'zwrot'
+      ? !refundValue || refundValue <= 0
+        ? 'Podaj kwotę zwrotu'
+        : ''
+      : kind === 'rabat' && (priceValue === null || priceValue < 0)
+        ? 'Podaj cenę po rabacie'
+        : kind === 'inne' && !note.trim()
+          ? 'Opisz rozwiązanie reklamacji'
+          : needsTerm && !date
+            ? 'Wybierz termin zabiegu'
+            : '';
+  const save = () =>
+    run(async () => {
+      const created = await createComplaint(visit.id, {
+        kind,
+        note,
+        start: withTerm && date ? `${date}T${time}` : null,
+        durationMin: visit.durationMin || 60,
+        price: kind === 'rabat' ? priceValue : null,
+        refund: kind === 'zwrot' ? { amount: refundValue!, method, date: refundDate } : undefined,
+      });
+      props.onClose();
+      toast(kind === 'zwrot' ? `Zapisano zwrot ${refund} zł (odejmie się od utargu)` : `Reklamacja: ${COMPLAINT_NAMES[kind].toLowerCase()}${date ? `, ${formatTerm(`${date}T${time}`)}` : ''}`);
+      if (kind !== 'zwrot') navigate(`/zabieg/${created.id}`);
+    });
+  return (
+    <Sheet open={props.open} title={`Reklamacja · ${visitCode(order, visit.seq)}`} onClose={props.onClose}>
+      <div className="form">
+        <div className="field">
+          <span className="field-label">Jak rozwiązujemy reklamację?</span>
+          <div className="complaint-kinds">
+            {(Object.entries(COMPLAINT_NAMES) as Array<[ComplaintKind, string]>).map(([k, name]) => (
+              <button key={k} type="button" className={kind === k ? 'choice-item active' : 'choice-item'} aria-pressed={kind === k} onClick={() => setKind(k)}>
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Field label={kind === 'inne' ? 'Na czym polega rozwiązanie?' : 'Opis reklamacji (opcjonalnie)'}>
+          <textarea rows={3} value={note} placeholder="Np. klient zgłosił karaluchy w łazience po 10 dniach" onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        {kind === 'rabat' && (
+          <Field label={order.invoice === 'vat' ? 'Cena po rabacie (netto, zł)' : 'Cena po rabacie (zł)'}>
+            <input inputMode="decimal" value={price} placeholder="Np. 150" onChange={(e) => setPrice(e.target.value)} />
+          </Field>
+        )}
+        {kind === 'zwrot' && (
+          <>
+            <Field label="Kwota zwrotu (zł)" hint="Odejmie się od utargu w dniu zwrotu (gotówka także od gotówki do oddania).">
+              <input inputMode="decimal" value={refund} placeholder="Np. 350" onChange={(e) => setRefund(e.target.value)} />
+            </Field>
+            <div className="field">
+              <span className="field-label">Jak zwracamy?</span>
+              <div className="choice">
+                {(['gotowka', 'blik', 'przelew'] as PayMethod[]).map((m) => (
+                  <button key={m} type="button" className={method === m ? 'choice-item active' : 'choice-item'} onClick={() => setMethod(m)}>
+                    {PAY_NAMES[m]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Field label="Dzień zwrotu">
+              <input type="date" value={refundDate} max={todayWarsaw()} onChange={(e) => setRefundDate(e.target.value || todayWarsaw())} />
+            </Field>
+          </>
+        )}
+        {withTerm && (
+          <>
+            <div className="form-row">
+              <Field label={needsTerm ? 'Data zabiegu' : 'Data (opcjonalnie)'}>
+                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </Field>
+              <Field label="Godzina">
+                <TimeSelect value={time} onChange={setTime} />
+              </Field>
+            </div>
+            <WeekPeek
+              date={date || todayWarsaw()}
+              time={date ? time : ''}
+              durationMin={visit.durationMin || 60}
+              stay
+              backLabel="Wróć do reklamacji"
+              onPick={(d, t) => {
+                setDate(d);
+                setTime(t);
+              }}
+            />
+          </>
+        )}
+        {problem && <p className="field-hint">{problem}</p>}
+        <button type="button" className="btn btn-primary btn-block" disabled={Boolean(problem) || pending} onClick={() => void once(save)}>
+          <Icon name="check" /> {kind === 'zwrot' ? 'Zapisz zwrot' : 'Zapisz reklamację'}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** Zmiana numeru zabiegu (I, II, III…): gdy numer ma inny zabieg zlecenia, zamieniają się numerami. */
+function RenumberSheet(props: { open: boolean; order: Order; visit: Visit; list: Visit[]; onClose: () => void }) {
+  const { order, visit, list } = props;
+  const { run, toast } = useFeedback();
+  const used = new Map(list.filter((v) => v.status !== 'odwolany' && !v.complaintOf && v.id !== visit.id).map((v) => [v.seq, v]));
+  const max = Math.max(3, visit.seq, ...used.keys()) + 1;
+  return (
+    <Sheet open={props.open} title={`Numer zabiegu · ${visitCode(order, visit.seq)}`} onClose={props.onClose}>
+      <div className="form">
+        <p className="sheet-text">Który to zabieg u klienta? Gdy wybrany numer ma już inny zabieg, zamienią się numerami.</p>
+        <div className="renumber-choice">
+          {Array.from({ length: Math.min(max, 10) }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={n === visit.seq ? 'choice-item active' : 'choice-item'}
+              aria-pressed={n === visit.seq}
+              onClick={() =>
+                void run(async () => {
+                  if (n === visit.seq) return props.onClose();
+                  await renumberVisit(visit.id, n);
+                  toast(used.has(n) ? `Zamieniono: teraz to zabieg ${roman(n)}, a tamten ${roman(visit.seq)}` : `Teraz to zabieg ${roman(n)}`);
+                  props.onClose();
+                })
+              }
+            >
+              {roman(n)}
+              {used.has(n) ? ' ↔' : ''}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Sheet>
   );
 }
 
@@ -722,7 +873,9 @@ function FinishSheet(props: {
   const [busy, setBusy] = useState(false);
   const nextSeq = visit.seq + 1;
   const booked = later?.start ? later : null;
-  const ready = Boolean(booked) || mode !== 'umowiony' || Boolean(pickedDate && time);
+  // Zabieg reklamacyjny nie umawia kolejnego zabiegu (ma numer reklamowanego).
+  const complaint = Boolean(visit.complaintOf);
+  const ready = complaint || Boolean(booked) || mode !== 'umowiony' || Boolean(pickedDate && time);
 
   return (
     <Sheet open={props.open} title={`Zakończenie zabiegu ${roman(visit.seq)}`} onClose={props.onClose}>
@@ -757,7 +910,7 @@ function FinishSheet(props: {
           </div>
         </div>
         {/* Kolejny zabieg już umówiony (np. „Umów od razu kolejny zabieg” w trakcie): tylko informacja, bez umawiania. */}
-        {booked ? (
+        {complaint ? null : booked ? (
           <p className="notice notice-info">
             <Icon name="calendar" />
             <span>
@@ -782,7 +935,7 @@ function FinishSheet(props: {
           </div>
         </div>
         )}
-        {!booked && mode === 'umowiony' && (
+        {!complaint && !booked && mode === 'umowiony' && (
           <NextDates
             after={doneOn}
             backLabel={`Wróć do zakończenia zabiegu ${roman(visit.seq)}`}
@@ -796,7 +949,7 @@ function FinishSheet(props: {
             }}
           />
         )}
-        {!booked && mode === 'umowiony' && (
+        {!complaint && !booked && mode === 'umowiony' && (
           <div className="form-row">
             <Field label="Data">
               <input type="date" value={pickedDate} onChange={(e) => setDate(e.target.value)} />
@@ -814,7 +967,9 @@ function FinishSheet(props: {
             setBusy(true);
             const t = props.initialTerms;
             // Już umówiony kolejny zabieg zostaje bez zmian (termin, zakres, cena i kto umówił).
-            const next: NextVisit = booked
+            const next: NextVisit = complaint
+              ? { mode: 'brak' }
+              : booked
               ? { mode: 'umowiony', start: booked.start!, durationMin: booked.durationMin || visit.durationMin }
               : mode === 'umowiony' ? { mode, start: `${pickedDate}T${time}`, durationMin: visit.durationMin, terms: t } : mode === 'technik' ? { mode, terms: t } : { mode };
             await props.onFinish({ recommendations, next, doneOn });
@@ -916,6 +1071,10 @@ export function VisitPage() {
   // Rozpoczęty, niedokończony zabieg otwiera się jak zwykła karta zlecenia z „Dokończ zabieg”, a nie od razu
   // w krokach. Kroki od razu tylko zaraz po „Rozpocznij zabieg” na tym ekranie.
   const [resumedId, setResumedId] = useState<string | null>(null);
+  // „Więcej opcji” w nagłówku, reklamacja i zmiana numeru zabiegu.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [complaining, setComplaining] = useState(false);
+  const [renumbering, setRenumbering] = useState(false);
   const resumed = resumedId === id;
 
   const data = useLiveQuery(async () => {
@@ -931,7 +1090,7 @@ export function VisitPage() {
   const { visit, order, list, settings, company } = data;
   // Uszczelnienie potwierdzone przy wcześniejszym zabiegu: przy kolejnych już o nie nie pytamy.
   const sealedOn = sealedBefore(visit, list);
-  const later = list.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany');
+  const later = list.find((v) => v.seq === visit.seq + 1 && v.status !== 'odwolany' && !v.complaintOf);
   const phone = order.phones[0];
   // Cena i zakres tego zabiegu; zabiegi sprzed tej opcji mają widełki zlecenia i całe mieszkanie.
   const terms: VisitTerms = { scope: visit.scope ?? { kind: 'calosc', note: '' }, ...visitPrice(visit, order) };
@@ -993,7 +1152,8 @@ export function VisitPage() {
       else scrollToPay();
       return;
     }
-    const missing = [!fresh.payMethod && 'formy płatności', !fresh.amount && 'kwoty'].filter(Boolean) as string[];
+    // Zabieg gratis (reklamacja) kończy się bez płatności.
+    const missing = fresh.complaintKind === 'gratis' ? [] : ([!fresh.payMethod && 'formy płatności', !fresh.amount && 'kwoty'].filter(Boolean) as string[]);
     if (missing.length) {
       setPayAlert(true);
       const ok = await confirm({
@@ -1066,12 +1226,86 @@ export function VisitPage() {
     // Klucz: przejście do innego zabiegu tworzy pola od nowa, żeby nie zostały w nich wartości poprzedniego.
     <Page
       key={visit.id}
-      title={active ? `Zabieg ${visitCode(order, visit.seq)}` : visitCode(order, visit.seq)}
+      title={active ? `Zabieg ${visitLabel(order, visit)}` : visitLabel(order, visit)}
       back="/zlecenia"
       onBack={visit.status === 'w_trakcie' ? () => setLeavingStarted(true) : undefined}
+      actions={
+        <button type="button" className="bell more-btn" aria-label="Więcej opcji" onClick={() => setMoreOpen(true)}>
+          <Icon name="more" size={22} />
+        </button>
+      }
     >
+      <Sheet open={moreOpen} title={`Więcej opcji · ${visitLabel(order, visit)}`} onClose={() => setMoreOpen(false)}>
+        <div className="btn-stack">
+          {visit.status === 'zaplanowany' && (
+            <Link className="btn" to={`/zlecenia/${order.id}/edycja?zabieg=${visit.id}`}>
+              <Icon name="edit" /> {visit.start ? 'Edytuj' : 'Umów termin i edytuj'}
+            </Link>
+          )}
+          {visit.status === 'wykonany' && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setMoreOpen(false);
+                setEditingId(visit.id);
+              }}
+            >
+              <Icon name="edit" /> Edytuj zabieg
+            </button>
+          )}
+          {visit.status === 'zaplanowany' && (
+            <button type="button" className="btn" onClick={() => setAssigning(true)}>
+              <Icon name="users" /> {visit.assignedName ? `Technik: ${visit.assignedName} (zmień)` : 'Przydziel technika i powiadom'}
+            </button>
+          )}
+          {!visit.complaintOf &&
+            (later?.start ? (
+              <button type="button" className="btn" onClick={() => navigate(`/zabieg/${later.id}`)}>
+                <Icon name="calendar" /> Kolejny zabieg {roman(later.seq)}: {formatTerm(later.start)}
+              </button>
+            ) : (
+              <button type="button" className="btn" onClick={() => setPlanningNext(true)}>
+                <Icon name="calendar" /> Umów kolejny zabieg
+              </button>
+            ))}
+          {visit.status !== 'odwolany' && (
+            <button type="button" className="btn" onClick={() => setComplaining(true)}>
+              <Icon name="alert" /> Reklamacja
+            </button>
+          )}
+          {!visit.complaintOf && visit.status !== 'odwolany' && (
+            <button type="button" className="btn" onClick={() => setRenumbering(true)}>
+              <Icon name="tag" /> Zmień numer zabiegu ({roman(visit.seq)})
+            </button>
+          )}
+          {visit.start && visit.status === 'zaplanowany' && (
+            <a className="btn" href={googleCalendarUrl(order, visit)!} target="_blank" rel="noreferrer">
+              <Icon name="calendar" /> Dodaj do Kalendarza Google
+            </a>
+          )}
+          <Link className="btn" to={`/zlecenia/nowe?powiel=${order.id}&zabieg=${visit.id}`}>
+            <Icon name="copy" /> Powiel zlecenie (np. sąsiednie mieszkanie)
+          </Link>
+          <OrderOptions order={order} visits={list} vatRate={settings.vatRate} noEdit={visit.status !== 'wykonany'} />
+          {(visit.status === 'zaplanowany' || visit.status === 'w_trakcie') && (
+            <button
+              type="button"
+              className="btn btn-danger-quiet"
+              onClick={() => {
+                setMoreOpen(false);
+                void cancel();
+              }}
+            >
+              <Icon name="close" /> Odwołaj zabieg
+            </button>
+          )}
+        </div>
+      </Sheet>
+      {complaining && <ComplaintSheet open={complaining} order={order} visit={visit} onClose={() => { setComplaining(false); setMoreOpen(false); }} />}
+      {renumbering && <RenumberSheet open={renumbering} order={order} visit={visit} list={list} onClose={() => { setRenumbering(false); setMoreOpen(false); }} />}
       {/* Wyjście z rozpoczętego zabiegu: dokończyć później (czeka w Pilnych) albo wycofać wszystko, co wpisano. */}
-      <Sheet open={leavingStarted} title={`Zabieg ${visitCode(order, visit.seq)} jest rozpoczęty`} onClose={() => setLeavingStarted(false)}>
+      <Sheet open={leavingStarted} title={`Zabieg ${visitLabel(order, visit)} jest rozpoczęty`} onClose={() => setLeavingStarted(false)}>
         <div className="form">
           <p className="sheet-text">Wpisane dane są zapisane. Możesz wrócić do zabiegu później: czeka na Pulpicie w „Pilnych”.</p>
           <button
@@ -1114,7 +1348,7 @@ export function VisitPage() {
       {active ? (
         <>
           <WorkHeader order={order} visit={visit} />
-          <VisitStrip list={list} current={visit} order={order} vatRate={settings.vatRate} />
+          <VisitStrip list={list} current={visit} />
         </>
       ) : (
         <>
@@ -1130,7 +1364,16 @@ export function VisitPage() {
             {dayPos && dayPos.of > 1 && <span className="day-pos day-pos-wide">zabieg {dayPos.n} z {dayPos.of} tego dnia</span>}
           </p>
           {bookedBy(visit, order) && <p className="visit-booked">Umówione przez: {firstName(bookedBy(visit, order))}</p>}
-          <VisitStrip list={list} current={visit} order={order} vatRate={settings.vatRate} />
+          {visit.complaintOf && visit.complaintKind && (
+            <p className="complaint-line">
+              <span className="complaint-badge">
+                <Icon name="alert" size={14} /> Reklamacja · {COMPLAINT_NAMES[visit.complaintKind]}
+                {visit.complaintKind === 'zwrot' && visit.amount ? ` ${moneyToInput(-visit.amount)} zł` : ''}
+              </span>
+              {visit.complaintNote ? <span> {visit.complaintNote}</span> : null}
+            </p>
+          )}
+          <VisitStrip list={list} current={visit} />
         </div>
 
         <ContactBar
@@ -1206,7 +1449,7 @@ export function VisitPage() {
             <span>
               <strong>Księgowa zgłasza problem.</strong> {order.accountingNote?.trim() || 'Skontaktuj się z księgową.'}
             </span>
-            <Link className="btn btn-sm" to={`/czat?k=ksiegowosc&tekst=${encodeURIComponent(`Zlecenie ${visitCode(order, visit.seq)}: `)}`}>
+            <Link className="btn btn-sm" to={`/czat?k=ksiegowosc&tekst=${encodeURIComponent(`Zlecenie ${visitLabel(order, visit)}: `)}`}>
               Napisz do księgowej
             </Link>
           </div>
@@ -1378,7 +1621,7 @@ export function VisitPage() {
                 type="button"
                 className="btn"
                 onClick={() =>
-                  void copyText(invoiceCopy(order, visit, settings.vatRate, visitCode(order, visit.seq))).then((ok) =>
+                  void copyText(invoiceCopy(order, visit, settings.vatRate, visitLabel(order, visit))).then((ok) =>
                     toast(ok ? `Skopiowano dane do ${documentWord(order.invoice).of}` : 'Nie udało się skopiować', ok ? undefined : { tone: 'error' }),
                   )
                 }
@@ -1400,6 +1643,9 @@ export function VisitPage() {
             <div className="btn-stack">
               <button type="button" className="btn" onClick={() => setEditingId(visit.id)}>
                 <Icon name="edit" /> Edytuj zabieg
+              </button>
+              <button type="button" className="btn" onClick={() => setComplaining(true)}>
+                <Icon name="alert" /> Reklamacja
               </button>
               <OrderOptions order={order} visits={list} vatRate={settings.vatRate} />
             </div>
@@ -1699,11 +1945,11 @@ export function VisitPage() {
       {!active && <History list={list} current={visit} order={order} vatRate={settings.vatRate} />}
 
       {assigning && <AssignSheet order={order} visit={visit} open={assigning} onClose={() => setAssigning(false)} />}
-      <Sheet open={editingDesc} title={`Opis · ${visitCode(order, visit.seq)}`} onClose={() => setEditingDesc(false)}>
+      <Sheet open={editingDesc} title={`Opis · ${visitLabel(order, visit)}`} onClose={() => setEditingDesc(false)}>
         {editingDesc && <DescriptionForm order={order} visit={visit} onDone={() => setEditingDesc(false)} />}
       </Sheet>
 
-      <Sheet open={paying} title={`Płatność · ${visitCode(order, visit.seq)}`} onClose={() => setPaying(false)}>
+      <Sheet open={paying} title={`Płatność · ${visitLabel(order, visit)}`} onClose={() => setPaying(false)}>
         {paying && (
           <PaySheet
             visit={visit}
@@ -1736,7 +1982,7 @@ export function VisitPage() {
           onFinish={finish}
         />
       )}
-      <Sheet open={editingTerms} title={`Co pryskamy i cena · ${visitCode(order, visit.seq)}`} onClose={() => setEditingTerms(false)}>
+      <Sheet open={editingTerms} title={`Co pryskamy i cena · ${visitLabel(order, visit)}`} onClose={() => setEditingTerms(false)}>
         {editingTerms && (
           <EditTerms
             initial={terms}

@@ -4,7 +4,7 @@ import { NextDates } from './next-dates';
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { mainPhone, orderMatches } from '../data/order-search';
-import { orderCode, roman, visitCode } from '../data/codes';
+import { orderCode, roman, visitCode, visitLabel } from '../data/codes';
 import { restoreRecord } from '../data/domain';
 import { currentVisit, dateTile, dayHeading, groupByDay, isArchived, nextVisitState, orderTerm, sortOrderRows, URGENT_LABEL, urgentReason, visitInFilter, visitUrgent, type ListFilter, type OrderSort } from '../data/order-list';
 import { documentTags, orderMethods, tagDone, methodNames } from '../data/methods';
@@ -288,7 +288,7 @@ export function VisitListRow({ order, visit, today }: { order: Order; visit: Vis
       }
       title={
         <>
-          <span className="order-number">{visitCode(order, visit.seq)}</span> {order.clientName}
+          <span className="order-number">{visitLabel(order, visit)}</span> {order.clientName}
         </>
       }
       sub={[orderAddress(order), pestName(order)].filter(Boolean).join(' · ')}
@@ -628,7 +628,7 @@ export function OrderDetailPage() {
             title={
               <>
                 {v.id === current?.id && <span className="current-label">{currentOpen ? 'Aktualny zabieg' : 'Ostatni zabieg'}</span>}
-                {`Zabieg ${roman(v.seq)} · ${visitCode(order, v.seq)}`}
+                {`Zabieg ${roman(v.seq)} · ${visitLabel(order, v)}`}
               </>
             }
             sub={`${v.status === 'wykonany' ? `Wykonany ${formatDate(v.doneOn ?? v.start)}` : visitWhen(v)} · ${termsText({ scope: v.scope ?? { kind: 'calosc', note: '' }, ...visitPrice(v, order) }, order.invoice, settings.vatRate)}`}

@@ -2,7 +2,9 @@ import { formatDateLong } from '../lib/dates';
 import type { Order, Visit } from './types';
 
 /** Wykonany zabieg bez formy płatności albo kwoty: trafia do „Pilnych”, dopóki ktoś nie uzupełni płatności. */
-export function paymentMissing(visit: Pick<Visit, 'status' | 'payMethod' | 'amount'>): boolean {
+export function paymentMissing(visit: Pick<Visit, 'status' | 'payMethod' | 'amount' | 'complaintKind'>): boolean {
+  // Zabieg gratis (reklamacja) nie ma płatności.
+  if (visit.complaintKind === 'gratis') return false;
   return visit.status === 'wykonany' && (!visit.payMethod || !visit.amount);
 }
 

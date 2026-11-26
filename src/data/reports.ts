@@ -111,7 +111,8 @@ export function buildReport(
   let unpaid = 0;
   for (const v of done) {
     if (!v.payMethod || !v.amount) {
-      unpaid++;
+      // Zabieg gratis (reklamacja) jest bez płatności z założenia.
+      if (v.complaintKind !== 'gratis') unpaid++;
       continue;
     }
     byMethod[v.payMethod] += v.amount;
@@ -269,7 +270,8 @@ function dailyText(r: Report, bossGenitive: string): string[] {
     if (paid.length === 0) lines.push('Brak');
     paid.forEach(({ visit, order }, i) => {
       const gross = order?.invoice === 'vat' ? ' brutto' : '';
-      lines.push(`${i + 1}. ${textPln(visit.amount!)}${gross}${order ? `, ${reportAddress(order)}` : ''}`);
+      const refund = visit.complaintKind === 'zwrot' ? ' (zwrot, reklamacja)' : '';
+      lines.push(`${i + 1}. ${textPln(visit.amount!)}${gross}${refund}${order ? `, ${reportAddress(order)}` : ''}`);
     });
   }
   return lines;
@@ -343,7 +345,8 @@ export function byTechnician(report: Pick<Report, 'visits'>): TechnicianShare[] 
   for (const { visit } of report.visits) {
     const key = visit.technicianId ?? `name:${visit.technicianName}`;
     const row = map.get(key) ?? { key, initials: initials(visit.technicianName), name: visit.technicianName || 'technik', label: '', visits: 0, turnover: 0 };
-    row.visits += 1;
+    // Zwrot pieniędzy (reklamacja) zmniejsza obrót, ale nie jest zabiegiem.
+    if (visit.complaintKind !== 'zwrot') row.visits += 1;
     row.turnover += visit.amount ?? 0;
     map.set(key, row);
   }

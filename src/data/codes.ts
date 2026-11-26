@@ -40,6 +40,11 @@ export function visitCode(order: Pick<Order, 'number'> & { prefix?: string }, se
   return `${orderCode(order)}/${roman(seq)}`;
 }
 
+/** Kod zabiegu z dopiskiem przy reklamacji: „0023/I reklamacja” (ten sam numer co reklamowany zabieg). */
+export function visitLabel(order: Pick<Order, 'number'> & { prefix?: string }, visit: { seq: number; complaintOf?: string | null }): string {
+  return `${visitCode(order, visit.seq)}${visit.complaintOf ? ' reklamacja' : ''}`;
+}
+
 /**
  * Czy wpisane w wyszukiwarce pasuje do kodu zlecenia: „42”, „0042”, „#42”, „LDZ-0042”, „ldz42”,
  * „LDZ-0042/II”. Prefiks z zapytania musi pasować, cyfry są początkiem numeru.

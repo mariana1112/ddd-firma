@@ -8,7 +8,7 @@ import { methodNames } from '../data/methods';
 import { normalizeInterview } from '../data/interview';
 import { VisitSummary } from './visit-summary';
 import { PayBadge } from './common';
-import { orderCode, roman, visitCode } from '../data/codes';
+import { orderCode, roman, visitLabel } from '../data/codes';
 import { deleteExpense } from '../data/domain';
 import { orderMatches } from '../data/order-search';
 import { costName, formatPln, periodOf, shiftPeriod, type Period, type PeriodKind } from '../data/reports';
@@ -247,7 +247,7 @@ export function AccountingOrderPage() {
           <div key={v.id} className={`card form accounting-visit${wantsInvoice && visitInvoiced(order, v) ? ' accounting-visit-done' : ''}`}>
             <Link to={`/zabieg/${v.id}`} className="accounting-visit-head">
               <strong>
-                {visitCode(order, v.seq)} · {formatDate(v.doneOn)}
+                {visitLabel(order, v)} · {formatDate(v.doneOn)}
               </strong>
               <span className="num">{v.amount ? formatPln(v.amount) : '—'}</span>
             </Link>
@@ -456,7 +456,7 @@ export function CorrectionsPage() {
               return (
                 <div key={v.id} className="card form">
                   <strong>
-                    {order ? `${visitCode(order, v.seq)} ${order.clientName}` : 'Zabieg'} · {formatDate(v.doneOn)}
+                    {order ? `${visitLabel(order, v)} ${order.clientName}` : 'Zabieg'} · {formatDate(v.doneOn)}
                   </strong>
                   <div className="form-row">
                     <MoneyField label="Kwota (zł)" value={v.amount} onSave={(amount) => run(async () => { await visits.update(v.id, { amount }); saved(); })} />
@@ -608,7 +608,7 @@ export function PaymentsPage() {
                   {v.payMethod && <PayBadge method={v.payMethod} />}
                 </span>
                 <span>
-                  <span className="order-number">{visitCode(order, v.seq)}</span> {order.clientName || order.phones[0]?.number}
+                  <span className="order-number">{visitLabel(order, v)}</span> {order.clientName || order.phones[0]?.number}
                 </span>
                 <span className="row-sub">
                   {formatDate(v.doneOn ?? v.start)} · {v.technicianName || 'technik'} · {orderAddress(order)}

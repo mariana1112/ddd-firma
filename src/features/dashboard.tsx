@@ -1,4 +1,4 @@
-import { roman, visitCode } from '../data/codes';
+import { roman, visitLabel } from '../data/codes';
 import { scopeText } from '../data/visit-terms';
 import { mainPhone } from '../data/order-search';
 import { addressMissing, dayPositions, nextVisitOfDay, paymentMissing } from '../data/order-list';
@@ -65,7 +65,7 @@ function VisitRow({ visit, order, timeOnly, urgent, reason, next, pos }: { visit
         <>
           {pos && <span className="day-pos" title={`Zabieg ${pos.n} z ${pos.of} tego dnia`}>{pos.n}/{pos.of}</span>}
           {visit.start && <span className="row-time">{timeOnly ? formatTime(visit.start) : `${formatDate(visit.start)} ${formatTime(visit.start)}`}</span>}
-          <span className="order-number">{visitCode(order, visit.seq)}</span> {order.clientName}
+          <span className="order-number">{visitLabel(order, visit)}</span> {order.clientName}
         </>
       }
       sub={`${visit.assignedName && visit.status === 'zaplanowany' ? `dla: ${visit.assignedName.split(' ')[0]} · ` : ''}${orderAddress(order) || 'brak adresu'} · ${pestName(order)}, zabieg ${roman(visit.seq)}${visit.scope && visit.scope.kind !== 'calosc' ? ` · ${scopeText(visit.scope)}` : ''}${mainPhone(order) ? ` · tel. ${mainPhone(order)}` : ''}`}
@@ -203,7 +203,7 @@ export function DashboardPage() {
                 {visit.start!.slice(0, 10) === today ? 'Dziś' : 'Jutro'} {formatTime(visit.start!)}
               </span>
               <span>
-                <strong>{visitCode(order, visit.seq)}</strong> {order.clientName} · {orderAddress(order)}
+                <strong>{visitLabel(order, visit)}</strong> {order.clientName} · {orderAddress(order)}
                 {order.ownerName ? ` · dodał: ${order.ownerName}` : ''}
               </span>
             </Link>

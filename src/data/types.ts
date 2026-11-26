@@ -291,6 +291,9 @@ export interface Message extends BaseRecord {
 
 export type VisitStatus = 'zaplanowany' | 'w_trakcie' | 'wykonany' | 'odwolany';
 
+/** Rozwiązanie reklamacji: zabieg gratis, zwrot pieniędzy, zabieg z rabatem albo inne (opisane). */
+export type ComplaintKind = 'gratis' | 'zwrot' | 'rabat' | 'inne';
+
 /** Wywiad na wzór SAMPLE: co, gdzie, od kiedy, objawy i wcześniejsze działania klienta. */
 /** Odpowiedź tak/nie; pusta, gdy technik jeszcze nie zapytał. */
 export type YesNo = '' | 'tak' | 'nie';
@@ -377,6 +380,13 @@ export interface Visit extends BaseRecord {
   /** Księgowość: BLIK albo przelew sprawdzony na koncie (kiedy i kto); null albo brak: jeszcze nie. */
   paymentCheckedAt?: string | null;
   paymentCheckedBy?: string;
+  /**
+   * Reklamacja: id reklamowanego zabiegu. Zabieg reklamacyjny ma ten sam numer (I, II…) co reklamowany i dopisek
+   * „reklamacja”. Zwrot pieniędzy to wykonany wpis z ujemną kwotą w dniu zwrotu (odejmuje się od utargu).
+   */
+  complaintOf?: string | null;
+  complaintKind?: ComplaintKind;
+  complaintNote?: string;
 }
 
 export type ScopeKind = 'calosc' | 'pokoj' | 'inne';
